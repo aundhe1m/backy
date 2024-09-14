@@ -1,0 +1,16 @@
+services:
+  backyback:
+    build: .
+    container_name: backyback
+    privileged: true
+    ports:
+      - 8080:8080
+    volumes:
+      - /sys:/sys            # Access system information
+      - /dev:/dev            # Access block devices
+      - /run/udev:/run/udev  # Access udev (device info)
+      - /proc:/proc          # Access process and system information
+      - /mnt:/mnt
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    tty: true

@@ -1,0 +1,159 @@
+﻿@page
+@model BackyBack.Pages.IndexModel
+@{
+    ViewData["Title"] = "Drive Information";
+}
+
+<div class="container">
+    <h1 class="display-4 text-center my-5">Drive Information</h1>
+
+    @if (Model.Drives.Count == 0)
+    {
+        <div class="alert alert-warning text-center">
+            No drives found.
+        </div>
+    }
+    else
+    {
+        <script>
+            function postData(url, data, successCallback, errorCallback) {
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams(data)
+                })
+                    .then(response => {
+                        if (response.ok) {
+                            successCallback();
+                        } else {
+                            throw new Error('Request failed with status ' + response.status);
+                        }
+                    })
+                    .catch(error => {
+                        errorCallback(error);
+                        console.error(`Error: ${error}`);
+                    });
+            }
+
+            function handlePartitionAction(url, data, message) {
+                postData(url, data,
+                    function () {
+                        console.log(message);
+                        location.reload();  // Reload to update the UI
+                    },
+                    function (error) {
+                        console.error(`Error: ${error}`);
+                    });
+            }
+
+            function handleCreatePartition(driveName) {
+                console.log("Creating partition on drive: ", driveName);
+                handlePartitionAction('/Index?handler=CreatePartition', { driveName: driveName }, 'Partition created successfully');
+            }
+
+            function handleMountUnmountPartition(partitionName, uuid, isMounted) {
+                let url = isMounted ? '/Index?handler=UnmountPartition' : '/Index?handler=MountPartition';
+                let data = { partitionName: partitionName };
+                if (!isMounted) data.uuid = uuid;  // Add uuid for mounting
+
+                console.log(`Performing ${isMounted ? 'unmount' : 'mount'} action on partition: `, partitionName);
+                handlePartitionAction(url, data, isMounted ? 'Partition unmounted successfully' : 'Partition mounted successfully');
+            }
+
+            function handleFormatPartition(partitionName) {
+                console.log("Formatting partition: ", partitionName);
+                handlePartitionAction('/Index?handler=FormatPartition', { partitionName: partitionName }, 'Partition formatted successfully');
+            }
+
+            function handleRemovePartition(partitionName) {
+                if (confirm('Are you sure you want to remove this partition?')) {
+                    console.log("Removing partition: ", partitionName);
+                    handlePartitionAction('/Index?handler=RemovePartition', { partitionName: partitionName }, 'Partition removed successfully');
+                }
+            }
+        </script>
+
+        @foreach (var drive in Model.Drives)
+        {
+            <div class="card mb-3 shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4>
+                        <i class="fas fa-hdd"></i> @drive.Name
+                        <span class="badge badge-secondary text-dark" id="drive-size-@drive.Name"></span>
+                    </h4>
+                    <small class="text-muted">Serial: @drive.Serial | Vendor: @drive.Vendor | Model: @drive.Model</small>
+                </div>
+                <div class="card-body">
+                    <div class="text-right mb-2">
+                        <button class="btn btn-outline-primary" onclick="handleCreatePartition('@drive.Name')">Create
+                            Partition</button>
+                    </div>
+
+                    @if (drive.Partitions.Count > 0)
+                    {
+                        @foreach (var partition in drive.Partitions)
+                        {
+                            <div class="card mt-3">
+                                <div class="card-header d-flex justify-content-between align-items-center"
+                                    style="background-color: #0d6efd; color: white;">
+                                    Partition: @partition.Name
+                                    <span class="text" style="color: white;">Label: (Feature to be added later)</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row mt-2 align-items-center">
+                                        <div class="col-md-6">
+                                            <strong>Mountpoint:</strong> @partition.MountPoint
+                                        </div>
+                                        <div class="col-md-6 d-flex justify-content-end">
+                                            <button class="btn btn-success btn-sm action-btn mx-2"
+                                                onclick="handleMountUnmountPartition('@partition.Name', '@partition.UUID', @(partition.MountPoint != "Not Mounted"))">
+                                                @(partition.MountPoint == "Not Mounted" ? "Mount" : "Unmount")
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="row mt-2 align-items-center">
+                                        <div class="col-md-6">
+                                            <strong>UUID:</strong> @partition.UUID
+                                        </div>
+                                        <div class="col-md-6 d-flex justify-content-end">
+                                            <button class="btn btn-info btn-sm action-btn mx-2"
+                                                onclick="handleFormatPartition('@partition.Name')">Format</button>
+                                        </div>
+                                    </div>
+                                    <div class="row mt-2 align-items-center">
+                                        <div class="col-md-6">
+                                            <strong>Filesystem:</strong> @partition.Fstype
+                                        </div>
+                                        <div class="col-md-6 d-flex justify-content-end">
+                                            <button class="btn btn-danger btn-sm action-btn mx-2"
+                                                onclick="handleRemovePartition('@partition.Name')">Remove</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .action-btn {
+        width: 150px;
+        /* Ensures all buttons are the same width */
+    }
+
+    .text-right {
+        margin-right: 10px;
+        /* Adds margin to the right of the card */
+    }
+
+    button {
+        margin-right: 10px;
+        /* Adds margin between buttons and the card's edge */
+    }
+</style>
