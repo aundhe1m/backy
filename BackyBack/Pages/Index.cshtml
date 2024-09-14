@@ -15,66 +15,6 @@
     }
     else
     {
-        <script>
-            function postData(url, data, successCallback, errorCallback) {
-                fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: new URLSearchParams(data)
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            successCallback();
-                        } else {
-                            throw new Error('Request failed with status ' + response.status);
-                        }
-                    })
-                    .catch(error => {
-                        errorCallback(error);
-                        console.error(`Error: ${error}`);
-                    });
-            }
-
-            function handlePartitionAction(url, data, message) {
-                postData(url, data,
-                    function () {
-                        console.log(message);
-                        location.reload();  // Reload to update the UI
-                    },
-                    function (error) {
-                        console.error(`Error: ${error}`);
-                    });
-            }
-
-            function handleCreatePartition(driveName) {
-                console.log("Creating partition on drive: ", driveName);
-                handlePartitionAction('/Index?handler=CreatePartition', { driveName: driveName }, 'Partition created successfully');
-            }
-
-            function handleMountUnmountPartition(partitionName, uuid, isMounted) {
-                let url = isMounted ? '/Index?handler=UnmountPartition' : '/Index?handler=MountPartition';
-                let data = { partitionName: partitionName };
-                if (!isMounted) data.uuid = uuid;  // Add uuid for mounting
-
-                console.log(`Performing ${isMounted ? 'unmount' : 'mount'} action on partition: `, partitionName);
-                handlePartitionAction(url, data, isMounted ? 'Partition unmounted successfully' : 'Partition mounted successfully');
-            }
-
-            function handleFormatPartition(partitionName) {
-                console.log("Formatting partition: ", partitionName);
-                handlePartitionAction('/Index?handler=FormatPartition', { partitionName: partitionName }, 'Partition formatted successfully');
-            }
-
-            function handleRemovePartition(partitionName) {
-                if (confirm('Are you sure you want to remove this partition?')) {
-                    console.log("Removing partition: ", partitionName);
-                    handlePartitionAction('/Index?handler=RemovePartition', { partitionName: partitionName }, 'Partition removed successfully');
-                }
-            }
-        </script>
-
         @foreach (var drive in Model.Drives)
         {
             <div class="card mb-3 shadow-sm">
@@ -87,8 +27,10 @@
                 </div>
                 <div class="card-body">
                     <div class="text-right mb-2">
-                        <button class="btn btn-outline-primary" onclick="handleCreatePartition('@drive.Name')">Create
-                            Partition</button>
+                        <form method="post" asp-page-handler="CreatePartition">
+                            <input type="hidden" name="driveName" value="@drive.Name" />
+                            <button type="submit" class="btn btn-outline-primary">Create Partition</button>
+                        </form>
                     </div>
 
                     @if (drive.Partitions.Count > 0)
@@ -107,10 +49,14 @@
                                             <strong>Mountpoint:</strong> @partition.MountPoint
                                         </div>
                                         <div class="col-md-6 d-flex justify-content-end">
-                                            <button class="btn btn-success btn-sm action-btn mx-2"
-                                                onclick="handleMountUnmountPartition('@partition.Name', '@partition.UUID', @(partition.MountPoint != "Not Mounted"))">
-                                                @(partition.MountPoint == "Not Mounted" ? "Mount" : "Unmount")
-                                            </button>
+                                            <form method="post"
+                                                asp-page-handler="@(partition.MountPoint == "Not Mounted" ? "MountPartition" : "UnmountPartition")">
+                                                <input type="hidden" name="partitionName" value="@partition.Name" />
+                                                <input type="hidden" name="uuid" value="@partition.UUID" />
+                                                <button type="submit" class="btn btn-success btn-sm action-btn mx-2">
+                                                    @(partition.MountPoint == "Not Mounted" ? "Mount" : "Unmount")
+                                                </button>
+                                            </form>
                                         </div>
                                     </div>
                                     <div class="row mt-2 align-items-center">
@@ -118,8 +64,10 @@
                                             <strong>UUID:</strong> @partition.UUID
                                         </div>
                                         <div class="col-md-6 d-flex justify-content-end">
-                                            <button class="btn btn-info btn-sm action-btn mx-2"
-                                                onclick="handleFormatPartition('@partition.Name')">Format</button>
+                                            <form method="post" asp-page-handler="FormatPartition">
+                                                <input type="hidden" name="partitionName" value="@partition.Name" />
+                                                <button type="submit" class="btn btn-info btn-sm action-btn mx-2">Format</button>
+                                            </form>
                                         </div>
                                     </div>
                                     <div class="row mt-2 align-items-center">
@@ -127,8 +75,11 @@
                                             <strong>Filesystem:</strong> @partition.Fstype
                                         </div>
                                         <div class="col-md-6 d-flex justify-content-end">
-                                            <button class="btn btn-danger btn-sm action-btn mx-2"
-                                                onclick="handleRemovePartition('@partition.Name')">Remove</button>
+                                            <form method="post" asp-page-handler="RemovePartition">
+                                                <input type="hidden" name="partitionName" value="@partition.Name" />
+                                                <button type="submit" class="btn btn-danger btn-sm action-btn mx-2">Remove</button>
+                                            </form>
+
                                         </div>
                                     </div>
                                 </div>
@@ -140,20 +91,3 @@
         }
     }
 </div>
-
-<style>
-    .action-btn {
-        width: 150px;
-        /* Ensures all buttons are the same width */
-    }
-
-    .text-right {
-        margin-right: 10px;
-        /* Adds margin to the right of the card */
-    }
-
-    button {
-        margin-right: 10px;
-        /* Adds margin between buttons and the card's edge */
-    }
-</style>

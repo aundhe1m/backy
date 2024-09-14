@@ -19,6 +19,7 @@ namespace BackyBack.Pages
         public IActionResult OnPostCreatePartition(string driveName)
         {
             var command = $"parted /dev/{driveName} --script mklabel gpt mkpart primary ext4 0% 100%";
+            Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition created successfully.", $"Error creating partition on {driveName}");
             return RedirectToPage();
         }
@@ -27,6 +28,7 @@ namespace BackyBack.Pages
         public IActionResult OnPostFormatPartition(string partitionName)
         {
             var command = $"mkfs.ext4 /dev/{partitionName}";
+            Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition formatted successfully.", $"Error formatting partition {partitionName}");
             return RedirectToPage();
         }
@@ -36,6 +38,7 @@ namespace BackyBack.Pages
         {
             var mountPath = $"/mnt/{uuid}";
             var command = $"mkdir -p {mountPath} && mount /dev/{partitionName} {mountPath}";
+            Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition mounted successfully.", $"Error mounting partition {partitionName}");
             return RedirectToPage();
         }
@@ -44,6 +47,7 @@ namespace BackyBack.Pages
         public IActionResult OnPostUnmountPartition(string partitionName)
         {
             var command = $"umount /dev/{partitionName}";
+            Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition unmounted successfully.", $"Error unmounting partition {partitionName}");
             return RedirectToPage();
         }
@@ -51,19 +55,17 @@ namespace BackyBack.Pages
         // Action for removing a partition
         public IActionResult OnPostRemovePartition(string partitionName)
         {
-            // Extract the partition number from the partitionName (e.g., sdb1 -> 1)
-            var partitionNumber = new string(partitionName.SkipWhile(c => !char.IsDigit(c)).ToArray());
+            // Extract the drive name and partition number from partitionName (e.g., sda1 -> sda and 1)
+            string driveName = new string(partitionName.TakeWhile(c => !char.IsDigit(c)).ToArray());
+            string partitionNumber = new string(partitionName.SkipWhile(c => !char.IsDigit(c)).ToArray());
 
-            // Command to unmount the partition first
             var umountCommand = $"umount /dev/{partitionName}";
+            var partedCommand = $"parted /dev/{driveName} --script rm {partitionNumber}";
 
-            // Command to remove the partition
-            var partedCommand = $"parted /dev/{partitionName.Substring(0, partitionName.Length - partitionNumber.Length)} --script rm {partitionNumber}";
-
-            // Run the unmount command, check for exit code 0 (success) or 32 (not mounted)
+            Console.WriteLine($"Running command: {umountCommand}");
             if (ExecuteShellCommandWithExitCode(umountCommand, out string umountOutput, out int exitCode) && (exitCode == 0 || exitCode == 32))
             {
-                // Proceed with removing the partition if unmount succeeds or it's not mounted
+                Console.WriteLine($"Running command: {partedCommand}");
                 ExecuteShellCommand(partedCommand, "Partition removed successfully.", $"Error removing partition {partitionName}");
             }
             else
@@ -75,13 +77,12 @@ namespace BackyBack.Pages
         }
 
 
-
-
         // Helper method to execute shell commands
         private void ExecuteShellCommand(string command, string successMessage, string errorMessage)
         {
             try
             {
+                Console.WriteLine($"Executing: {command}");
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -121,6 +122,7 @@ namespace BackyBack.Pages
         {
             try
             {
+                Console.WriteLine($"Executing: {command}");
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -147,8 +149,6 @@ namespace BackyBack.Pages
                 return false;
             }
         }
-
-
 
         private List<DriveInfoModel> ScanDrives()
         {
@@ -251,6 +251,7 @@ namespace BackyBack.Pages
             public string? MountPoint { get; set; }
             public string? UUID { get; set; }
             public string Fstype { get; set; } = "Unknown";
+            public int? Partn { get; set; }
         }
 
         public class LsblkOutput
@@ -287,6 +288,9 @@ namespace BackyBack.Pages
 
             [JsonPropertyName("fstype")]
             public string? Fstype { get; set; }
+
+            [JsonPropertyName("partn")]
+            public int Partn { get; set; }
 
             [JsonPropertyName("children")]
             public List<BlockDevice>? Children { get; set; }
