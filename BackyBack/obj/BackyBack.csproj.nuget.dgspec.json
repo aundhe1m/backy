@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/home/aundhe1m/backy/BackyBack/BackyBack.csproj": {}
+    "/home/aundhe1m/backy-project/backy/BackyBack/BackyBack.csproj": {}
   },
   "projects": {
-    "/home/aundhe1m/backy/BackyBack/BackyBack.csproj": {
+    "/home/aundhe1m/backy-project/backy/BackyBack/BackyBack.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/aundhe1m/backy/BackyBack/BackyBack.csproj",
+        "projectUniqueName": "/home/aundhe1m/backy-project/backy/BackyBack/BackyBack.csproj",
         "projectName": "BackyBack",
-        "projectPath": "/home/aundhe1m/backy/BackyBack/BackyBack.csproj",
+        "projectPath": "/home/aundhe1m/backy-project/backy/BackyBack/BackyBack.csproj",
         "packagesPath": "/home/aundhe1m/.nuget/packages/",
-        "outputPath": "/home/aundhe1m/backy/BackyBack/obj/",
+        "outputPath": "/home/aundhe1m/backy-project/backy/BackyBack/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/aundhe1m/.nuget/NuGet/NuGet.Config"

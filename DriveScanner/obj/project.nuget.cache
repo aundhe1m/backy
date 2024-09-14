@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "zCO0CkvROE355409Ji4WWGHQUWhMSB01oXgLcTG83vzz9op8Fn8ZIIazvxol59F0ES3etM8Kni+XEsKecC5ltg==",
+  "dgSpecHash": "mM6+N1R2/Uc3NA5vC91sAlU/tf1DbFkffyf5MgS8Pwjk86eOuQQZtbJZXINP8jozRqmBEfOAFBMS7mwGIC2aqg==",
   "success": true,
-  "projectFilePath": "/home/aundhe1m/backy/DriveScanner/DriveScanner.csproj",
+  "projectFilePath": "/home/aundhe1m/backy-project/backy/DriveScanner/DriveScanner.csproj",
   "expectedPackageFiles": [],
   "logs": []
 }

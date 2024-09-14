@@ -13,11 +13,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/aundhe1m/backy/DriveScanner/DriveScanner.csproj",
+      "projectUniqueName": "/home/aundhe1m/backy-project/backy/DriveScanner/DriveScanner.csproj",
       "projectName": "DriveScanner",
-      "projectPath": "/home/aundhe1m/backy/DriveScanner/DriveScanner.csproj",
+      "projectPath": "/home/aundhe1m/backy-project/backy/DriveScanner/DriveScanner.csproj",
       "packagesPath": "/home/aundhe1m/.nuget/packages/",
-      "outputPath": "/home/aundhe1m/backy/DriveScanner/obj/",
+      "outputPath": "/home/aundhe1m/backy-project/backy/DriveScanner/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/home/aundhe1m/.nuget/NuGet/NuGet.Config"
