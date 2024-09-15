@@ -64,6 +64,66 @@ namespace BackyBack.Pages
 
         }
 
+        public IActionResult OnPostAddPartitionToLibrary(string partitionName, string uuid, string serial, string vendor, string model, string label)
+        {
+            try
+            {
+                // Define the path where the file will be created
+                var mountPath = $"/mnt/{uuid}";
+                var filePath = Path.Combine(mountPath, "drive_meta.json");
+
+                // Log the path where the file will be created
+                Console.WriteLine($"Attempting to create file at: {filePath}");
+
+                // Prepare the content to be written to the file
+                var driveMetadata = new
+                {
+                    Label = label,
+                    Serial = serial,
+                    UUID = uuid,
+                    Vendor = vendor,
+                    Model = model
+                };
+
+                // Convert the object to JSON
+                var jsonContent = JsonSerializer.Serialize(driveMetadata, new JsonSerializerOptions { WriteIndented = true });
+
+                // Log the content that will be written to the file
+                Console.WriteLine("Content to be written to file:");
+                Console.WriteLine(jsonContent);
+
+                // Ensure the directory exists
+                if (!Directory.Exists(mountPath))
+                {
+                    Console.WriteLine($"Directory {mountPath} does not exist. Attempting to create it.");
+                    Directory.CreateDirectory(mountPath);
+                }
+
+                // Write the JSON content to the file
+                System.IO.File.WriteAllText(filePath, jsonContent);
+
+                // Verify that the file was created and log the success or failure
+                if (System.IO.File.Exists(filePath))
+                {
+                    Console.WriteLine($"File created successfully at: {filePath}");
+                    return new JsonResult(new { success = true, message = "Partition added to library successfully." });
+                }
+                else
+                {
+                    Console.WriteLine($"Failed to create the file at: {filePath}");
+                    return new JsonResult(new { success = false, message = "Failed to create the file." });
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log any exceptions that occur during the process
+                Console.WriteLine($"Error occurred while adding partition to library: {ex.Message}");
+                return new JsonResult(new { success = false, message = $"Error: {ex.Message}" });
+            }
+        }
+
+
+
         public IActionResult OnPostRemovePartition(string partitionName)
         {
             // Extract the drive name and partition number from partitionName (e.g., sda1 -> sda and 1)
@@ -89,8 +149,6 @@ namespace BackyBack.Pages
             return new JsonResult(new { success = true, message = "Partition removed successfully." });
 
         }
-
-
 
         // Helper method to execute shell commands
         private void ExecuteShellCommand(string command, string successMessage, string errorMessage)

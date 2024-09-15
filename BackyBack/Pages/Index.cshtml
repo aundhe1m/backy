@@ -48,6 +48,15 @@
                 setTimeout(() => { spinner.style.display = "none"; }, 20);  // Hide after fade out
             }
 
+function promptForLabel(partitionName, uuid, serial, vendor, model) {
+    const label = prompt("Please enter a label for this partition:");
+    if (label) {
+        // Post this data to the server or handle it accordingly
+        console.log(`Label: ${label}, Partition: ${partitionName}, UUID: ${uuid}, Serial: ${serial}, Vendor: ${vendor}, Model: ${model}`);
+        // Optionally, use fetch to send this data to a server-side handler.
+    }
+}
+
             // Function to intercept form submission and handle sizes
             document.addEventListener('DOMContentLoaded', function () {
                 // Handle form submission interception
@@ -67,44 +76,38 @@
                                 'X-Requested-With': 'XMLHttpRequest'
                             }
                         })
-                        .then(response => {
-                            if (!response.ok) {
-                                throw new Error('HTTP error! Status: ' + response.status);
-                            }
-                            return response.json();
-                        })
-                        .then(data => {
-                            hideLoading(); // Hide spinner
-                            if (data.success) {
-                                console.log(data.message);
-                                // Dynamically update the UI if needed or just reload
-                                location.reload(); // Reload to update the UI
-                            } else {
-                                throw new Error('Task failed');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error:', error);
-                            hideLoading();
-                        });
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error('HTTP error! Status: ' + response.status);
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                hideLoading(); // Hide spinner
+                                if (data.success) {
+                                    console.log(data.message);
+                                    // Dynamically update the UI if needed or just reload
+                                    location.reload(); // Reload to update the UI
+                                } else {
+                                    throw new Error('Task failed');
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error:', error);
+                                hideLoading();
+                            });
                     });
                 });
 
                 // Handle dynamic size updates for drives and partitions
-                @foreach (var drive in Model.Drives)
-                {
-                    <text>
-                        document.getElementById("drive-size-@drive.Name").innerText = formatSize(@drive.Size);
-                    </text>
+            @foreach (var drive in Model.Drives)
+            {
+                <text>
+                            document.getElementById("drive-size-@drive.Name").innerText = formatSize(@drive.Size);
+                </text>
 
-                    @foreach (var partition in drive.Partitions)
-                    {
-                        <text>
-                            document.getElementById("partition-size-@partition.Name").innerText = formatSize(@partition.Size);
-                        </text>
-                    }
-                }
-            });
+            }
+                });
         </script>
 
         @foreach (var drive in Model.Drives)
@@ -135,10 +138,13 @@
                                     <span class="text" style="color: white;">Label: (Feature to be added later)</span>
                                 </div>
                                 <div class="card-body">
-                                    <div class="row mt-2 align-items-center">
+                                    <div class="row mt-2">
+                                        <!-- Mountpoint Display -->
                                         <div class="col-md-6">
                                             <strong>Mountpoint:</strong> @partition.MountPoint
                                         </div>
+
+                                        <!-- Mount/Unmount Button -->
                                         <div class="col-md-6 d-flex justify-content-end">
                                             <form method="post"
                                                 asp-page-handler="@(partition.MountPoint == "Not Mounted" ? "MountPartition" : "UnmountPartition")"
@@ -149,26 +155,45 @@
                                             </form>
                                         </div>
                                     </div>
-                                    <div class="row mt-2 align-items-center">
+                                    
+                                    <div class="row mt-2">
+                                        <!-- UUID Display -->
                                         <div class="col-md-6">
                                             <strong>UUID:</strong> @partition.UUID
                                         </div>
+
+                                        <!-- Add to Library Button -->
                                         <div class="col-md-6 d-flex justify-content-end">
-                                            <form method="post" asp-page-handler="FormatPartition"
-                                                asp-route-partitionName="@partition.Name">
-                                                <button type="submit" class="btn btn-outline-secondary btn-sm action-btn mx-2">Format</button>
-                                            </form>
+                                            <button class="btn btn-primary btn-sm action-btn mx-2" @(partition.MountPoint == "Not Mounted" ? "disabled" : "") onclick="promptForLabel('@partition.Name', '@partition.UUID', '@drive.Serial', '@drive.Vendor', '@drive.Model')">Add to Library</button>
                                         </div>
                                     </div>
-                                    <div class="row mt-2 align-items-center">
+
+                                    
+                                    <div class="row mt-2">
+                                        <!-- Filesystem Display -->
                                         <div class="col-md-6">
                                             <strong>Filesystem:</strong> @partition.Fstype
                                         </div>
+
+                                        <!-- Manage Partition Dropdown -->
                                         <div class="col-md-6 d-flex justify-content-end">
-                                            <form method="post" asp-page-handler="RemovePartition"
-                                                asp-route-partitionName="@partition.Name">
-                                                <button type="submit" class="btn btn-outline-danger btn-sm action-btn mx-2">Remove</button>
-                                            </form>
+                                            <div class="dropdown">
+                                                <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton-@partition.Name" data-bs-toggle="dropdown" aria-expanded="false">
+                                                    Manage Partition
+                                                </button>
+                                                <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton-@partition.Name">
+                                                    <li>
+                                                        <form method="post" asp-page-handler="FormatPartition" asp-route-partitionName="@partition.Name">
+                                                            <button type="submit" class="dropdown-item">Format</button>
+                                                        </form>
+                                                    </li>
+                                                    <li>
+                                                        <form method="post" asp-page-handler="RemovePartition" asp-route-partitionName="@partition.Name">
+                                                            <button type="submit" class="dropdown-item">Delete</button>
+                                                        </form>
+                                                    </li>
+                                                </ul>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -183,7 +208,8 @@
 
 <style>
     .action-btn {
-        width: 150px; /* Ensures all buttons are the same width */
+        width: 150px;
+        /* Ensures all buttons are the same width */
     }
 
     .spinner-overlay {
