@@ -15,44 +15,70 @@ namespace BackyBack.Pages
             Drives = ScanDrives();
         }
 
-        // Action for creating a partition
         public IActionResult OnPostCreatePartition(string driveName)
         {
+            Console.WriteLine($"Received request to create partition on drive: {driveName}");
             var command = $"parted /dev/{driveName} --script mklabel gpt mkpart primary ext4 0% 100%";
             Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition created successfully.", $"Error creating partition on {driveName}");
+
+            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
+            {
+                System.Threading.Thread.Sleep(500); 
+                return new JsonResult(new { success = true, message = "Partition created successfully." });
+            }
+
+            System.Threading.Thread.Sleep(500); 
             return RedirectToPage();
         }
 
-        // Action for formatting a partition
         public IActionResult OnPostFormatPartition(string partitionName)
         {
             var command = $"mkfs.ext4 /dev/{partitionName}";
             Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition formatted successfully.", $"Error formatting partition {partitionName}");
+
+            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
+            {
+                System.Threading.Thread.Sleep(500); 
+                return new JsonResult(new { success = true, message = "Partition formatted successfully." });
+            }
+
+            System.Threading.Thread.Sleep(500); 
             return RedirectToPage();
         }
 
-        // Action for mounting a partition
         public IActionResult OnPostMountPartition(string partitionName, string uuid)
         {
             var mountPath = $"/mnt/{uuid}";
             var command = $"mkdir -p {mountPath} && mount /dev/{partitionName} {mountPath}";
             Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition mounted successfully.", $"Error mounting partition {partitionName}");
+
+            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
+            {
+                System.Threading.Thread.Sleep(500); 
+                return new JsonResult(new { success = true, message = "Partition mounted successfully." });
+            }
+            System.Threading.Thread.Sleep(500); 
             return RedirectToPage();
         }
 
-        // Action for unmounting a partition
         public IActionResult OnPostUnmountPartition(string partitionName)
         {
             var command = $"umount /dev/{partitionName}";
             Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition unmounted successfully.", $"Error unmounting partition {partitionName}");
+
+            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
+            {
+                System.Threading.Thread.Sleep(500); 
+                return new JsonResult(new { success = true, message = "Partition unmounted successfully." });
+            }
+            System.Threading.Thread.Sleep(500); 
             return RedirectToPage();
         }
 
-        // Action for removing a partition
         public IActionResult OnPostRemovePartition(string partitionName)
         {
             // Extract the drive name and partition number from partitionName (e.g., sda1 -> sda and 1)
@@ -73,8 +99,16 @@ namespace BackyBack.Pages
                 Console.WriteLine($"Error unmounting partition {partitionName}: {umountOutput}");
             }
 
+            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
+            {
+                System.Threading.Thread.Sleep(500); 
+                return new JsonResult(new { success = true, message = "Partition removed successfully." });
+            }
+
+            System.Threading.Thread.Sleep(500); 
             return RedirectToPage();
         }
+
 
 
         // Helper method to execute shell commands
