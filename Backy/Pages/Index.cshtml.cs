@@ -29,7 +29,7 @@ namespace Backy.Pages
 
         public IActionResult OnPostMountPartition(string partitionName, string uuid)
         {
-            var mountPath = $"/mnt/{uuid}";
+            var mountPath = $"/mnt/backy/{uuid}";
             var command = $"mkdir -p {mountPath} && mount /dev/{partitionName} {mountPath}";
             return ExecuteShellCommandWithExitCode(command);
         }
@@ -47,7 +47,7 @@ namespace Backy.Pages
             try
             {
                 // Define the path where the file will be created
-                var mountPath = $"/mnt/{uuid}";
+                var mountPath = $"/mnt/backy/{uuid}";
                 var filePath = Path.Combine(mountPath, "drive_meta.json");
 
                 // Log the path where the file will be created
@@ -134,6 +134,7 @@ namespace Backy.Pages
                 process.Start();
                 output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
                 process.WaitForExit();
+                System.Threading.Thread.Sleep(500);
                 exitCode = process.ExitCode;
 
                 if (exitCode == 0)
