@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "/home/aundhe1m/backy-project/backy/BackyBack/BackyBack.csproj": {}
+    "/home/aundhe1m/backy-project/backy/Backy/Backy.csproj": {}
   },
   "projects": {
-    "/home/aundhe1m/backy-project/backy/BackyBack/BackyBack.csproj": {
+    "/home/aundhe1m/backy-project/backy/Backy/Backy.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/aundhe1m/backy-project/backy/BackyBack/BackyBack.csproj",
-        "projectName": "BackyBack",
-        "projectPath": "/home/aundhe1m/backy-project/backy/BackyBack/BackyBack.csproj",
-        "packagesPath": "/home/aundhe1m/.nuget/packages/",
-        "outputPath": "/home/aundhe1m/backy-project/backy/BackyBack/obj/",
+        "projectUniqueName": "/home/aundhe1m/backy-project/backy/Backy/Backy.csproj",
+        "projectName": "Backy",
+        "projectPath": "/home/aundhe1m/backy-project/backy/Backy/Backy.csproj",
+        "packagesPath": "/root/.nuget/packages/",
+        "outputPath": "/home/aundhe1m/backy-project/backy/Backy/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/aundhe1m/.nuget/NuGet/NuGet.Config"
+          "/root/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"

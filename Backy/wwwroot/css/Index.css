@@ -1,0 +1,53 @@
+.action-btn {
+    width: 180px;
+    /* Ensures all buttons are the same width */
+}
+
+.spinner-overlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* Center in viewport */
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.02s ease-in-out;
+    /* 20ms fade in/out */
+}
+
+.spinner-border {
+    width: 5rem;
+    height: 5rem;
+    color: rgb(177, 115, 1);
+    /* Make spinner orange */
+}
+
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #f44336;
+    /* Red for errors */
+    color: white;
+    padding: 16px;
+    border-radius: 8px;
+    z-index: 10000;
+    /* Ensures it's on top */
+    opacity: 0;
+    transition: opacity 0.3s ease, bottom 0.3s ease;
+}
+
+.toast-container.show {
+    display: block;
+    opacity: 1;
+    bottom: 40px;
+}
+
+.toast-body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}

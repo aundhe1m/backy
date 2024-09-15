@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace BackyBack.Pages
+namespace Backy.Pages
 {
     public class IndexModel : PageModel
     {
@@ -17,52 +17,30 @@ namespace BackyBack.Pages
 
         public IActionResult OnPostCreatePartition(string driveName)
         {
-            Console.WriteLine($"Received request to create partition on drive: {driveName}");
             var command = $"parted /dev/{driveName} --script mklabel gpt mkpart primary ext4 0% 100%";
-            Console.WriteLine($"Running command: {command}");
-            ExecuteShellCommand(command, "Partition created successfully.", $"Error creating partition on {driveName}");
-
-
-            System.Threading.Thread.Sleep(500);
-            return new JsonResult(new { success = true, message = "Partition created successfully." });
-
+            return ExecuteShellCommandWithExitCode(command);
         }
 
         public IActionResult OnPostFormatPartition(string partitionName)
         {
             var command = $"mkfs.ext4 /dev/{partitionName}";
-            Console.WriteLine($"Running command: {command}");
-            ExecuteShellCommand(command, "Partition formatted successfully.", $"Error formatting partition {partitionName}");
-
-
-            System.Threading.Thread.Sleep(500);
-            return new JsonResult(new { success = true, message = "Partition formatted successfully." });
-
+            return ExecuteShellCommandWithExitCode(command);
         }
 
         public IActionResult OnPostMountPartition(string partitionName, string uuid)
         {
             var mountPath = $"/mnt/{uuid}";
             var command = $"mkdir -p {mountPath} && mount /dev/{partitionName} {mountPath}";
-            Console.WriteLine($"Running command: {command}");
-            ExecuteShellCommand(command, "Partition mounted successfully.", $"Error mounting partition {partitionName}");
-
-
-            System.Threading.Thread.Sleep(500);
-            return new JsonResult(new { success = true, message = "Partition mounted successfully." });
-
+            return ExecuteShellCommandWithExitCode(command);
         }
 
         public IActionResult OnPostUnmountPartition(string partitionName)
         {
-            var command = $"umount /dev/{partitionName}";
-            Console.WriteLine($"Running command: {command}");
-            ExecuteShellCommand(command, "Partition unmounted successfully.", $"Error unmounting partition {partitionName}");
-
-            System.Threading.Thread.Sleep(500);
-            return new JsonResult(new { success = true, message = "Partition unmounted successfully." });
-
+            var command = $"umount -f /dev/{partitionName}";
+            return ExecuteShellCommandWithExitCode(command);
         }
+
+
 
         public IActionResult OnPostAddPartitionToLibrary(string partitionName, string uuid, string serial, string vendor, string model, string label)
         {
@@ -123,76 +101,21 @@ namespace BackyBack.Pages
         }
 
 
-
         public IActionResult OnPostRemovePartition(string partitionName)
         {
             // Extract the drive name and partition number from partitionName (e.g., sda1 -> sda and 1)
             string driveName = new string(partitionName.TakeWhile(c => !char.IsDigit(c)).ToArray());
             string partitionNumber = new string(partitionName.SkipWhile(c => !char.IsDigit(c)).ToArray());
 
-            var umountCommand = $"umount /dev/{partitionName}";
             var partedCommand = $"parted /dev/{driveName} --script rm {partitionNumber}";
-
-            Console.WriteLine($"Running command: {umountCommand}");
-            if (ExecuteShellCommandWithExitCode(umountCommand, out string umountOutput, out int exitCode) && (exitCode == 0 || exitCode == 32))
-            {
-                Console.WriteLine($"Running command: {partedCommand}");
-                ExecuteShellCommand(partedCommand, "Partition removed successfully.", $"Error removing partition {partitionName}");
-            }
-            else
-            {
-                Console.WriteLine($"Error unmounting partition {partitionName}: {umountOutput}");
-            }
-
-
-            System.Threading.Thread.Sleep(500);
-            return new JsonResult(new { success = true, message = "Partition removed successfully." });
-
+            return ExecuteShellCommandWithExitCode(partedCommand);
         }
 
-        // Helper method to execute shell commands
-        private void ExecuteShellCommand(string command, string successMessage, string errorMessage)
+        private JsonResult ExecuteShellCommandWithExitCode(string command)
         {
-            try
-            {
-                Console.WriteLine($"Executing: {command}");
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "bash",
-                        Arguments = $"-c \"{command}\"",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                    }
-                };
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
+            string output;
+            int exitCode;
 
-                if (process.ExitCode == 0)
-                {
-                    Console.WriteLine(successMessage);
-                    Console.WriteLine(output);
-                }
-                else
-                {
-                    Console.WriteLine(errorMessage);
-                    Console.WriteLine(error);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Command execution failed: {ex.Message}");
-            }
-        }
-
-        // This method will handle commands like 'umount' that need output checking
-        private bool ExecuteShellCommandWithExitCode(string command, out string output, out int exitCode)
-        {
             try
             {
                 Console.WriteLine($"Executing: {command}");
@@ -213,15 +136,24 @@ namespace BackyBack.Pages
                 process.WaitForExit();
                 exitCode = process.ExitCode;
 
-                return exitCode == 0 || exitCode == 32; // Returns true if the command was successful or not mounted
+                if (exitCode == 0)
+                {
+                    Console.WriteLine($"Success Output: {output}");
+                    return new JsonResult(new { success = true, message = output });
+                }
+                else
+                {
+                    Console.WriteLine($"Failure Output: {output}");
+                    return new JsonResult(new { success = false, message = output });
+                }
             }
             catch (Exception ex)
             {
                 output = $"Command execution failed: {ex.Message}";
-                exitCode = -1; // Return -1 to indicate a failure in running the command
-                return false;
+                return new JsonResult(new { success = false, message = output });
             }
         }
+
 
         private List<DriveInfoModel> ScanDrives()
         {

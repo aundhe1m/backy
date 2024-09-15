@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
-namespace BackyBack.Pages;
+namespace Backy.Pages;
 
 public class PrivacyModel : PageModel
 {
