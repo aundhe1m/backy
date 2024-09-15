@@ -200,7 +200,8 @@ namespace Backy.Pages
                                     Size = p.Size ?? 0,
                                     MountPoint = GetMountPoint(p),
                                     UUID = p.Uuid ?? "No UUID",
-                                    Fstype = p.Fstype ?? "Unknown"
+                                    Fstype = p.Fstype ?? "Unknown",
+                                    Label = GetPartitionLabel(p.Uuid) // Retrieve Label if available
                                 }).ToList() ?? new List<PartitionInfoModel>()
                             };
 
@@ -215,6 +216,34 @@ namespace Backy.Pages
             }
 
             return driveList;
+        }
+
+        // Method to check for drive_meta.json and extract the Label if it exists
+        private string? GetPartitionLabel(string? uuid)
+        {
+            if (string.IsNullOrEmpty(uuid)) return null;
+
+            var filePath = $"/mnt/backy/{uuid}/drive_meta.json";
+            if (System.IO.File.Exists(filePath))
+            {
+                try
+                {
+                    var jsonContent = System.IO.File.ReadAllText(filePath);
+                    var metadata = JsonSerializer.Deserialize<DriveMetadata>(jsonContent);
+
+                    if (metadata != null && !string.IsNullOrEmpty(metadata.Label))
+                    {
+                        Console.WriteLine($"Found label for UUID {uuid}: {metadata.Label}");
+                        return metadata.Label;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error reading metadata for UUID {uuid}: {ex.Message}");
+                }
+            }
+
+            return null; // Return null if no file found or error occurred
         }
 
         private string GetMountPoint(BlockDevice device)
@@ -244,9 +273,10 @@ namespace Backy.Pages
             public string Name { get; set; } = string.Empty;
             public long? Size { get; set; } = null;
             public string Serial { get; set; } = "No Serial";
-            public string UUID { get; set; } = "No UUID";
+            public string? UUID { get; set; } = null;
             public string Vendor { get; set; } = "Unknown Vendor";
             public string Model { get; set; } = "Unknown Model";
+            public string? Label { get; set; } = null;
             public List<PartitionInfoModel> Partitions { get; set; } = new List<PartitionInfoModel>();
         }
 
@@ -258,6 +288,16 @@ namespace Backy.Pages
             public string? UUID { get; set; }
             public string Fstype { get; set; } = "Unknown";
             public int? Partn { get; set; }
+            public string? Label { get; set; } = null;
+        }
+
+        public class DriveMetadata
+        {
+            public string? Label { get; set; } = null;
+            public string? Serial { get; set; } = null;
+            public string? UUID { get; set; } = null;
+            public string? Vendor { get; set; } = null;
+            public string? Model { get; set; } = null;
         }
 
         public class LsblkOutput
