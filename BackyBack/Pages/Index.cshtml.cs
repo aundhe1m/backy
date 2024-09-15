@@ -22,14 +22,10 @@ namespace BackyBack.Pages
             Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition created successfully.", $"Error creating partition on {driveName}");
 
-            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
-            {
-                System.Threading.Thread.Sleep(500); 
-                return new JsonResult(new { success = true, message = "Partition created successfully." });
-            }
 
-            System.Threading.Thread.Sleep(500); 
-            return RedirectToPage();
+            System.Threading.Thread.Sleep(500);
+            return new JsonResult(new { success = true, message = "Partition created successfully." });
+
         }
 
         public IActionResult OnPostFormatPartition(string partitionName)
@@ -38,14 +34,10 @@ namespace BackyBack.Pages
             Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition formatted successfully.", $"Error formatting partition {partitionName}");
 
-            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
-            {
-                System.Threading.Thread.Sleep(500); 
-                return new JsonResult(new { success = true, message = "Partition formatted successfully." });
-            }
 
-            System.Threading.Thread.Sleep(500); 
-            return RedirectToPage();
+            System.Threading.Thread.Sleep(500);
+            return new JsonResult(new { success = true, message = "Partition formatted successfully." });
+
         }
 
         public IActionResult OnPostMountPartition(string partitionName, string uuid)
@@ -55,13 +47,10 @@ namespace BackyBack.Pages
             Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition mounted successfully.", $"Error mounting partition {partitionName}");
 
-            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
-            {
-                System.Threading.Thread.Sleep(500); 
-                return new JsonResult(new { success = true, message = "Partition mounted successfully." });
-            }
-            System.Threading.Thread.Sleep(500); 
-            return RedirectToPage();
+
+            System.Threading.Thread.Sleep(500);
+            return new JsonResult(new { success = true, message = "Partition mounted successfully." });
+
         }
 
         public IActionResult OnPostUnmountPartition(string partitionName)
@@ -70,13 +59,9 @@ namespace BackyBack.Pages
             Console.WriteLine($"Running command: {command}");
             ExecuteShellCommand(command, "Partition unmounted successfully.", $"Error unmounting partition {partitionName}");
 
-            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
-            {
-                System.Threading.Thread.Sleep(500); 
-                return new JsonResult(new { success = true, message = "Partition unmounted successfully." });
-            }
-            System.Threading.Thread.Sleep(500); 
-            return RedirectToPage();
+            System.Threading.Thread.Sleep(500);
+            return new JsonResult(new { success = true, message = "Partition unmounted successfully." });
+
         }
 
         public IActionResult OnPostRemovePartition(string partitionName)
@@ -99,14 +84,10 @@ namespace BackyBack.Pages
                 Console.WriteLine($"Error unmounting partition {partitionName}: {umountOutput}");
             }
 
-            if (Request.Headers.XRequestedWith == "XMLHttpRequest")
-            {
-                System.Threading.Thread.Sleep(500); 
-                return new JsonResult(new { success = true, message = "Partition removed successfully." });
-            }
 
-            System.Threading.Thread.Sleep(500); 
-            return RedirectToPage();
+            System.Threading.Thread.Sleep(500);
+            return new JsonResult(new { success = true, message = "Partition removed successfully." });
+
         }
 
 

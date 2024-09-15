@@ -8,8 +8,7 @@
     <h1 class="display-4 text-center my-5">Drive Information</h1>
 
     <div id="loading-spinner" class="spinner-overlay" style="display: none;">
-        <div class="spinner-border text-warning" role="status">
-        </div>
+        <div class="spinner-border text-warning" role="status"></div>
     </div>
 
     @if (Model.Drives.Count == 0)
@@ -21,6 +20,22 @@
     else
     {
         <script>
+            // Function to format sizes in bytes to readable formats
+            function formatSize(sizeInBytes) {
+                if (sizeInBytes === null || sizeInBytes === 0) return 'Unknown size';
+
+                let size = sizeInBytes;
+                const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let suffixIndex = 0;
+
+                while (size >= 1024 && suffixIndex < suffixes.length - 1) {
+                    size /= 1024;
+                    suffixIndex++;
+                }
+
+                return size.toFixed(2) + ' ' + suffixes[suffixIndex];
+            }
+
             function showLoading() {
                 const spinner = document.getElementById("loading-spinner");
                 spinner.style.display = "flex";
@@ -33,8 +48,9 @@
                 setTimeout(() => { spinner.style.display = "none"; }, 20);  // Hide after fade out
             }
 
-            // Function to intercept form submission
+            // Function to intercept form submission and handle sizes
             document.addEventListener('DOMContentLoaded', function () {
+                // Handle form submission interception
                 document.querySelectorAll("form").forEach(form => {
                     form.addEventListener("submit", function (e) {
                         e.preventDefault(); // Prevent default form submission
@@ -51,27 +67,43 @@
                                 'X-Requested-With': 'XMLHttpRequest'
                             }
                         })
-                            .then(response => {
-                                if (!response.ok) {
-                                    throw new Error('HTTP error! Status: ' + response.status);
-                                }
-                                return response.json();
-                            })
-                            .then(data => {
-                                hideLoading(); // Hide spinner
-                                if (data.success) {
-                                    console.log(data.message);
-                                    location.reload(); // Reload to update the UI
-                                } else {
-                                    throw new Error('Task failed');
-                                }
-                            })
-                            .catch(error => {
-                                console.error('Error:', error);
-                                hideLoading();
-                            });
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('HTTP error! Status: ' + response.status);
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            hideLoading(); // Hide spinner
+                            if (data.success) {
+                                console.log(data.message);
+                                // Dynamically update the UI if needed or just reload
+                                location.reload(); // Reload to update the UI
+                            } else {
+                                throw new Error('Task failed');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            hideLoading();
+                        });
                     });
                 });
+
+                // Handle dynamic size updates for drives and partitions
+                @foreach (var drive in Model.Drives)
+                {
+                    <text>
+                        document.getElementById("drive-size-@drive.Name").innerText = formatSize(@drive.Size);
+                    </text>
+
+                    @foreach (var partition in drive.Partitions)
+                    {
+                        <text>
+                            document.getElementById("partition-size-@partition.Name").innerText = formatSize(@partition.Size);
+                        </text>
+                    }
+                }
             });
         </script>
 
@@ -111,7 +143,7 @@
                                             <form method="post"
                                                 asp-page-handler="@(partition.MountPoint == "Not Mounted" ? "MountPartition" : "UnmountPartition")"
                                                 asp-route-partitionName="@partition.Name" asp-route-uuid="@partition.UUID">
-                                                <button type="submit" class="btn btn-success btn-sm action-btn mx-2">
+                                                <button type="submit" class="btn btn-outline-success btn-sm action-btn mx-2">
                                                     @(partition.MountPoint == "Not Mounted" ? "Mount" : "Unmount")
                                                 </button>
                                             </form>
@@ -124,7 +156,7 @@
                                         <div class="col-md-6 d-flex justify-content-end">
                                             <form method="post" asp-page-handler="FormatPartition"
                                                 asp-route-partitionName="@partition.Name">
-                                                <button type="submit" class="btn btn-info btn-sm action-btn mx-2">Format</button>
+                                                <button type="submit" class="btn btn-outline-secondary btn-sm action-btn mx-2">Format</button>
                                             </form>
                                         </div>
                                     </div>
@@ -135,7 +167,7 @@
                                         <div class="col-md-6 d-flex justify-content-end">
                                             <form method="post" asp-page-handler="RemovePartition"
                                                 asp-route-partitionName="@partition.Name">
-                                                <button type="submit" class="btn btn-danger btn-sm action-btn mx-2">Remove</button>
+                                                <button type="submit" class="btn btn-outline-danger btn-sm action-btn mx-2">Remove</button>
                                             </form>
                                         </div>
                                     </div>
@@ -150,6 +182,10 @@
 </div>
 
 <style>
+    .action-btn {
+        width: 150px; /* Ensures all buttons are the same width */
+    }
+
     .spinner-overlay {
         position: fixed;
         top: 50%;
@@ -166,7 +202,6 @@
 
     .spinner-border {
         width: 5rem;
-        /* Increase the size of the spinner */
         height: 5rem;
         color: rgb(177, 115, 1);
         /* Make spinner orange */
