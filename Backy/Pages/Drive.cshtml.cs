@@ -2,14 +2,16 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Text.Json;
 using System.IO;
 using System.Diagnostics;
+using System.Text.Json.Serialization;
+
 
 namespace Backy.Pages
 {
     public class DriveModel : PageModel
     {
         private readonly ILogger<DriveModel> _logger;
-        private static string metaDirectory = "/mnt/backy";
-        private static string persistentFilePath = "/mnt/backy/drives.json";
+        private static string mountDirectory = "/mnt/backy";
+        private static string persistentFilePath = Path.Combine(mountDirectory, "drives.json");
 
         public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
 
@@ -20,99 +22,106 @@ namespace Backy.Pages
 
         public void OnGet()
         {
-            // Load persistent data first
+            // Load persistent data first (includes history of drives)
             var persistentDrives = LoadPersistentData();
 
-            // Merge with active data from drive_meta.json
-            Drives = LoadDrivesFromMeta(persistentDrives);
+            // Merge persistent data with active mounted drives
+            Drives = UpdateActiveDrives(persistentDrives);
 
-            // Save the merged data to persistent JSON file
+            // Save the updated data back to persistent storage
             SavePersistentData(Drives);
         }
 
-        private List<DriveMetaData> LoadDrivesFromMeta(Dictionary<string, DriveMetaData> persistentDrives)
+        private List<DriveMetaData> UpdateActiveDrives(Dictionary<string, DriveMetaData> persistentDrives)
         {
             var activeDrives = new List<DriveMetaData>();
 
             try
             {
-                // Find all directories in /mnt/backy and check for drive_meta.json files
-                var directories = Directory.GetDirectories(metaDirectory);
-                foreach (var dir in directories)
-                {
-                    var metaFilePath = Path.Combine(dir, "drive_meta.json");
-
-                    if (System.IO.File.Exists(metaFilePath))
-                    {
-                        var jsonData = System.IO.File.ReadAllText(metaFilePath);
-                        var driveData = JsonSerializer.Deserialize<DriveMetaData>(jsonData);
-
-                        // Only add drive if valid metadata is found
-                        if (driveData != null && !string.IsNullOrEmpty(driveData.UUID))
-                        {
-                            driveData.IsConnected = true; // Drive is connected
-                            driveData.PartitionSize = GetPartitionSize(driveData.UUID);
-                            driveData.UsedSpace = GetUsedSpace(driveData.UUID);
-                            activeDrives.Add(driveData);
-
-                            // Remove the drive from persistent list, as it is actively connected now
-                            persistentDrives.Remove(driveData.UUID);
-
-                            _logger.LogInformation($"Loaded connected drive: {driveData.Label} with UUID: {driveData.UUID}");
-                        }
-                    }
-                }
-
-                // Add remaining drives from persistent data as disconnected
-                foreach (var persistentDrive in persistentDrives.Values)
-                {
-                    persistentDrive.IsConnected = false; // Mark as disconnected
-                    activeDrives.Add(persistentDrive);
-                    _logger.LogInformation($"Loaded disconnected drive: {persistentDrive.Label} with UUID: {persistentDrive.UUID}");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error loading drives: {ex.Message}");
-            }
-
-            return activeDrives;
-        }
-
-        private long GetPartitionSize(string uuid)
-        {
-            try
-            {
-                // Use lsblk to get partition size based on UUID
+                // Use lsblk to find drives mounted at /mnt/backy/*
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = "bash",
-                        Arguments = $"-c \"lsblk -b -o SIZE -n /dev/disk/by-uuid/{uuid}\"",
+                        Arguments = $"-c \"lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL\"",
                         RedirectStandardOutput = true,
                         UseShellExecute = false,
                         CreateNoWindow = true
                     }
                 };
                 process.Start();
-                string result = process.StandardOutput.ReadToEnd().Trim();
+                string jsonOutput = process.StandardOutput.ReadToEnd();
                 process.WaitForExit();
 
-                return long.TryParse(result, out long size) ? size : 0;
+                var lsblkOutput = JsonSerializer.Deserialize<LsblkOutput>(jsonOutput);
+                if (lsblkOutput?.Blockdevices != null)
+                {
+                    foreach (var device in lsblkOutput.Blockdevices)
+                    {
+                        // Skip sda and its children
+                        if (device.Name == "sda")
+                        {
+                            continue;
+                        }
+
+                        if (device.Type == "disk" && device.Children != null)
+                        {
+                            foreach (var partition in device.Children)
+                            {
+                                if (partition.Mountpoint != null && partition.Mountpoint.StartsWith(mountDirectory))
+                                {
+                                    // Drive is mounted under /mnt/backy/, hence active
+                                    if (!string.IsNullOrEmpty(partition.Uuid))
+                                    {
+                                        var uuid = partition.Uuid;
+
+                                        // Check if the drive is already in persistent data
+                                        var driveData = persistentDrives.ContainsKey(uuid) ? persistentDrives[uuid] : new DriveMetaData
+                                        {
+                                            UUID = uuid,
+                                            Serial = device.Serial ?? "No Serial",  // Serial from parent
+                                            Vendor = device.Vendor ?? "Unknown Vendor",  // Vendor from parent
+                                            Model = device.Model ?? "Unknown Model",    // Model from parent
+                                            Label = "No Label"  // Default Label
+                                        };
+
+                                        // Update drive's current state
+                                        driveData.IsConnected = true;
+                                        driveData.PartitionSize = partition.Size ?? 0;  // Use the partition size from child
+                                        driveData.UsedSpace = GetUsedSpace(uuid);  // Keep the logic to fetch used space
+                                        activeDrives.Add(driveData);
+
+                                        // Remove from persistent list to avoid duplication
+                                        persistentDrives.Remove(uuid);
+
+                                        _logger.LogInformation($"Loaded connected drive: {driveData.Label} with UUID: {driveData.UUID}");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Add remaining disconnected drives from persistent data
+                foreach (var persistentDrive in persistentDrives.Values)
+                {
+                    persistentDrive.IsConnected = false;
+                    activeDrives.Add(persistentDrive);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error getting partition size for UUID {uuid}: {ex.Message}");
-                return 0;
+                _logger.LogError($"Error updating active drives: {ex.Message}");
             }
+
+            return activeDrives;
         }
 
         private long GetUsedSpace(string uuid)
         {
             try
             {
-                // Use df to get used space based on UUID
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -146,10 +155,9 @@ namespace Backy.Pages
                     var json = System.IO.File.ReadAllText(persistentFilePath);
                     var persistentDrives = JsonSerializer.Deserialize<List<DriveMetaData>>(json) ?? new List<DriveMetaData>();
 
-                    // Only add drives with a valid, non-null UUID to the dictionary
                     return persistentDrives
-                        .Where(d => !string.IsNullOrEmpty(d.UUID))  // Ensure UUID is not null or empty
-                        .ToDictionary(d => d.UUID!);  // The `!` operator asserts that UUID is non-null here
+                        .Where(d => !string.IsNullOrEmpty(d.UUID))
+                        .ToDictionary(d => d.UUID!);
                 }
             }
             catch (Exception ex)
@@ -160,14 +168,12 @@ namespace Backy.Pages
             return new Dictionary<string, DriveMetaData>();
         }
 
-
         private void SavePersistentData(List<DriveMetaData> drives)
         {
             try
             {
                 var json = JsonSerializer.Serialize(drives, new JsonSerializerOptions { WriteIndented = true });
                 System.IO.File.WriteAllText(persistentFilePath, json);
-                _logger.LogInformation("Successfully saved persistent drive data.");
             }
             catch (Exception ex)
             {
@@ -175,16 +181,52 @@ namespace Backy.Pages
             }
         }
 
+        public class LsblkOutput
+        {
+            [JsonPropertyName("blockdevices")]
+            public List<BlockDevice>? Blockdevices { get; set; }
+        }
+
+        public class BlockDevice
+        {
+            [JsonPropertyName("name")]
+            public string? Name { get; set; }
+
+            [JsonPropertyName("size")]
+            public long? Size { get; set; }
+
+            [JsonPropertyName("type")]
+            public string? Type { get; set; }
+
+            [JsonPropertyName("mountpoint")]
+            public string? Mountpoint { get; set; }
+
+            [JsonPropertyName("uuid")]
+            public string? Uuid { get; set; }
+
+            [JsonPropertyName("serial")]
+            public string? Serial { get; set; }
+
+            [JsonPropertyName("vendor")]
+            public string? Vendor { get; set; }
+
+            [JsonPropertyName("model")]
+            public string? Model { get; set; }
+
+            [JsonPropertyName("children")]
+            public List<BlockDevice>? Children { get; set; }
+        }
         public class DriveMetaData
         {
-            public string? Label { get; set; } = "No Label"; // Nullable with default
-            public string? Serial { get; set; } = "No Serial"; // Nullable with default
-            public string? UUID { get; set; } = "No UUID"; // Nullable with default
-            public string? Vendor { get; set; } = "Unknown Vendor"; // Nullable with default
-            public string? Model { get; set; } = "Unknown Model"; // Nullable with default
+            public string Label { get; set; } = "No Label";
+            public string Serial { get; set; } = "No Serial";
+            public string UUID { get; set; } = "No UUID";
+            public string Vendor { get; set; } = "Unknown Vendor";
+            public string Model { get; set; } = "Unknown Model";
             public long PartitionSize { get; set; } = 0;
             public long UsedSpace { get; set; } = 0;
             public bool IsConnected { get; set; } = false;
+            public bool BackupDestEnabled { get; set; } = false;
         }
     }
 }

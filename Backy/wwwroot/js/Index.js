@@ -41,7 +41,16 @@ function showError(message) {
     }
 }
 
+function submitForm(action, uuid) {
+    // Create a form element
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = `?handler=${action}&uuid=${uuid}`;
 
+    // Append form to the body and submit
+    document.body.appendChild(form);
+    form.submit();
+}
 
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll("form").forEach(form => {
