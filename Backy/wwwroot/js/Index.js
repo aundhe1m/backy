@@ -16,13 +16,11 @@ function formatSize(sizeInBytes) {
 function showLoading() {
     const spinner = document.getElementById("loading-spinner");
     spinner.style.display = "flex";
-    spinner.style.opacity = "1";  // Fade in
 }
 
 function hideLoading() {
     const spinner = document.getElementById("loading-spinner");
-    spinner.style.opacity = "0";  // Fade out
-    setTimeout(() => { spinner.style.display = "none"; }, 20);  // Hide after fade out
+    spinner.style.display = "none";
 }
 
 function showError(message) {
@@ -42,14 +40,15 @@ function showError(message) {
 }
 
 function submitForm(action, uuid) {
-    // Create a form element
     const form = document.createElement('form');
     form.method = 'post';
     form.action = `?handler=${action}&uuid=${uuid}`;
-
-    // Append form to the body and submit
     document.body.appendChild(form);
     form.submit();
+}
+
+function confirmRemove() {
+    return confirm("Are you sure you want to remove this drive? This action cannot be undone.");
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -93,3 +92,26 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
+function toggleBackupDest(uuid, isEnabled) {
+    fetch('/Drive?handler=ToggleBackupDest', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ uuid: uuid, isEnabled: isEnabled })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('Backup destination updated successfully.');
+            } else {
+                console.error('Error:', data.message);
+                alert(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Fetch error:', error);
+            alert('An error occurred while updating the backup destination.');
+        });
+}

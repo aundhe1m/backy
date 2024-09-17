@@ -4,7 +4,8 @@ using System.IO;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
-
+using System.Collections.Generic;
+using static Backy.Pages.MountModel;
 
 namespace Backy.Pages;
 
@@ -14,7 +15,8 @@ public class DriveModel : PageModel
     private static string mountDirectory = "/mnt/backy";
     private static string persistentFilePath = Path.Combine(mountDirectory, "drives.json");
 
-    public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
+    public List<MirrorGroup> MirrorGroups { get; set; } = new List<MirrorGroup>(); // For mirror groups
+    public List<DriveMetaData> StandaloneDrives { get; set; } = new List<DriveMetaData>(); // For standalone drives
 
     public DriveModel(ILogger<DriveModel> logger)
     {
@@ -23,19 +25,77 @@ public class DriveModel : PageModel
 
     public void OnGet()
     {
-        // Load persistent data first (includes history of drives)
-        var persistentDrives = LoadPersistentData();
+        _logger.LogInformation("Starting OnGet...");
 
-        // Merge persistent data with active mounted drives
-        Drives = UpdateActiveDrives(persistentDrives);
+        // Load persistent data
+        var persistentData = LoadPersistentData();
+        _logger.LogInformation($"Loaded Persistent Data: {JsonSerializer.Serialize(persistentData)}");
+
+        // Organize drives into MirrorGroups and StandaloneDrives
+        OrganizeDrives(persistentData);
 
         // Save the updated data back to persistent storage
-        SavePersistentData(Drives);
+        SavePersistentData(persistentData);
+
+        _logger.LogInformation("OnGet completed.");
     }
 
-    private List<DriveMetaData> UpdateActiveDrives(Dictionary<string, DriveMetaData> persistentDrives)
+    private PersistentData LoadPersistentData()
+    {
+        try
+        {
+            if (System.IO.File.Exists(persistentFilePath))
+            {
+                _logger.LogInformation($"Loading persistent data from {persistentFilePath}");
+                var json = System.IO.File.ReadAllText(persistentFilePath);
+                var persistentData = JsonSerializer.Deserialize<PersistentData>(json) ?? new PersistentData();
+                return persistentData;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error loading persistent data: {ex.Message}");
+        }
+
+        return new PersistentData(); // Return empty PersistentData if loading fails
+    }
+
+    private void SavePersistentData(PersistentData data)
+    {
+        try
+        {
+            _logger.LogInformation("Saving Persistent Data...");
+            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+            System.IO.File.WriteAllText(persistentFilePath, json);
+            _logger.LogInformation($"Data saved: {json}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error saving persistent data: {ex.Message}");
+        }
+    }
+
+    private void OrganizeDrives(PersistentData persistentData)
+    {
+        _logger.LogInformation("Organizing drives...");
+
+        // Update active drives
+        var activeDrives = UpdateActiveDrives(persistentData.Drives);
+
+        // Organize drives into MirrorGroups and StandaloneDrives
+        MirrorGroups = persistentData.Mirrors;
+        StandaloneDrives = activeDrives.Where(d => string.IsNullOrEmpty(d.GroupId)).ToList();
+
+        // Update persistentData with the new active drives
+        persistentData.Drives = activeDrives;
+
+        _logger.LogInformation($"Drives organized. MirrorGroups: {MirrorGroups.Count}, StandaloneDrives: {StandaloneDrives.Count}");
+    }
+
+    private List<DriveMetaData> UpdateActiveDrives(List<DriveMetaData> persistentDrives)
     {
         var activeDrives = new List<DriveMetaData>();
+        _logger.LogInformation("Updating active drives...");
 
         try
         {
@@ -55,16 +115,15 @@ public class DriveModel : PageModel
             string jsonOutput = process.StandardOutput.ReadToEnd();
             process.WaitForExit();
 
+            _logger.LogInformation($"lsblk output: {jsonOutput}");
+
             var lsblkOutput = JsonSerializer.Deserialize<LsblkOutput>(jsonOutput);
             if (lsblkOutput?.Blockdevices != null)
             {
                 foreach (var device in lsblkOutput.Blockdevices)
                 {
                     // Skip sda and its children
-                    if (device.Name == "sda")
-                    {
-                        continue;
-                    }
+                    if (device.Name == "sda") continue;
 
                     if (device.Type == "disk" && device.Children != null)
                     {
@@ -72,31 +131,27 @@ public class DriveModel : PageModel
                         {
                             if (partition.Mountpoint != null && partition.Mountpoint.StartsWith(mountDirectory))
                             {
-                                // Drive is mounted under /mnt/backy/, hence active
                                 if (!string.IsNullOrEmpty(partition.Uuid))
                                 {
                                     var uuid = partition.Uuid;
 
-                                    // Check if the drive is already in persistent data
-                                    var driveData = persistentDrives.ContainsKey(uuid) ? persistentDrives[uuid] : new DriveMetaData
+                                    // Update or create drive metadata
+                                    var driveData = persistentDrives.FirstOrDefault(d => d.UUID == uuid) ?? new DriveMetaData
                                     {
                                         UUID = uuid,
-                                        Serial = device.Serial ?? "No Serial",  // Serial from parent
-                                        Vendor = device.Vendor ?? "Unknown Vendor",  // Vendor from parent
-                                        Model = device.Model ?? "Unknown Model",    // Model from parent
+                                        Serial = device.Serial ?? "No Serial", // Serial from parent
+                                        Vendor = device.Vendor ?? "Unknown Vendor", // Vendor from parent
+                                        Model = device.Model ?? "Unknown Model",
                                         Label = null
                                     };
 
-                                    // Update drive's current state
+                                    // Update active state
                                     driveData.IsConnected = true;
-                                    driveData.PartitionSize = partition.Size ?? 0;  // Use the partition size from child
-                                    driveData.UsedSpace = GetUsedSpace(uuid);  // Keep the logic to fetch used space
+                                    driveData.PartitionSize = partition.Size ?? 0;
+                                    driveData.UsedSpace = GetUsedSpace(uuid);
                                     activeDrives.Add(driveData);
 
-                                    // Remove from persistent list to avoid duplication
-                                    persistentDrives.Remove(uuid);
-
-                                    _logger.LogInformation($"Loaded connected drive: {driveData.Label} with UUID: {driveData.UUID}");
+                                    _logger.LogInformation($"Active drive added: {JsonSerializer.Serialize(driveData)}");
                                 }
                             }
                         }
@@ -105,10 +160,14 @@ public class DriveModel : PageModel
             }
 
             // Add remaining disconnected drives from persistent data
-            foreach (var persistentDrive in persistentDrives.Values)
+            foreach (var persistentDrive in persistentDrives)
             {
-                persistentDrive.IsConnected = false;
-                activeDrives.Add(persistentDrive);
+                if (!activeDrives.Any(d => d.UUID == persistentDrive.UUID))
+                {
+                    persistentDrive.IsConnected = false;
+                    activeDrives.Add(persistentDrive);
+                    _logger.LogInformation($"Disconnected drive added: {JsonSerializer.Serialize(persistentDrive)}");
+                }
             }
         }
         catch (Exception ex)
@@ -121,55 +180,58 @@ public class DriveModel : PageModel
 
     public IActionResult OnPostToggleBackupDest(string uuid, bool isEnabled)
     {
-        // Load persistent data
-        var persistentDrives = LoadPersistentData();
+        // Locate the drive by UUID in persistent data
+        var persistentData = LoadPersistentData();
+        var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
 
-        // Find the drive by UUID
-        if (persistentDrives.ContainsKey(uuid))
+        if (drive != null)
         {
-            var drive = persistentDrives[uuid];
+            drive.BackupDestEnabled = isEnabled;
+            SavePersistentData(persistentData); // Save changes
 
-            // Only allow enabling if the drive is connected
-            if (drive.IsConnected || !isEnabled)
+            return new JsonResult(new { success = true, message = "Backup destination updated." });
+        }
+
+        return new JsonResult(new { success = false, message = "Drive not found." });
+    }
+
+    public IActionResult OnPostRemoveDrive(string uuid)
+    {
+        var persistentData = LoadPersistentData();
+        var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
+
+        if (drive != null)
+        {
+            // Remove the drive from the persistent data
+            persistentData.Drives.Remove(drive);
+
+            // Check if the drive belongs to a mirror group and remove it
+            if (!string.IsNullOrEmpty(drive.GroupId))
             {
-                drive.BackupDestEnabled = isEnabled;  // Update the BackupDestEnabled flag
-                SavePersistentData(persistentDrives.Values.ToList());  // Save the updated data
+                var mirrorGroup = persistentData.Mirrors.FirstOrDefault(mg => mg.GroupId == drive.GroupId);
+                if (mirrorGroup != null)
+                {
+                    // Remove the drive from the mirror group
+                    mirrorGroup.Drives.Remove(drive);
 
-                return RedirectToPage();  // Redirect to the same page to refresh UI
+                    // If the mirror group has no more drives, remove the mirror group itself
+                    if (!mirrorGroup.Drives.Any())
+                    {
+                        persistentData.Mirrors.Remove(mirrorGroup);
+                        _logger.LogInformation($"Removed empty mirror group with ID: {mirrorGroup.GroupId}");
+                    }
+                }
             }
 
-            return new JsonResult(new { success = false, message = "Cannot enable backup for disconnected drive." });
+            SavePersistentData(persistentData); // Save the updated data
+            _logger.LogInformation($"Drive with UUID: {uuid} removed successfully.");
+            return RedirectToPage(); // Reload the page to reflect changes
         }
 
-        return new JsonResult(new { success = false, message = "Drive not found." });
+        return RedirectToPage(new { errorMessage = "Drive not found." });
     }
 
-    // Create a class to handle the incoming JSON
-    public class ToggleBackupDestRequest
-    {
-        public required string Uuid { get; set; }
-        public bool IsEnabled { get; set; }
-    }
 
-    public IActionResult OnPostRenameDriveLabel(string uuid, string newLabel)
-    {
-        // Load persistent data
-        var persistentDrives = LoadPersistentData();
-
-        // Find the drive by UUID
-        if (persistentDrives.ContainsKey(uuid))
-        {
-            var drive = persistentDrives[uuid];
-            drive.Label = newLabel;  // Update the label
-
-            // Save the updated data
-            SavePersistentData(persistentDrives.Values.ToList());
-
-            return new JsonResult(new { success = true, message = "Label updated successfully." });
-        }
-
-        return new JsonResult(new { success = false, message = "Drive not found." });
-    }
 
     private long GetUsedSpace(string uuid)
     {
@@ -199,39 +261,75 @@ public class DriveModel : PageModel
         }
     }
 
-    private Dictionary<string, DriveMetaData> LoadPersistentData()
+    public IActionResult OnPostRenameDriveLabel(string uuid, string newLabel)
     {
-        try
-        {
-            if (System.IO.File.Exists(persistentFilePath))
-            {
-                var json = System.IO.File.ReadAllText(persistentFilePath);
-                var persistentDrives = JsonSerializer.Deserialize<List<DriveMetaData>>(json) ?? new List<DriveMetaData>();
+        var persistentData = LoadPersistentData();
+        var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
 
-                return persistentDrives
-                    .Where(d => !string.IsNullOrEmpty(d.UUID))
-                    .ToDictionary(d => d.UUID!);
-            }
-        }
-        catch (Exception ex)
+        if (drive != null)
         {
-            _logger.LogError($"Error loading persistent data: {ex.Message}");
+            drive.Label = newLabel; // Update the label
+            SavePersistentData(persistentData); // Save changes
+
+            return new JsonResult(new { success = true, message = "Label updated successfully." });
         }
 
-        return new Dictionary<string, DriveMetaData>();
+        return new JsonResult(new { success = false, message = "Drive not found." });
     }
 
-    private void SavePersistentData(List<DriveMetaData> drives)
+
+
+    public class ToggleBackupDestRequest
     {
-        try
-        {
-            var json = JsonSerializer.Serialize(drives, new JsonSerializerOptions { WriteIndented = true });
-            System.IO.File.WriteAllText(persistentFilePath, json);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error saving persistent data: {ex.Message}");
-        }
+        public required string Uuid { get; set; }
+        public bool IsEnabled { get; set; }
+    }
+
+    // Classes for handling persistent data
+    public class PersistentData
+    {
+        public List<MirrorGroup> Mirrors { get; set; } = new List<MirrorGroup>();
+        public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
+    }
+
+    public class MirrorGroup
+    {
+        public string GroupId { get; set; } = Guid.NewGuid().ToString(); // Set default unique value
+        public string GroupLabel { get; set; } = "Unnamed Group"; // Set default value
+        public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
+    }
+
+    public class DriveMetaData
+    {
+        [JsonPropertyName("label")]
+        public string? Label { get; set; }
+
+        [JsonPropertyName("serial")]
+        public string Serial { get; set; } = "No Serial";
+
+        [JsonPropertyName("uuid")]
+        public string UUID { get; set; } = "No UUID";
+
+        [JsonPropertyName("vendor")]
+        public string Vendor { get; set; } = "Unknown Vendor";
+
+        [JsonPropertyName("model")]
+        public string Model { get; set; } = "Unknown Model";
+
+        [JsonPropertyName("partition_size")]
+        public long PartitionSize { get; set; } = 0;
+
+        [JsonPropertyName("used_space")]
+        public long UsedSpace { get; set; } = 0;
+
+        [JsonPropertyName("is_connected")]
+        public bool IsConnected { get; set; } = false;
+
+        [JsonPropertyName("backup_dest_enabled")]
+        public bool BackupDestEnabled { get; set; } = false;
+
+        [JsonPropertyName("group_id")]
+        public string? GroupId { get; set; } // Indicates if this drive is part of a mirror
     }
 
     public class LsblkOutput
@@ -269,17 +367,4 @@ public class DriveModel : PageModel
         [JsonPropertyName("children")]
         public List<BlockDevice>? Children { get; set; }
     }
-    public class DriveMetaData
-    {
-        public string? Label { get; set; }
-        public string Serial { get; set; } = "No Serial";
-        public string UUID { get; set; } = "No UUID";
-        public string Vendor { get; set; } = "Unknown Vendor";
-        public string Model { get; set; } = "Unknown Model";
-        public long PartitionSize { get; set; } = 0;
-        public long UsedSpace { get; set; } = 0;
-        public bool IsConnected { get; set; } = false;
-        public bool BackupDestEnabled { get; set; } = false;
-    }
 }
-
