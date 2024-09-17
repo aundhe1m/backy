@@ -13,32 +13,6 @@ function formatSize(sizeInBytes) {
     return size.toFixed(2) + ' ' + suffixes[suffixIndex];
 }
 
-function showLoading() {
-    const spinner = document.getElementById("loading-spinner");
-    spinner.style.display = "flex";
-}
-
-function hideLoading() {
-    const spinner = document.getElementById("loading-spinner");
-    spinner.style.display = "none";
-}
-
-function showError(message) {
-    const toast = document.getElementById("error-toast");
-    const errorMessage = document.getElementById("error-message");
-
-    if (errorMessage) {
-        errorMessage.textContent = message;
-    }
-
-    if (toast) {
-        const bootstrapToast = new bootstrap.Toast(toast);
-        bootstrapToast.show();
-    } else {
-        console.error("Error toast element not found.");
-    }
-}
-
 function submitForm(action, uuid) {
     const form = document.createElement('form');
     form.method = 'post';
@@ -92,26 +66,28 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-function toggleBackupDest(uuid, isEnabled) {
-    fetch('/Drive?handler=ToggleBackupDest', {
+function submitToggleForm(uuid, isEnabled) {
+    const form = document.getElementById(`toggleForm-${uuid}`);
+    const formData = new FormData(form);
+    formData.set('isEnabled', isEnabled);
+
+    fetch(form.action, {
         method: 'POST',
+        body: new URLSearchParams(formData),
         headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify({ uuid: uuid, isEnabled: isEnabled })
+            'X-Requested-With': 'XMLHttpRequest'  // Important to prevent full-page reload
+        }
     })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                console.log('Backup destination updated successfully.');
+                location.reload();
             } else {
-                console.error('Error:', data.message);
-                alert(data.message);
+                showError(data.message);
             }
         })
         .catch(error => {
-            console.error('Fetch error:', error);
-            alert('An error occurred while updating the backup destination.');
+            showError(error)
+            console.error('Error:', error);
         });
 }

@@ -41,6 +41,33 @@
             @RenderBody()
         </main>
     </div>
+    <div id="loading-spinner" class="spinner-overlay" style="display: none;">
+        <div class="spinner-border text-warning" role="status"></div>
+    </div>
+
+    <!-- Toast Notification for Errors -->
+    <div id="error-toast" class="toast align-items-center text-white bg-danger border-0" role="alert"
+        aria-live="assertive" aria-atomic="true" style="position: fixed; bottom: 5rem; right: 1rem;">
+        <div class="d-flex">
+            <div class="toast-body">
+                <span id="error-message"></span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                aria-label="Close"></button>
+        </div>
+    </div>
+
+    <!-- Toast Notification for Success -->
+    <div id="success-toast" class="toast align-items-center text-white bs-success border-0" role="alert"
+        aria-live="assertive" aria-atomic="true" style="position: fixed; bottom: 5rem; right: 1rem;">
+        <div class="d-flex">
+            <div class="toast-body">
+                <span id="success-message"></span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                aria-label="Close"></button>
+        </div>
+    </div>
 
     <footer class="border-top footer text-muted">
         <div class="container">

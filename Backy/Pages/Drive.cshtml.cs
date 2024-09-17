@@ -186,10 +186,16 @@ public class DriveModel : PageModel
 
         if (drive != null)
         {
-            drive.BackupDestEnabled = isEnabled;
-            SavePersistentData(persistentData); // Save changes
 
-            return new JsonResult(new { success = true, message = "Backup destination updated." });
+            if (drive.IsConnected || !isEnabled)
+            {
+                drive.BackupDestEnabled = isEnabled;
+                SavePersistentData(persistentData); // Save changes
+
+                return new JsonResult(new { success = true, message = "Backup destination updated." });
+            }
+
+            return new JsonResult(new { success = false, message = "Cannot enable backup for disconnected drive." });
         }
 
         return new JsonResult(new { success = false, message = "Drive not found." });
@@ -225,10 +231,10 @@ public class DriveModel : PageModel
 
             SavePersistentData(persistentData); // Save the updated data
             _logger.LogInformation($"Drive with UUID: {uuid} removed successfully.");
-            return RedirectToPage(); // Reload the page to reflect changes
+            return new JsonResult(new { success = true, message = "Drive removed successfully." });
         }
 
-        return RedirectToPage(new { errorMessage = "Drive not found." });
+        return new JsonResult(new { success = false, message = "Drive not found." });
     }
 
 
