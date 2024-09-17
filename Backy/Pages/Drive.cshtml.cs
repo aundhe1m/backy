@@ -119,6 +119,38 @@ public class DriveModel : PageModel
         return activeDrives;
     }
 
+    public IActionResult OnPostToggleBackupDest(string uuid, bool isEnabled)
+    {
+        // Load persistent data
+        var persistentDrives = LoadPersistentData();
+
+        // Find the drive by UUID
+        if (persistentDrives.ContainsKey(uuid))
+        {
+            var drive = persistentDrives[uuid];
+
+            // Only allow enabling if the drive is connected
+            if (drive.IsConnected || !isEnabled)
+            {
+                drive.BackupDestEnabled = isEnabled;  // Update the BackupDestEnabled flag
+                SavePersistentData(persistentDrives.Values.ToList());  // Save the updated data
+
+                return RedirectToPage();  // Redirect to the same page to refresh UI
+            }
+
+            return new JsonResult(new { success = false, message = "Cannot enable backup for disconnected drive." });
+        }
+
+        return new JsonResult(new { success = false, message = "Drive not found." });
+    }
+
+    // Create a class to handle the incoming JSON
+    public class ToggleBackupDestRequest
+    {
+        public required string Uuid { get; set; }
+        public bool IsEnabled { get; set; }
+    }
+
     public IActionResult OnPostRenameDriveLabel(string uuid, string newLabel)
     {
         // Load persistent data

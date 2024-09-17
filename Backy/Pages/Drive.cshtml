@@ -8,11 +8,6 @@
 
 <div class="container">
     <div class="row">
-
-        <div id="loading-spinner" class="spinner-overlay" style="display: none;">
-            <div class="spinner-border text-warning" role="status"></div>
-        </div>
-
         @foreach (var drive in Model.Drives)
         {
             var backgroundColor = drive.BackupDestEnabled ? "#0d6efd" : (drive.IsConnected ? "#198754" : "#555555");
@@ -25,9 +20,31 @@
                         style="background-color:@backgroundColor; color:white;">
                         <span>@(string.IsNullOrEmpty(drive.Label) ? "Unnamed Drive" : drive.Label)</span>
                         <span id="total-size-@drive.UUID"></span>
-                        <span>@isConnected</span>
+                        <span>
+                            <!-- Switch to toggle BackupDestEnabled -->
+                            <form method="post" asp-page-handler="ToggleBackupDest" asp-route-uuid="@drive.UUID">
+                                <div class="form-check form-switch form-check-reverse" data-bs-toggle="tooltip"
+                                    data-bs-placement="top" title="Enable drive for backup">
+                                    <input class="form-check-input" type="checkbox" role="switch"
+                                        id="flexSwitch-@drive.UUID" @(drive.IsConnected ? "" : "disabled") name="isEnabled"
+                                        value="true" onchange="this.form.submit();" @(drive.BackupDestEnabled ? "checked" :
+                                    "")>
+                                    <label class="form-check-label" for="flexSwitch-@drive.UUID"></label>
+                                </div>
+                            </form>
+                            <style>
+                                .form-check-input:checked {
+                                    background-color: #0d6efd;
+                                    border-color: #ffffff;
+                                }
+                            </style>
+                        </span>
                     </div>
                     <div class="card-body">
+                        <!-- Drive details -->
+                        <div class="row">
+                            <div class="col"><strong>State:</strong> @isConnected</div>
+                        </div>
                         <div class="row">
                             <div class="col"><strong>Vendor:</strong> @drive.Vendor</div>
                         </div>
@@ -58,12 +75,6 @@
 
                         <!-- Button Group -->
                         <div class="btn-group mt-3" role="group" aria-label="Drive actions">
-                            <!-- Activate/Disable button -->
-                            <button type="button" class="btn btn-primary"
-                                onclick="submitForm('ToggleBackupDest', '@drive.UUID')">
-                                @(drive.BackupDestEnabled ? "Disable" : "Activate") Backup
-                            </button>
-
                             <!-- Rename button (opens modal) -->
                             <button type="button" class="btn btn-secondary" data-bs-toggle="modal"
                                 data-bs-target="#renameModal-@drive.UUID">
@@ -122,8 +133,40 @@
         </text>
     }
 
-        // Refresh page every 5 minutes (300,000 ms)
-        setInterval(() => {
-            location.reload();
-        }, 300000);
+        // Function to toggle BackupDestEnabled
+        function toggleBackupDest(uuid, isEnabled) {
+            fetch('/Drive?handler=ToggleBackupDest', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ uuid: uuid, isEnabled: isEnabled })  // Send data in JSON format
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP error ' + response.status);
+                    }
+                    return response.json();  // Expect JSON response
+                })
+                .then(data => {
+                    if (data.success) {
+                        console.log(data.message);
+                    } else {
+                        alert(data.message);  // Show error if toggle fails
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+
+    // Refresh page every 5 minutes (300,000 ms)
+    setInterval(() => {
+        location.reload();
+    }, 300000);
 </script>
+
+<!-- Link to external CSS file -->
+<link rel="stylesheet" href="/css/Index.css">
