@@ -6,57 +6,170 @@
 
 <h1>@ViewData["Title"]</h1>
 
-<div class="container">
+<!-- New drives section -->
+@if (Model.NewDrives.Any())
+{
+    <h3>New drive(s)</h3>
+    <div class="mb-4">
+    <button id="createPoolButton" class="btn btn-primary" disabled data-bs-toggle="modal"
+        data-bs-target="#createPoolModal">
+        Create Pool
+    </button>
+</div>
     <div class="row">
-
-        <!-- Display mirror groups first -->
-        @foreach (var group in Model.MirrorGroups)
+    @foreach (var drive in Model.NewDrives)
         {
-            <div class="col-12">
-                <div class="card mb-4">
-                    <div class="card-header bg-info text-white">
-                        <h5>Mirror Group: @group.GroupLabel</h5>
+            <div class="col-md-4 d-flex justify-content-center mb-3">
+                <div class="card" style="width:500px;">
+                    <div class="card-header d-flex justify-content-between align-items-center"
+                        style="background-color:rgb(246, 234, 0); color:rgb(0, 0, 0);">
+                        <span></span>
+                        <span>@String.Format("{0} GB", (drive.PartitionSize / 1024.0 / 1024.0 / 1024.0).ToString("F2"))</span>
+                        <span><span class="badge text-bg-secondary">New</span></span>
                     </div>
                     <div class="card-body">
                         <div class="row">
-                            @foreach (var drive in group.Drives)
-                            {
-                                <div class="col-md-4 d-flex justify-content-center mb-3">
-                                    @await Html.PartialAsync("_DriveCard", drive)
-                                </div>
-                            }
+                            <div class="col"><strong>State:</strong> Connected</div>
+                        </div>
+                        <div class="row">
+                            <div class="col"><strong>Vendor:</strong> @drive.Vendor</div>
+                        </div>
+                        <div class="row">
+                            <div class="col"><strong>Model:</strong> @drive.Model</div>
+                        </div>
+                        <div class="row">
+                            <div class="col"><strong>Serial:</strong> @drive.Serial</div>
+                        </div>
+                        <div class="row">
+                            <div class="col"><strong>UUID:</strong> @drive.UUID</div>
+                        </div>
+                        <div class="row">
+                            <span></span>
+                            <span>
+                                <input type="checkbox" class="btn-check pool-check" id="btn-check-@drive.UUID"
+                                    autocomplete="off" value="@drive.UUID">
+                                <label class="btn btn-outline-primary" for="btn-check-@drive.UUID">Add to pool</label>
+                            </span>
+                            <span></span>
                         </div>
                     </div>
                 </div>
             </div>
         }
-
-        <!-- Display standalone drives -->
-        @foreach (var drive in Model.StandaloneDrives)
-        {
-            <div class="col-md-4 d-flex justify-content-center mb-3">
-                @await Html.PartialAsync("_DriveCard", drive)
-            </div>
-        }
     </div>
+    <hr />
+}
+
+<!-- Pool groups section -->
+<h3>Backup Pool</h3>
+<div class="row">
+    @foreach (var group in Model.PoolGroups)
+    {
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5>Pool Group: @group.GroupLabel</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        @foreach (var drive in group.Drives)
+                        {
+                            <div class="col-md-4 d-flex justify-content-center mb-3">
+                                @await Html.PartialAsync("_DriveCard", drive)
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-    @foreach (var drive in Model.StandaloneDrives)
-    {
-        <text>
-                    document.getElementById('used-size-@drive.UUID').textContent = formatSize(@drive.UsedSpace);
-                    document.getElementById('total-size-@drive.UUID').textContent = formatSize(@drive.PartitionSize);
-                    document.getElementById('total-size-@drive.UUID-bottom').textContent = formatSize(@drive.PartitionSize);
-        </text>
-        ;
-    }
+        // Enable Create Pool button when any checkbox is selected
+        const checkboxes = document.querySelectorAll('.pool-check');
+        const createPoolButton = document.getElementById('createPoolButton');
+
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function () {
+                createPoolButton.disabled = !document.querySelector('.pool-check:checked');
+            });
+        });
     });
+
+    // Function to handle creating pool logic
+    function createPool() {
+        const checkedDrives = Array.from(document.querySelectorAll('.pool-check:checked'))
+            .map(cb => cb.value);
+
+        if (checkedDrives.length === 0) {
+            alert("No drives selected.");
+            return;
+        }
+
+        const poolLabel = document.getElementById("poolLabelInput").value;
+        if (!poolLabel) {
+            alert("Please enter a label for the pool.");
+            return;
+        }
+
+        const postData = {
+            PoolLabel: poolLabel,
+            Uuids: checkedDrives
+        };
+
+        fetch('@Url.Page("Drive", "CreatePool")', {
+            method: 'POST',
+            body: JSON.stringify(postData),
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert("Error: " + data.message);
+                }
+            });
+    }
 </script>
 
-
-<script src="/js/Index.js"></script>
-
-<!-- Link to external CSS file -->
-<link rel="stylesheet" href="/css/Index.css">
+<!-- Create Pool Modal -->
+<div class="modal fade" id="createPoolModal" tabindex="-1" aria-labelledby="createPoolModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createPoolModalLabel">Create Backup Pool</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="poolLabelInput" class="form-label">Pool Label</label>
+                    <input type="text" class="form-control" id="poolLabelInput" placeholder="Enter pool label">
+                </div>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Size</th>
+                            <th>Vendor</th>
+                            <th>Model</th>
+                            <th>Serial</th>
+                        </tr>
+                    </thead>
+                    <tbody id="selectedDrivesTable">
+                        <!-- This will be populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createPool()">Create Pool</button>
+            </div>
+        </div>
+    </div>
+</div>

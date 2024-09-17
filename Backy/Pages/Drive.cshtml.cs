@@ -15,8 +15,9 @@ public class DriveModel : PageModel
     private static string mountDirectory = "/mnt/backy";
     private static string persistentFilePath = Path.Combine(mountDirectory, "drives.json");
 
-    public List<MirrorGroup> MirrorGroups { get; set; } = new List<MirrorGroup>(); // For mirror groups
+    public List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>(); // For pool groups
     public List<DriveMetaData> StandaloneDrives { get; set; } = new List<DriveMetaData>(); // For standalone drives
+    public List<DriveMetaData> NewDrives { get; set; } = new List<DriveMetaData>(); // For newly connected drives
 
     public DriveModel(ILogger<DriveModel> logger)
     {
@@ -31,7 +32,7 @@ public class DriveModel : PageModel
         var persistentData = LoadPersistentData();
         _logger.LogInformation($"Loaded Persistent Data: {JsonSerializer.Serialize(persistentData)}");
 
-        // Organize drives into MirrorGroups and StandaloneDrives
+        // Organize drives into PoolGroups, StandaloneDrives, and NewDrives
         OrganizeDrives(persistentData);
 
         // Save the updated data back to persistent storage
@@ -82,14 +83,15 @@ public class DriveModel : PageModel
         // Update active drives
         var activeDrives = UpdateActiveDrives(persistentData.Drives);
 
-        // Organize drives into MirrorGroups and StandaloneDrives
-        MirrorGroups = persistentData.Mirrors;
-        StandaloneDrives = activeDrives.Where(d => string.IsNullOrEmpty(d.GroupId)).ToList();
+        // Separate new and existing drives
+        PoolGroups = persistentData.Pools;
+        StandaloneDrives = activeDrives.Where(d => string.IsNullOrEmpty(d.GroupId) && !string.IsNullOrEmpty(d.Label)).ToList();
+        NewDrives = activeDrives.Where(d => string.IsNullOrEmpty(d.Label)).ToList();
 
         // Update persistentData with the new active drives
         persistentData.Drives = activeDrives;
 
-        _logger.LogInformation($"Drives organized. MirrorGroups: {MirrorGroups.Count}, StandaloneDrives: {StandaloneDrives.Count}");
+        _logger.LogInformation($"Drives organized. PoolGroups: {PoolGroups.Count}, StandaloneDrives: {StandaloneDrives.Count}, NewDrives: {NewDrives.Count}");
     }
 
     private List<DriveMetaData> UpdateActiveDrives(List<DriveMetaData> persistentDrives)
@@ -178,66 +180,53 @@ public class DriveModel : PageModel
         return activeDrives;
     }
 
-    public IActionResult OnPostToggleBackupDest(string uuid, bool isEnabled)
-    {
-        // Locate the drive by UUID in persistent data
-        var persistentData = LoadPersistentData();
-        var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
-
-        if (drive != null)
-        {
-
-            if (drive.IsConnected || !isEnabled)
-            {
-                drive.BackupDestEnabled = isEnabled;
-                SavePersistentData(persistentData); // Save changes
-
-                return new JsonResult(new { success = true, message = "Backup destination updated." });
-            }
-
-            return new JsonResult(new { success = false, message = "Cannot enable backup for disconnected drive." });
-        }
-
-        return new JsonResult(new { success = false, message = "Drive not found." });
-    }
-
-    public IActionResult OnPostRemoveDrive(string uuid)
+    public IActionResult OnPostCreatePool([FromBody] CreatePoolRequest request)
     {
         var persistentData = LoadPersistentData();
-        var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
+        var newGroupId = (persistentData.Pools.Count + 1).ToString();
 
-        if (drive != null)
+        var newPoolGroup = new PoolGroup
         {
-            // Remove the drive from the persistent data
-            persistentData.Drives.Remove(drive);
+            GroupId = newGroupId,
+            GroupLabel = request.PoolLabel,
+            Drives = new List<DriveMetaData>()
+        };
 
-            // Check if the drive belongs to a mirror group and remove it
-            if (!string.IsNullOrEmpty(drive.GroupId))
+        foreach (var uuid in request.Uuids)
+        {
+            var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
+            if (drive != null)
             {
-                var mirrorGroup = persistentData.Mirrors.FirstOrDefault(mg => mg.GroupId == drive.GroupId);
-                if (mirrorGroup != null)
+                // Update drive with pool label and group ID
+                var driveNumber = newPoolGroup.Drives.Count + 1;
+                drive.Label = $"{request.PoolLabel}-{driveNumber}";
+                drive.GroupId = newGroupId;
+
+                // Add the drive to the pool group
+                newPoolGroup.Drives.Add(drive);
+
+                // Clean the mount directory
+                var mountPath = Path.Combine(mountDirectory, drive.UUID);
+                DirectoryInfo di = new DirectoryInfo(mountPath);
+                foreach (FileInfo file in di.GetFiles())
                 {
-                    // Remove the drive from the mirror group
-                    mirrorGroup.Drives.Remove(drive);
-
-                    // If the mirror group has no more drives, remove the mirror group itself
-                    if (!mirrorGroup.Drives.Any())
-                    {
-                        persistentData.Mirrors.Remove(mirrorGroup);
-                        _logger.LogInformation($"Removed empty mirror group with ID: {mirrorGroup.GroupId}");
-                    }
+                    file.Delete();
                 }
-            }
+                foreach (DirectoryInfo dir in di.GetDirectories())
+                {
+                    dir.Delete(true);
+                }
 
-            SavePersistentData(persistentData); // Save the updated data
-            _logger.LogInformation($"Drive with UUID: {uuid} removed successfully.");
-            return new JsonResult(new { success = true, message = "Drive removed successfully." });
+                _logger.LogInformation($"Drive {drive.UUID} cleaned and added to pool {request.PoolLabel}");
+            }
         }
 
-        return new JsonResult(new { success = false, message = "Drive not found." });
+        // Add new pool to persistent data
+        persistentData.Pools.Add(newPoolGroup);
+        SavePersistentData(persistentData);
+
+        return new JsonResult(new { success = true, message = $"Pool '{request.PoolLabel}' created successfully." });
     }
-
-
 
     private long GetUsedSpace(string uuid)
     {
@@ -267,38 +256,20 @@ public class DriveModel : PageModel
         }
     }
 
-    public IActionResult OnPostRenameDriveLabel(string uuid, string newLabel)
+    public class CreatePoolRequest
     {
-        var persistentData = LoadPersistentData();
-        var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
-
-        if (drive != null)
-        {
-            drive.Label = newLabel; // Update the label
-            SavePersistentData(persistentData); // Save changes
-
-            return new JsonResult(new { success = true, message = "Label updated successfully." });
-        }
-
-        return new JsonResult(new { success = false, message = "Drive not found." });
-    }
-
-
-
-    public class ToggleBackupDestRequest
-    {
-        public required string Uuid { get; set; }
-        public bool IsEnabled { get; set; }
+        public required string PoolLabel { get; set; }
+        public List<string> Uuids { get; set; } = new List<string>();
     }
 
     // Classes for handling persistent data
     public class PersistentData
     {
-        public List<MirrorGroup> Mirrors { get; set; } = new List<MirrorGroup>();
+        public List<PoolGroup> Pools { get; set; } = new List<PoolGroup>();
         public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
     }
 
-    public class MirrorGroup
+    public class PoolGroup
     {
         public string GroupId { get; set; } = Guid.NewGuid().ToString(); // Set default unique value
         public string GroupLabel { get; set; } = "Unnamed Group"; // Set default value
@@ -331,11 +302,8 @@ public class DriveModel : PageModel
         [JsonPropertyName("is_connected")]
         public bool IsConnected { get; set; } = false;
 
-        [JsonPropertyName("backup_dest_enabled")]
-        public bool BackupDestEnabled { get; set; } = false;
-
         [JsonPropertyName("group_id")]
-        public string? GroupId { get; set; } // Indicates if this drive is part of a mirror
+        public string? GroupId { get; set; } // Indicates if this drive is part of a pool
     }
 
     public class LsblkOutput
