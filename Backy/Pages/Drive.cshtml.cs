@@ -180,52 +180,50 @@ public class DriveModel : PageModel
         return activeDrives;
     }
 
-    public IActionResult OnPostCreatePool([FromBody] CreatePoolRequest request)
+    // Handles the form POST request to create a pool
+    public IActionResult OnPostCreatePool(string PoolLabel, List<string> SelectedUuids)
     {
+        if (string.IsNullOrEmpty(PoolLabel) || SelectedUuids == null || !SelectedUuids.Any())
+        {
+            return BadRequest(new { success = false, message = "Pool Label and at least one drive must be selected" });
+        }
+
+        _logger.LogInformation($"Creating pool with label: {PoolLabel} and drives: {string.Join(",", SelectedUuids)}");
+
         var persistentData = LoadPersistentData();
         var newGroupId = (persistentData.Pools.Count + 1).ToString();
 
         var newPoolGroup = new PoolGroup
         {
             GroupId = newGroupId,
-            GroupLabel = request.PoolLabel,
+            GroupLabel = PoolLabel,
             Drives = new List<DriveMetaData>()
         };
 
-        foreach (var uuid in request.Uuids)
+        foreach (var uuid in SelectedUuids)
         {
             var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
             if (drive != null)
             {
                 // Update drive with pool label and group ID
-                var driveNumber = newPoolGroup.Drives.Count + 1;
-                drive.Label = $"{request.PoolLabel}-{driveNumber}";
+                drive.Label = $"{PoolLabel}-{newPoolGroup.Drives.Count + 1}";
                 drive.GroupId = newGroupId;
-
-                // Add the drive to the pool group
                 newPoolGroup.Drives.Add(drive);
 
                 // Clean the mount directory
                 var mountPath = Path.Combine(mountDirectory, drive.UUID);
                 DirectoryInfo di = new DirectoryInfo(mountPath);
-                foreach (FileInfo file in di.GetFiles())
-                {
-                    file.Delete();
-                }
-                foreach (DirectoryInfo dir in di.GetDirectories())
-                {
-                    dir.Delete(true);
-                }
+                foreach (FileInfo file in di.GetFiles()) file.Delete();
+                foreach (DirectoryInfo dir in di.GetDirectories()) dir.Delete(true);
 
-                _logger.LogInformation($"Drive {drive.UUID} cleaned and added to pool {request.PoolLabel}");
+                _logger.LogInformation($"Drive {drive.UUID} cleaned and added to pool {PoolLabel}");
             }
         }
 
-        // Add new pool to persistent data
         persistentData.Pools.Add(newPoolGroup);
         SavePersistentData(persistentData);
 
-        return new JsonResult(new { success = true, message = $"Pool '{request.PoolLabel}' created successfully." });
+        return new JsonResult(new { success = true, message = $"Pool '{PoolLabel}' created successfully." });
     }
 
     private long GetUsedSpace(string uuid)
@@ -256,10 +254,11 @@ public class DriveModel : PageModel
         }
     }
 
+
     public class CreatePoolRequest
     {
-        public required string PoolLabel { get; set; }
-        public List<string> Uuids { get; set; } = new List<string>();
+        public string PoolLabel { get; set; }
+        public List<string> Uuids { get; set; }
     }
 
     // Classes for handling persistent data
@@ -304,7 +303,12 @@ public class DriveModel : PageModel
 
         [JsonPropertyName("group_id")]
         public string? GroupId { get; set; } // Indicates if this drive is part of a pool
+
+        // Add this property to resolve the issue
+        [JsonPropertyName("backup_dest_enabled")]
+        public bool BackupDestEnabled { get; set; } = false; // New property
     }
+
 
     public class LsblkOutput
     {
