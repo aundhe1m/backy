@@ -8,6 +8,11 @@
 
 <div class="container">
     <div class="row">
+
+        <div id="loading-spinner" class="spinner-overlay" style="display: none;">
+            <div class="spinner-border text-warning" role="status"></div>
+        </div>
+
         @foreach (var drive in Model.Drives)
         {
             var backgroundColor = drive.BackupDestEnabled ? "#0d6efd" : (drive.IsConnected ? "#198754" : "#555555");
@@ -18,8 +23,8 @@
                 <div class="card" style="width:500px;">
                     <div class="card-header d-flex justify-content-between align-items-center"
                         style="background-color:@backgroundColor; color:white;">
-                        <span>@drive.Label</span>
-                        <span id="used-size-@drive.UUID"></span>/<span id="total-size-@drive.UUID"></span>
+                        <span>@(string.IsNullOrEmpty(drive.Label) ? "Unnamed Drive" : drive.Label)</span>
+                        <span id="total-size-@drive.UUID"></span>
                         <span>@isConnected</span>
                     </div>
                     <div class="card-body">
@@ -59,9 +64,9 @@
                                 @(drive.BackupDestEnabled ? "Disable" : "Activate") Backup
                             </button>
 
-                            <!-- Rename button -->
-                            <button type="button" class="btn btn-secondary"
-                                onclick="submitForm('RenameDriveLabel', '@drive.UUID')">
+                            <!-- Rename button (opens modal) -->
+                            <button type="button" class="btn btn-secondary" data-bs-toggle="modal"
+                                data-bs-target="#renameModal-@drive.UUID">
                                 @(string.IsNullOrEmpty(drive.Label) ? "Add Label" : "Rename")
                             </button>
 
@@ -71,6 +76,32 @@
                                 Remove
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal for renaming drive label -->
+            <div class="modal fade" id="renameModal-@drive.UUID" tabindex="-1" aria-labelledby="renameModalLabel"
+                aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="renameModalLabel">Rename Drive Label</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form method="post" asp-page-handler="RenameDriveLabel" asp-route-uuid="@drive.UUID">
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label for="driveLabelInput" class="form-label">New Label</label>
+                                    <input type="text" class="form-control" id="driveLabelInput" name="newLabel"
+                                        placeholder="Enter new label" value="@drive.Label" />
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                <button type="submit" class="btn btn-primary">Save changes</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
