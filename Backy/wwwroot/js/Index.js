@@ -25,6 +25,11 @@ function confirmRemove() {
     return confirm("Are you sure you want to remove this drive? This action cannot be undone.");
 }
 
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl);
+});
+
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll("form").forEach(form => {
         form.addEventListener("submit", function (e) {

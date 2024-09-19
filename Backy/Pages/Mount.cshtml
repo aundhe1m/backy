@@ -1,4 +1,5 @@
 ﻿@page
+@using System.Text.Json
 @model Backy.Pages.MountModel
 @{
     ViewData["Title"] = "Mount Manager";
@@ -16,7 +17,7 @@
     else
     {
         <script>
-            const drivesData = @Html.Raw(Json.Serialize(Model.Drives));
+            const drivesData = @Html.Raw(JsonSerializer.Serialize(Model.Drives));
         </script>
 
         <script src="/js/Index.js"></script>
@@ -33,129 +34,112 @@
                             </script>
                         </span>
                     </h4>
-                    <small class="text-muted">Serial: @drive.Serial | Vendor: @drive.Vendor | Model: @drive.Model</small>
-                </div>
-                <div class="card-body">
-                    <div class="text-right mb-2">
-                        <form method="post" asp-page-handler="CreatePartition" asp-route-driveName="@drive.Name">
+                    <!-- Swapped position -->
+                    <div>
+                        <form method="post" asp-page-handler="CreatePartition" asp-route-driveName="@drive.Name"
+                            class="d-inline-block">
                             <button type="submit" class="btn btn-outline-primary">Create Partition</button>
                         </form>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Serial, Vendor, Model -->
+                    <div class="mb-2 text-muted">
+                        <strong>Serial:</strong> @drive.Serial |
+                        <strong>Vendor:</strong> @drive.Vendor |
+                        <strong>Model:</strong> @drive.Model
                     </div>
 
                     @if (drive.Partitions.Count > 0)
                     {
                         @foreach (var partition in drive.Partitions)
                         {
+
+                            string backgroundColor = "#555555"; // Default color if not mounted
+                            if (partition.MountPoint != "Not Mounted")
+                            {
+                                if (string.IsNullOrEmpty(partition.Label))
+                                {
+                                    backgroundColor = "#198754"; // Mounted but no label
+                                }
+                                else
+                                {
+                                    backgroundColor = "#0d6efd"; // Mounted and has label
+                                }
+                            }
+
+
                             <div class="card mt-3">
                                 <div class="card-header d-flex justify-content-between align-items-center"
-                                    style="background-color: @(string.IsNullOrEmpty(partition.Label) ? "#555555" : "#198754"); color: white;">
-                                    Partition: @partition.Name
+                                    style="background-color: @backgroundColor; color: white;">
+                                    <!-- Label -->
                                     <span class="text" style="font-weight: bold; color: white;">@partition.Label</span>
+
+                                    <!-- Button Group -->
+                                    <div class="btn-group">
+                                        <!-- Mount/Unmount Button -->
+                                        @if (partition.MountPoint != "Not Mounted")
+                                        {
+                                            <form method="post" asp-page-handler="UnmountPartition"
+                                                asp-route-partitionName="@partition.Name" asp-route-uuid="@partition.UUID"
+                                                class="d-inline-block">
+                                                <button type="submit" class="btn btn-warning">Unmount</button>
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <form method="post" asp-page-handler="MountPartition" asp-route-partitionName="@partition.Name"
+                                                asp-route-uuid="@partition.UUID" class="d-inline-block">
+                                                <button type="submit" class="btn btn-success">Mount</button>
+                                            </form>
+                                        }
+
+                                        <!-- Manage Dropdown -->
+                                        <div class="dropdown d-inline-block">
+                                            <button class="btn btn-secondary dropdown-toggle" type="button"
+                                                id="dropdownMenuButton-@partition.Name" data-bs-toggle="dropdown" aria-expanded="false">
+                                                Manage
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end"
+                                                aria-labelledby="dropdownMenuButton-@partition.Name">
+                                                <li>
+                                                    <form method="post" asp-page-handler="FormatPartition"
+                                                        asp-route-partitionName="@partition.Name">
+                                                        <button type="submit" class="dropdown-item">Format</button>
+                                                    </form>
+                                                </li>
+                                                <li>
+                                                    <form method="post" asp-page-handler="RemovePartition"
+                                                        asp-route-partitionName="@partition.Name">
+                                                        <button type="submit" class="dropdown-item">Delete</button>
+                                                    </form>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="card-body">
-                                    <div class="row mt-2">
-                                        <!-- Mountpoint Display -->
-                                        <div class="col-md-6">
-                                            <strong>Mountpoint:</strong> @partition.MountPoint
+                                    <div class="row row-cols-3">
+                                        <!-- "Partition:" -->
+                                        <div class="col">
+                                            <strong>Partition:</strong> @partition.Name
                                         </div>
-
-                                        <!-- Mount/Unmount Button -->
-                                        <div class="col-md-6 d-flex justify-content-end">
-                                            <form method="post"
-                                                asp-page-handler="@(partition.MountPoint == "Not Mounted" ? "MountPartition" : "UnmountPartition")"
-                                                asp-route-partitionName="@partition.Name" asp-route-uuid="@partition.UUID">
-                                                <button type="submit"
-                                                    class="@(partition.MountPoint == "Not Mounted" ? "btn btn-success" : "btn btn-warning") action-btn mx-2">
-                                                    @(partition.MountPoint == "Not Mounted" ? "Mount" : "Unmount")
-                                                </button>
-                                            </form>
+                                        <!-- "Mountpoint:" -->
+                                        <div class="col-6">
+                                            <strong>Mountpoint:</strong>
+                                            <span class="truncate" data-bs-toggle="tooltip"
+                                                title="@partition.MountPoint">@partition.MountPoint</span>
                                         </div>
-                                    </div>
-
-                                    <div class="row mt-2">
-                                        <!-- UUID Display -->
-                                        <div class="col-md-6">
-                                            <strong>UUID:</strong> @partition.UUID
-                                        </div>
-
-                                        <!-- Add to Library Button -->
-                                        <div class="col-md-6 d-flex justify-content-end">
-                                            <!-- Trigger Button -->
-                                            <button type="button" class="btn btn-primary action-btn mx-2" data-bs-toggle="modal"
-                                                data-bs-target="#labelModal-@partition.UUID" @if (partition.MountPoint == "Not Mounted")
-                                            {
-                                                <text>disabled</text>
-                                            }>
-                                                Add to Library
-                                            </button>
-
-                                            <!-- Modal Structure -->
-                                            <div class="modal fade" id="labelModal-@partition.UUID" tabindex="-1"
-                                                aria-labelledby="labelModalLabel" aria-hidden="true">
-                                                <div class="modal-dialog">
-                                                    <div class="modal-content">
-                                                        <div class="modal-header">
-                                                            <h5 class="modal-title" id="labelModalLabel">Add Partition to Library</h5>
-                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                                                aria-label="Close"></button>
-                                                        </div>
-                                                        <div class="modal-body">
-                                                            <form method="post" asp-page-handler="AddPartitionToLibrary">
-                                                                <input type="hidden" name="partitionName" value="@partition.Name" />
-                                                                <input type="hidden" name="uuid" value="@partition.UUID" />
-                                                                <input type="hidden" name="serial" value="@drive.Serial" />
-                                                                <input type="hidden" name="vendor" value="@drive.Vendor" />
-                                                                <input type="hidden" name="model" value="@drive.Model" />
-                                                                <div class="mb-3">
-                                                                    <label for="labelInput" class="form-label">Enter Label:</label>
-                                                                    <input type="text" class="form-control" id="labelInput" name="label"
-                                                                        required />
-                                                                </div>
-                                                                <button type="submit" class="btn btn-primary">Save to Library</button>
-                                                            </form>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="row mt-2">
-                                        <!-- Filesystem Display -->
-                                        <div class="col-md-6">
+                                        <!-- "Filesystem:" -->
+                                        <div class="col">
                                             <strong>Filesystem:</strong> @partition.Fstype
                                         </div>
-
-                                        <!-- Manage Partition Dropdown -->
-                                        <div class="col-md-6 d-flex justify-content-end">
-
-
-
-                                            <div class="dropdown">
-                                                <button class="btn btn-secondary dropdown-toggle action-btn mx-2" type="button"
-                                                    id="dropdownMenuButton-@partition.Name" data-bs-toggle="dropdown"
-                                                    aria-expanded="false">
-                                                    Manage Partition
-                                                </button>
-                                                <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton-@partition.Name">
-                                                    <li>
-                                                        <form method="post" asp-page-handler="FormatPartition"
-                                                            asp-route-partitionName="@partition.Name">
-                                                            <button type="submit" class="dropdown-item">Format</button>
-                                                        </form>
-                                                    </li>
-                                                    <li>
-                                                        <form method="post" asp-page-handler="RemovePartition"
-                                                            asp-route-partitionName="@partition.Name">
-                                                            <button type="submit" class="dropdown-item">Delete</button>
-                                                        </form>
-                                                    </li>
-                                                </ul>
-                                            </div>
-
+                                        <!-- "UUID:" -->
+                                        <div class="col-6">
+                                            <strong>UUID:</strong>
+                                            <span class="truncate" data-bs-toggle="tooltip"
+                                                title="@partition.UUID">@partition.UUID</span>
                                         </div>
-
-
                                     </div>
                                 </div>
                             </div>
