@@ -5,10 +5,12 @@ using System.Diagnostics;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
-using static Backy.Pages.MountModel;
+using System.Threading.Tasks;
+using System.Linq;
 
 namespace Backy.Pages;
 
+[IgnoreAntiforgeryToken]
 public class DriveModel : PageModel
 {
     private readonly ILogger<DriveModel> _logger;
@@ -16,7 +18,6 @@ public class DriveModel : PageModel
     private static string persistentFilePath = Path.Combine(mountDirectory, "drives.json");
 
     public List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>(); // For pool groups
-    public List<DriveMetaData> StandaloneDrives { get; set; } = new List<DriveMetaData>(); // For standalone drives
     public List<DriveMetaData> NewDrives { get; set; } = new List<DriveMetaData>(); // For newly connected drives
 
     public DriveModel(ILogger<DriveModel> logger)
@@ -32,7 +33,7 @@ public class DriveModel : PageModel
         var persistentData = LoadPersistentData();
         _logger.LogInformation($"Loaded Persistent Data: {JsonSerializer.Serialize(persistentData)}");
 
-        // Organize drives into PoolGroups, StandaloneDrives, and NewDrives
+        // Organize drives into PoolGroups and NewDrives
         OrganizeDrives(persistentData);
 
         // Save the updated data back to persistent storage
@@ -49,8 +50,7 @@ public class DriveModel : PageModel
             {
                 _logger.LogInformation($"Loading persistent data from {persistentFilePath}");
                 var json = System.IO.File.ReadAllText(persistentFilePath);
-                var persistentData = JsonSerializer.Deserialize<PersistentData>(json) ?? new PersistentData();
-                return persistentData;
+                return JsonSerializer.Deserialize<PersistentData>(json) ?? new PersistentData();
             }
         }
         catch (Exception ex)
@@ -80,21 +80,46 @@ public class DriveModel : PageModel
     {
         _logger.LogInformation("Organizing drives...");
 
-        // Update active drives
-        var activeDrives = UpdateActiveDrives(persistentData.Drives);
-
-        // Separate new and existing drives
+        var activeDrives = UpdateActiveDrives();
         PoolGroups = persistentData.Pools;
-        StandaloneDrives = activeDrives.Where(d => string.IsNullOrEmpty(d.GroupId) && !string.IsNullOrEmpty(d.Label)).ToList();
-        NewDrives = activeDrives.Where(d => string.IsNullOrEmpty(d.Label)).ToList();
 
-        // Update persistentData with the new active drives
-        persistentData.Drives = activeDrives;
+        // Update connected status and properties for drives in pools
+        foreach (var pool in PoolGroups)
+        {
+            bool allConnected = true;
+            foreach (var drive in pool.Drives)
+            {
+                // Find matching active drive
+                var activeDrive = activeDrives.FirstOrDefault(d => d.UUID == drive.UUID);
+                if (activeDrive != null)
+                {
+                    // Update properties
+                    drive.IsConnected = true;
+                    drive.UsedSpace = activeDrive.UsedSpace;
+                    drive.PartitionSize = activeDrive.PartitionSize;
+                    drive.Serial = activeDrive.Serial;
+                    drive.Vendor = activeDrive.Vendor;
+                    drive.Model = activeDrive.Model;
+                }
+                else
+                {
+                    drive.IsConnected = false;
+                    allConnected = false;
+                }
+            }
 
-        _logger.LogInformation($"Drives organized. PoolGroups: {PoolGroups.Count}, StandaloneDrives: {StandaloneDrives.Count}, NewDrives: {NewDrives.Count}");
+            // Set PoolEnabled based on whether all drives are connected
+            pool.PoolEnabled = allConnected;
+        }
+
+        // NewDrives: drives that are active but not in any pool
+        var pooledDriveUUIDs = PoolGroups.SelectMany(p => p.Drives).Select(d => d.UUID).ToHashSet();
+        NewDrives = activeDrives.Where(d => !pooledDriveUUIDs.Contains(d.UUID)).ToList();
+
+        _logger.LogInformation($"Drives organized. PoolGroups: {PoolGroups.Count}, NewDrives: {NewDrives.Count}");
     }
 
-    private List<DriveMetaData> UpdateActiveDrives(List<DriveMetaData> persistentDrives)
+    private List<DriveMetaData> UpdateActiveDrives()
     {
         var activeDrives = new List<DriveMetaData>();
         _logger.LogInformation("Updating active drives...");
@@ -131,44 +156,25 @@ public class DriveModel : PageModel
                     {
                         foreach (var partition in device.Children)
                         {
-                            if (partition.Mountpoint != null && partition.Mountpoint.StartsWith(mountDirectory))
+                            // Check if the partition is mounted under /mnt/backy/ and has a UUID
+                            if (partition.Mountpoint != null && partition.Mountpoint.StartsWith(mountDirectory) && !string.IsNullOrEmpty(partition.Uuid))
                             {
-                                if (!string.IsNullOrEmpty(partition.Uuid))
+                                var driveData = new DriveMetaData
                                 {
-                                    var uuid = partition.Uuid;
+                                    UUID = partition.Uuid,
+                                    Serial = device.Serial ?? "No Serial",
+                                    Vendor = device.Vendor ?? "Unknown Vendor",
+                                    Model = device.Model ?? "Unknown Model",
+                                    PartitionSize = partition.Size ?? 0,
+                                    UsedSpace = GetUsedSpace(partition.Uuid),
+                                    IsConnected = true
+                                };
 
-                                    // Update or create drive metadata
-                                    var driveData = persistentDrives.FirstOrDefault(d => d.UUID == uuid) ?? new DriveMetaData
-                                    {
-                                        UUID = uuid,
-                                        Serial = device.Serial ?? "No Serial", // Serial from parent
-                                        Vendor = device.Vendor ?? "Unknown Vendor", // Vendor from parent
-                                        Model = device.Model ?? "Unknown Model",
-                                        Label = null
-                                    };
-
-                                    // Update active state
-                                    driveData.IsConnected = true;
-                                    driveData.PartitionSize = partition.Size ?? 0;
-                                    driveData.UsedSpace = GetUsedSpace(uuid);
-                                    activeDrives.Add(driveData);
-
-                                    _logger.LogInformation($"Active drive added: {JsonSerializer.Serialize(driveData)}");
-                                }
+                                activeDrives.Add(driveData);
+                                _logger.LogInformation($"Active drive added: {JsonSerializer.Serialize(driveData)}");
                             }
                         }
                     }
-                }
-            }
-
-            // Add remaining disconnected drives from persistent data
-            foreach (var persistentDrive in persistentDrives)
-            {
-                if (!activeDrives.Any(d => d.UUID == persistentDrive.UUID))
-                {
-                    persistentDrive.IsConnected = false;
-                    activeDrives.Add(persistentDrive);
-                    _logger.LogInformation($"Disconnected drive added: {JsonSerializer.Serialize(persistentDrive)}");
                 }
             }
         }
@@ -180,50 +186,52 @@ public class DriveModel : PageModel
         return activeDrives;
     }
 
-    // Handles the form POST request to create a pool
-    public IActionResult OnPostCreatePool(string PoolLabel, List<string> SelectedUuids)
+    public async Task<IActionResult> OnPostCreatePool()
     {
-        if (string.IsNullOrEmpty(PoolLabel) || SelectedUuids == null || !SelectedUuids.Any())
+        _logger.LogInformation($"OnPostCreatePool called.");
+        // Read the request body manually
+        string requestBody = await new StreamReader(Request.Body).ReadToEndAsync();
+        var request = JsonSerializer.Deserialize<CreatePoolRequest>(requestBody);
+
+        if (request == null || string.IsNullOrEmpty(request.PoolLabel) || request.Uuids == null || !request.Uuids.Any())
         {
             return BadRequest(new { success = false, message = "Pool Label and at least one drive must be selected" });
         }
 
-        _logger.LogInformation($"Creating pool with label: {PoolLabel} and drives: {string.Join(",", SelectedUuids)}");
+        _logger.LogInformation($"Creating pool with label: {request.PoolLabel} and drives: {string.Join(",", request.Uuids)}");
 
         var persistentData = LoadPersistentData();
-        var newGroupId = (persistentData.Pools.Count + 1).ToString();
-
         var newPoolGroup = new PoolGroup
         {
-            GroupId = newGroupId,
-            GroupLabel = PoolLabel,
+            PoolGroupId = Guid.NewGuid().ToString(),
+            GroupLabel = request.PoolLabel,
             Drives = new List<DriveMetaData>()
         };
 
-        foreach (var uuid in SelectedUuids)
+        // Get the active drives
+        var activeDrives = UpdateActiveDrives();
+        int driveIndex = 1;
+
+        foreach (var uuid in request.Uuids)
         {
-            var drive = persistentData.Drives.FirstOrDefault(d => d.UUID == uuid);
+            // Find the drive in activeDrives
+            var drive = activeDrives.FirstOrDefault(d => d.UUID == uuid);
             if (drive != null)
             {
-                // Update drive with pool label and group ID
-                drive.Label = $"{PoolLabel}-{newPoolGroup.Drives.Count + 1}";
-                drive.GroupId = newGroupId;
+                drive.Label = $"{request.PoolLabel}-{driveIndex++}";
                 newPoolGroup.Drives.Add(drive);
-
-                // Clean the mount directory
-                var mountPath = Path.Combine(mountDirectory, drive.UUID);
-                DirectoryInfo di = new DirectoryInfo(mountPath);
-                foreach (FileInfo file in di.GetFiles()) file.Delete();
-                foreach (DirectoryInfo dir in di.GetDirectories()) dir.Delete(true);
-
-                _logger.LogInformation($"Drive {drive.UUID} cleaned and added to pool {PoolLabel}");
+                _logger.LogInformation($"Drive {drive.UUID} added to pool {request.PoolLabel}");
+            }
+            else
+            {
+                _logger.LogWarning($"Drive with UUID {uuid} not found among active drives.");
             }
         }
 
         persistentData.Pools.Add(newPoolGroup);
         SavePersistentData(persistentData);
 
-        return new JsonResult(new { success = true, message = $"Pool '{PoolLabel}' created successfully." });
+        return new JsonResult(new { success = true, message = $"Pool '{request.PoolLabel}' created successfully." });
     }
 
     private long GetUsedSpace(string uuid)
@@ -253,96 +261,92 @@ public class DriveModel : PageModel
             return 0;
         }
     }
+}
 
 
-    public class CreatePoolRequest
-    {
-        public string PoolLabel { get; set; }
-        public List<string> Uuids { get; set; }
-    }
-
-    // Classes for handling persistent data
-    public class PersistentData
-    {
-        public List<PoolGroup> Pools { get; set; } = new List<PoolGroup>();
-        public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
-    }
-
-    public class PoolGroup
-    {
-        public string GroupId { get; set; } = Guid.NewGuid().ToString(); // Set default unique value
-        public string GroupLabel { get; set; } = "Unnamed Group"; // Set default value
-        public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
-    }
-
-    public class DriveMetaData
-    {
-        [JsonPropertyName("label")]
-        public string? Label { get; set; }
-
-        [JsonPropertyName("serial")]
-        public string Serial { get; set; } = "No Serial";
-
-        [JsonPropertyName("uuid")]
-        public string UUID { get; set; } = "No UUID";
-
-        [JsonPropertyName("vendor")]
-        public string Vendor { get; set; } = "Unknown Vendor";
-
-        [JsonPropertyName("model")]
-        public string Model { get; set; } = "Unknown Model";
-
-        [JsonPropertyName("partition_size")]
-        public long PartitionSize { get; set; } = 0;
-
-        [JsonPropertyName("used_space")]
-        public long UsedSpace { get; set; } = 0;
-
-        [JsonPropertyName("is_connected")]
-        public bool IsConnected { get; set; } = false;
-
-        [JsonPropertyName("group_id")]
-        public string? GroupId { get; set; } // Indicates if this drive is part of a pool
-
-        // Add this property to resolve the issue
-        [JsonPropertyName("backup_dest_enabled")]
-        public bool BackupDestEnabled { get; set; } = false; // New property
-    }
 
 
-    public class LsblkOutput
-    {
-        [JsonPropertyName("blockdevices")]
-        public List<BlockDevice>? Blockdevices { get; set; }
-    }
+public class CreatePoolRequest
+{
+    public required string PoolLabel { get; set; }
+    public required List<string> Uuids { get; set; }
+}
 
-    public class BlockDevice
-    {
-        [JsonPropertyName("name")]
-        public string? Name { get; set; }
+public class PersistentData
+{
+    public List<PoolGroup> Pools { get; set; } = new List<PoolGroup>();
+}
 
-        [JsonPropertyName("size")]
-        public long? Size { get; set; }
 
-        [JsonPropertyName("type")]
-        public string? Type { get; set; }
+public class PoolGroup
+{
+    public required string PoolGroupId { get; set; }  // Unique identifier for the pool
+    public string GroupLabel { get; set; } = "Unnamed Group";
+    public bool PoolEnabled { get; set; } = false;
+    public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
+}
 
-        [JsonPropertyName("mountpoint")]
-        public string? Mountpoint { get; set; }
 
-        [JsonPropertyName("uuid")]
-        public string? Uuid { get; set; }
+public class DriveMetaData
+{
+    [JsonPropertyName("label")]
+    public string? Label { get; set; }
 
-        [JsonPropertyName("serial")]
-        public string? Serial { get; set; }
+    [JsonPropertyName("serial")]
+    public string Serial { get; set; } = "No Serial";
 
-        [JsonPropertyName("vendor")]
-        public string? Vendor { get; set; }
+    [JsonPropertyName("uuid")]
+    public string UUID { get; set; } = "No UUID";
 
-        [JsonPropertyName("model")]
-        public string? Model { get; set; }
+    [JsonPropertyName("vendor")]
+    public string Vendor { get; set; } = "Unknown Vendor";
 
-        [JsonPropertyName("children")]
-        public List<BlockDevice>? Children { get; set; }
-    }
+    [JsonPropertyName("model")]
+    public string Model { get; set; } = "Unknown Model";
+
+    [JsonPropertyName("partition_size")]
+    public long PartitionSize { get; set; } = 0;
+
+    [JsonPropertyName("used_space")]
+    public long UsedSpace { get; set; } = 0;
+
+    [JsonPropertyName("is_connected")]
+    public bool IsConnected { get; set; } = false;
+}
+
+
+public class LsblkOutput
+{
+    [JsonPropertyName("blockdevices")]
+    public List<BlockDevice>? Blockdevices { get; set; }
+}
+
+public class BlockDevice
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("size")]
+    public long? Size { get; set; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("mountpoint")]
+    public string? Mountpoint { get; set; }
+
+    [JsonPropertyName("uuid")]
+    public string? Uuid { get; set; }
+
+    [JsonPropertyName("serial")]
+    public string? Serial { get; set; }
+
+    [JsonPropertyName("vendor")]
+    public string? Vendor { get; set; }
+
+    [JsonPropertyName("model")]
+    public string? Model { get; set; }
+
+    [JsonPropertyName("children")]
+    public List<BlockDevice>? Children { get; set; }
 }
