@@ -261,3 +261,14 @@ document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (toggl
     });
 });
 
+document.getElementById('driveSearchInput').addEventListener('input', function () {
+    const searchTerm = this.value.toLowerCase();
+    document.querySelectorAll('.drive-card').forEach(function (card) {
+        const text = card.innerText.toLowerCase();
+        if (text.includes(searchTerm)) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+});
