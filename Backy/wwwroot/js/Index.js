@@ -124,9 +124,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 selectedDrives = selectedDrives.filter(d => d.uuid !== checkbox.value);
             }
 
-            // Enable or disable the "Create Pool" button based on selected drives
-            createPoolButton.disabled = selectedDrives.length === 0;
-
             // Populate the table in the modal when selected drives change
             populateSelectedDrivesTable();
         });
@@ -199,3 +196,68 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     });
 });
+
+document.addEventListener('DOMContentLoaded', function () {
+    const checkboxes = document.querySelectorAll('.pool-check');
+    const toastElement = document.getElementById('driveToast');
+    const toast = new bootstrap.Toast(toastElement, { autohide: false });
+    let selectedDrives = [];
+
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function () {
+            if (checkbox.checked) {
+                selectedDrives.push({
+                    uuid: checkbox.value,
+                    size: checkbox.getAttribute('data-size'),
+                    vendor: checkbox.getAttribute('data-vendor'),
+                    model: checkbox.getAttribute('data-model'),
+                    serial: checkbox.getAttribute('data-serial')
+                });
+                toast.show();
+            } else {
+                selectedDrives = selectedDrives.filter(d => d.uuid !== checkbox.value);
+                if (selectedDrives.length === 0) {
+                    toast.hide();
+                }
+            }
+            // Update your table or any other UI elements as needed
+        });
+    });
+
+    // Handle Create Pool button in toast
+    document.getElementById('createPoolToastButton').addEventListener('click', function () {
+        // Open the Create Pool modal
+        $('#createPoolModal').modal('show');
+        // Populate the table with selected drives
+        populateSelectedDrivesTable();
+    });
+
+    // Handle Abort button
+    document.getElementById('abortSelectionButton').addEventListener('click', function () {
+        // Deselect all checkboxes
+        checkboxes.forEach(checkbox => checkbox.checked = false);
+        selectedDrives = [];
+        toast.hide();
+    });
+});
+
+document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (toggleButton) {
+    var chevron = toggleButton.querySelector('img');
+
+    toggleButton.addEventListener('click', function () {
+        var targetId = toggleButton.getAttribute('data-bs-target');
+        var collapseElement = document.querySelector(targetId);
+
+        collapseElement.addEventListener('shown.bs.collapse', function () {
+            if (chevron) {
+                chevron.src = '/icons/chevron-up.svg';
+            }
+        });
+        collapseElement.addEventListener('hidden.bs.collapse', function () {
+            if (chevron) {
+                chevron.src = '/icons/chevron-down.svg';
+            }
+        });
+    });
+});
+

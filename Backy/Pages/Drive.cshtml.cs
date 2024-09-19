@@ -119,6 +119,33 @@ public class DriveModel : PageModel
         _logger.LogInformation($"Drives organized. PoolGroups: {PoolGroups.Count}, NewDrives: {NewDrives.Count}");
     }
 
+    public async Task<IActionResult> OnPostRenamePoolGroup(string poolGroupId, string newLabel)
+    {
+        var persistentData = LoadPersistentData();
+        var poolGroup = persistentData.Pools.FirstOrDefault(p => p.PoolGroupId == poolGroupId);
+        if (poolGroup != null)
+        {
+            poolGroup.GroupLabel = newLabel;
+            SavePersistentData(persistentData);
+            return new JsonResult(new { success = true, message = "Pool group renamed successfully." });
+        }
+        return BadRequest(new { success = false, message = "Pool group not found." });
+    }
+
+    public async Task<IActionResult> OnPostRemovePoolGroup(string poolGroupId)
+    {
+        var persistentData = LoadPersistentData();
+        var poolGroup = persistentData.Pools.FirstOrDefault(p => p.PoolGroupId == poolGroupId);
+        if (poolGroup != null)
+        {
+            persistentData.Pools.Remove(poolGroup);
+            SavePersistentData(persistentData);
+            return new JsonResult(new { success = true, message = "Pool group removed successfully." });
+        }
+        return BadRequest(new { success = false, message = "Pool group not found." });
+    }
+
+
     private List<DriveMetaData> UpdateActiveDrives()
     {
         var activeDrives = new List<DriveMetaData>();

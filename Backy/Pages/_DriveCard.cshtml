@@ -7,35 +7,40 @@
 }
 
 <div class="card" style="width:500px;">
+    <!-- Updated card-header -->
     <div class="card-header d-flex justify-content-between align-items-center"
         style="background-color:@backgroundColor; color:white;">
-        <span>@(string.IsNullOrEmpty(Model.Label) ? "Unnamed Drive" : Model.Label)</span>
-        <span>@String.Format("{0:F2} GB", Model.PartitionSize / 1024.0 / 1024.0 / 1024.0)</span>
+        <div class="d-flex align-items-center">
+            <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
+            <span>@(string.IsNullOrEmpty(Model.Label) ? "Unnamed Drive" : Model.Label)</span>
+        </div>
+        <div>
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="modal"
+                data-bs-target="#renameModal-@Model.UUID">
+                @(string.IsNullOrEmpty(Model.Label) ? "Add Label" : "Rename")
+            </button>
+            <form method="post" asp-page-handler="RemoveDrive" asp-route-uuid="@Model.UUID"
+                onsubmit="return confirmRemove();" style="display:inline;">
+                <button type="submit" class="btn btn-danger btn-sm" @(Model.IsConnected ? "disabled" : "")>
+                    Remove
+                </button>
+            </form>
+            <!-- Expand/Collapse button -->
+            <button class="btn btn-link p-0 me-2" type="button" data-bs-toggle="collapse"
+                data-bs-target="#driveDetails-@Model.UUID" aria-expanded="false"
+                aria-controls="driveDetails-@Model.UUID">
+                <img src="/icons/chevron-down.svg" alt="Expand Details" id="chevron-@Model.UUID" style="height: 24px;">
+            </button>
+        </div>
     </div>
+    <!-- Card body -->
     <div class="card-body">
-        <!-- Drive details -->
-        <div class="row">
-            <div class="col"><strong>State:</strong> @isConnected</div>
-        </div>
-        <div class="row">
-            <div class="col"><strong>Vendor:</strong> @Model.Vendor</div>
-        </div>
-        <div class="row">
-            <div class="col"><strong>Model:</strong> @Model.Model</div>
-        </div>
-        <div class="row">
-            <div class="col"><strong>Serial:</strong> @Model.Serial</div>
-        </div>
-        <div class="row">
-            <div class="col"><strong>UUID:</strong> @Model.UUID</div>
-        </div>
-
+        <!-- Always visible content -->
         <div class="row mt-3">
             <div class="col">
                 <div class="progress">
                     <div class="progress-bar" role="progressbar" style="width: @usedPercentage%"
-                        aria-valuenow="@usedPercentage" aria-valuemin="0" aria-valuemax="100">
-                    </div>
+                        aria-valuenow="@usedPercentage" aria-valuemin="0" aria-valuemax="100"></div>
                 </div>
             </div>
         </div>
@@ -45,22 +50,24 @@
                 <span>@String.Format("{0:F2} GB", Model.PartitionSize / 1024.0 / 1024.0 / 1024.0)</span>
             </div>
         </div>
-
-        <!-- Button Group -->
-        <div class="btn-group mt-3" role="group" aria-label="Drive actions">
-            <!-- Rename button (opens modal) -->
-            <button type="button" class="btn btn-secondary" data-bs-toggle="modal"
-                data-bs-target="#renameModal-@Model.UUID">
-                @(string.IsNullOrEmpty(Model.Label) ? "Add Label" : "Rename")
-            </button>
-
-            <!-- Remove button (disabled when drive is connected) -->
-            <form method="post" asp-page-handler="RemoveDrive" asp-route-uuid="@Model.UUID"
-                onsubmit="return confirmRemove();">
-                <button type="submit" class="btn btn-danger" @(Model.IsConnected ? "disabled" : "")>
-                    Remove
-                </button>
-            </form>
+        <!-- Collapsible details -->
+        <div class="collapse" id="driveDetails-@Model.UUID">
+            <!-- Hidden details -->
+            <div class="row">
+                <div class="col"><strong>State:</strong> @isConnected</div>
+            </div>
+            <div class="row">
+                <div class="col"><strong>Vendor:</strong> @Model.Vendor</div>
+            </div>
+            <div class="row">
+                <div class="col"><strong>Model:</strong> @Model.Model</div>
+            </div>
+            <div class="row">
+                <div class="col"><strong>Serial:</strong> @Model.Serial</div>
+            </div>
+            <div class="row">
+                <div class="col"><strong>UUID:</strong> @Model.UUID</div>
+            </div>
         </div>
     </div>
 </div>

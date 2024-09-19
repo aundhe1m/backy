@@ -9,49 +9,51 @@
 <!-- New drives section -->
 @if (Model.NewDrives.Any())
 {
-    <h3>New drive(s)</h3>
-    <div class="mb-4">
-    <button id="createPoolButton" class="btn btn-primary" disabled data-bs-toggle="modal"
-        data-bs-target="#createPoolModal">
-        Create Pool
-    </button>
+    <div class="alert alert-primary d-flex align-items-center" role="alert">
+    <img src="/icons/info-circle.svg" alt="Info Icon" style="height: 24px; margin-right: 8px;" />
+    <div>New drives detected</div>
 </div>
     <div class="row">
     @foreach (var drive in Model.NewDrives)
         {
             <div class="col-md-4 d-flex justify-content-center mb-3">
                 <div class="card" style="width:500px;">
+                    <!-- Updated card-header -->
                     <div class="card-header d-flex justify-content-between align-items-center"
-                        style="background-color:rgb(246, 234, 0); color:rgb(0, 0, 0);">
-                        <span></span>
-                        <span>@String.Format("{0} GB", (drive.PartitionSize / 1024.0 / 1024.0 / 1024.0).ToString("F2"))</span>
-                        <span><span class="badge text-bg-secondary">New</span></span>
+                        style="background-color: rgb(246, 234, 0); color: rgb(0, 0, 0);">
+                        <div class="d-flex align-items-center">
+                            <!-- Expand/Collapse button -->
+                            <button class="btn btn-link p-0 me-2" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#driveDetails-@drive.UUID" aria-expanded="false"
+                                aria-controls="driveDetails-@drive.UUID">
+                                <img src="/icons/chevron-down.svg" alt="Expand Details" id="chevron-@drive.UUID"
+                                    style="height: 24px;">
+                            </button>
+                            <img src="/icons/hdd-fill.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
+                            <span>@String.Format("{0:F2} GB", (drive.PartitionSize / 1024.0 / 1024.0 / 1024.0))</span>
+                        </div>
+                        <div>
+                            <input type="checkbox" class="btn-check pool-check" id="btn-check-@drive.UUID" autocomplete="off"
+                                value="@drive.UUID" data-size="@drive.PartitionSize" data-vendor="@drive.Vendor"
+                                data-model="@drive.Model" data-serial="@drive.Serial">
+                            <label class="btn btn-outline-primary" for="btn-check-@drive.UUID">Add to pool</label>
+                        </div>
                     </div>
+                    <!-- Card body with collapsible details -->
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col"><strong>State:</strong> Connected</div>
-                        </div>
-                        <div class="row">
-                            <div class="col"><strong>Vendor:</strong> @drive.Vendor</div>
-                        </div>
-                        <div class="row">
-                            <div class="col"><strong>Model:</strong> @drive.Model</div>
-                        </div>
-                        <div class="row">
-                            <div class="col"><strong>Serial:</strong> @drive.Serial</div>
-                        </div>
-                        <div class="row">
-                            <div class="col"><strong>UUID:</strong> @drive.UUID</div>
-                        </div>
-                        <div class="row">
-                            <span></span>
-                            <span>
-                                <input type="checkbox" class="btn-check pool-check" id="btn-check-@drive.UUID"
-                                    autocomplete="off" value="@drive.UUID" data-size="@drive.PartitionSize"
-                                    data-vendor="@drive.Vendor" data-model="@drive.Model" data-serial="@drive.Serial">
-                                <label class="btn btn-outline-primary" for="btn-check-@drive.UUID">Add to pool</label>
-                            </span>
-                            <span></span>
+                        <div class="collapse" id="driveDetails-@drive.UUID">
+                            <div class="row">
+                                <div class="col"><strong>Vendor:</strong> @drive.Vendor</div>
+                            </div>
+                            <div class="row">
+                                <div class="col"><strong>Model:</strong> @drive.Model</div>
+                            </div>
+                            <div class="row">
+                                <div class="col"><strong>Serial:</strong> @drive.Serial</div>
+                            </div>
+                            <div class="row">
+                                <div class="col"><strong>UUID:</strong> @drive.UUID</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -61,6 +63,25 @@
     <hr />
 }
 
+<!-- Toast Notification -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" style="z-index: 1100;">
+    <div id="driveToast" class="toast align-items-center text-bg-primary border-0" role="alert" aria-live="assertive"
+        aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body">
+                New pool drive selected. To create backup redundancy, select multiple drives to create mirrors.
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                aria-label="Close"></button>
+        </div>
+        <div class="mt-2 d-flex justify-content-end me-3 mb-2">
+            <button type="button" class="btn btn-primary btn-sm me-2" id="createPoolToastButton">Create Pool</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="abortSelectionButton">Abort</button>
+        </div>
+    </div>
+</div>
+
+
 <!-- Pool groups section -->
 <h3>Backup Pool</h3>
 <div class="row">
@@ -68,9 +89,22 @@
     {
         <div class="col-12">
             <div class="card mb-4">
-                <div class="card-header bg-info text-white">
-                    <h5>Pool Group: @group.GroupLabel</h5>
+                <!-- Updated card-header -->
+                <div class="card-header d-flex justify-content-between align-items-center"
+                    style="background-color: #0d6efd; color: white;">
+                    <div class="d-flex align-items-center">
+                        <img src="/icons/hdd-rack.svg" alt="Pool Group Icon" style="height: 24px; margin-right: 8px;" />
+                        <h5 class="mb-0">@group.GroupLabel</h5>
+                    </div>
+                    <div>
+                        <!-- Rename and Remove buttons -->
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="modal"
+                            data-bs-target="#renamePoolModal-@group.PoolGroupId">Rename</button>
+                        <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal"
+                            data-bs-target="#removePoolModal-@group.PoolGroupId">Remove</button>
+                    </div>
                 </div>
+                <!-- Rest of your card-body -->
                 <div class="card-body">
                     <div class="row">
                         @foreach (var drive in group.Drives)
@@ -80,6 +114,56 @@
                             </div>
                         }
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modals for Rename and Remove -->
+        <!-- Rename Pool Modal -->
+        <div class="modal fade" id="renamePoolModal-@group.PoolGroupId" tabindex="-1" aria-labelledby="renamePoolModalLabel"
+            aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Rename Pool Group</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form method="post" asp-page-handler="RenamePoolGroup" asp-route-poolGroupId="@group.PoolGroupId">
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="newPoolGroupLabel" class="form-label">New Label</label>
+                                <input type="text" class="form-control" id="newPoolGroupLabel" name="newLabel"
+                                    value="@group.GroupLabel" required />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Remove Pool Modal -->
+        <div class="modal fade" id="removePoolModal-@group.PoolGroupId" tabindex="-1" aria-labelledby="removePoolModalLabel"
+            aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Remove Pool Group</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form method="post" asp-page-handler="RemovePoolGroup" asp-route-poolGroupId="@group.PoolGroupId">
+                        <div class="modal-body">
+                            <p>Are you sure you want to remove the pool group "<strong>@group.GroupLabel</strong>"? This
+                                action cannot be undone.</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-danger">Remove</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
