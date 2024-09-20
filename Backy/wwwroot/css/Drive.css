@@ -98,6 +98,17 @@
     margin-bottom: 1rem;
 }
 
+.input-group-text {
+    padding: 0.375rem 0.75rem;
+    /* Adjust padding to match input height */
+}
+
+.search-icon {
+    height: 1em;
+    /* Set icon height relative to font size */
+    width: auto;
+}
+
 /* Adjusting dropdown in split buttons */
 .btn-group .dropdown-menu {
     min-width: 120px;
@@ -110,4 +121,29 @@
 /* Style for disabled icons */
 .drive-card .btn-transparent img[disabled] {
     opacity: 0.5;
+}
+
+/* Remove focus ring from buttons */
+button:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.toast-container {
+    z-index: 1055;
+    /* Ensure toast appears above other elements */
+    bottom: 70px;
+    /* Adjust position to sit above the footer */
+}
+
+/* Command output styles */
+.command-output {
+    background-color: #000;
+    color: #fff;
+    font-family: Consolas, monospace;
+    padding: 10px;
+    height: 300px;
+    overflow-y: scroll;
+    white-space: pre-wrap;
+    /* Allows wrapping */
 }

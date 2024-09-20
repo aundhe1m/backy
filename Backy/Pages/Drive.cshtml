@@ -8,7 +8,9 @@
 
 <div class="input-group mb-3">
     <input type="text" class="form-control" placeholder="Search drives..." id="driveSearchInput">
-    <span class="input-group-text"><img src="/icons/search.svg" alt="Search Icon" style="height: 20px;"></span>
+    <span class="input-group-text">
+        <img src="/icons/search.svg" alt="Search Icon" class="search-icon">
+    </span>
 </div>
 
 <!-- New drives section -->
@@ -18,109 +20,40 @@
     <img src="/icons/info-circle.svg" alt="Info Icon" style="height: 24px; margin-right: 8px;" />
     <div>New drives detected</div>
 </div>
-    <div class="row">
     @foreach (var drive in Model.NewDrives)
-        {
-            <div class="col-md-4 d-flex justify-content-center mb-3">
-                <div class="card drive-card" style="width:500px;">
-                    <!-- Updated card-header -->
-                    <div class="card-header d-flex justify-content-between align-items-center"
-                        style="background-color: rgb(0, 0, 0, .03); color: rgb(0, 0, 0);">
-                        <div class="d-flex align-items-center">
-
-                            <!-- Expand/Collapse button -->
-                            <button class="btn btn-link p-0 me-2 chevron-button" type="button" data-bs-toggle="collapse"
-                                data-bs-target="#driveDetails-@drive.UUID" aria-expanded="false"
-                                aria-controls="driveDetails-@drive.UUID">
-                                <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon"
-                                    style="height: 24px;">
-                            </button>
-
-                            <img src="/icons/hdd-fill.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
-                            <span>@String.Format("{0:F2} GB", (drive.PartitionSize / 1024.0 / 1024.0 / 1024.0))</span>
-                        </div>
-                        <div>
-                            <input type="checkbox" class="btn-check pool-check" id="btn-check-@drive.UUID" autocomplete="off"
-                                value="@drive.UUID" data-size="@drive.PartitionSize" data-vendor="@drive.Vendor"
-                                data-model="@drive.Model" data-serial="@drive.Serial">
-                            <label class="btn btn-outline-primary" for="btn-check-@drive.UUID">+</label>
-                        </div>
-                    </div>
-                    <!-- Card body with collapsible details -->
-                    <div class="card-body">
-                        <div class="collapse" id="driveDetails-@drive.UUID">
-                            <div class="row">
-                                <div class="col"><strong>Vendor:</strong> @drive.Vendor</div>
-                            </div>
-                            <div class="row">
-                                <div class="col"><strong>Model:</strong> @drive.Model</div>
-                            </div>
-                            <div class="row">
-                                <div class="col"><strong>Serial:</strong> @drive.Serial</div>
-                            </div>
-                            <div class="row">
-                                <div class="col"><strong>UUID:</strong> @drive.UUID</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
-    </div>
+    {
+        @await Html.PartialAsync("_NewDriveCard", drive)
+    }
     <hr />
 }
 
-<!-- Toast Notification -->
-<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" style="z-index: 1100;">
-    <div id="driveToast" class="toast align-items-center text-bg-primary border-0" role="alert" aria-live="assertive"
-        aria-atomic="true">
-        <div class="d-flex">
-            <div class="toast-body">
-                New pool drive selected. To create backup redundancy, select multiple drives to create mirrors.
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
-                aria-label="Close"></button>
-        </div>
-        <div class="mt-2 d-flex justify-content-end me-3 mb-2">
-            <button type="button" class="btn btn-primary btn-sm me-2" id="createPoolToastButton">Create Pool</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="abortSelectionButton">Abort</button>
-        </div>
-    </div>
-</div>
-
-
 <!-- Pool groups section -->
-<h3>Backup Pool</h3>
+<h3>Backup Pools</h3>
 <div class="row">
     @foreach (var group in Model.PoolGroups)
     {
         <div class="col-12">
             <div class="card mb-4">
-                <!-- Updated card-header -->
+                <!-- Pool Group Header -->
                 <div class="card-header d-flex justify-content-between align-items-center"
                     style="background-color: #0d6efd; color: white;">
                     <div class="d-flex align-items-center">
                         <img src="/icons/hdd-rack.svg" alt="Pool Group Icon" style="height: 24px; margin-right: 8px;" />
                         <h5 class="mb-0">@group.GroupLabel</h5>
                     </div>
-                    <div>
-                        <!-- Rename and Remove buttons -->
+                    <div class="btn-group">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="modal"
                             data-bs-target="#renamePoolModal-@group.PoolGroupId">Rename</button>
                         <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal"
                             data-bs-target="#removePoolModal-@group.PoolGroupId">Remove</button>
                     </div>
                 </div>
-                <!-- Rest of your card-body -->
+                <!-- Pool Drives -->
                 <div class="card-body">
-                    <div class="row">
-                        @foreach (var drive in group.Drives)
-                        {
-                            <div class="col-12 d-flex justify-content-center mb-3">
-                                @await Html.PartialAsync("_DriveCard", drive)
-                            </div>
-                        }
-                    </div>
+                    @foreach (var drive in group.Drives)
+                    {
+                        @await Html.PartialAsync("_PoolGroupDriveCard", drive)
+                    }
                 </div>
             </div>
         </div>
@@ -131,16 +64,17 @@
             aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Rename Pool Group</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
                     <form method="post" asp-page-handler="RenamePoolGroup" asp-route-poolGroupId="@group.PoolGroupId">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="renamePoolModalLabel">Rename Pool Group</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
                         <div class="modal-body">
                             <div class="mb-3">
-                                <label for="newPoolGroupLabel" class="form-label">New Label</label>
-                                <input type="text" class="form-control" id="newPoolGroupLabel" name="newLabel"
-                                    value="@group.GroupLabel" required />
+                                <label for="newPoolGroupLabel-@group.PoolGroupId" class="form-label">New
+                                    Label</label>
+                                <input type="text" class="form-control" id="newPoolGroupLabel-@group.PoolGroupId"
+                                    name="newLabel" value="@group.GroupLabel" required />
                             </div>
                         </div>
                         <div class="modal-footer">
@@ -157,14 +91,14 @@
             aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Remove Pool Group</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
                     <form method="post" asp-page-handler="RemovePoolGroup" asp-route-poolGroupId="@group.PoolGroupId">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="removePoolModalLabel">Remove Pool Group</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
                         <div class="modal-body">
-                            <p>Are you sure you want to remove the pool group "<strong>@group.GroupLabel</strong>"? This
-                                action cannot be undone.</p>
+                            <p>Are you sure you want to remove the pool group "<strong>@group.GroupLabel</strong>"?
+                                This action cannot be undone.</p>
                         </div>
                         <div class="modal-footer">
                             <button type="submit" class="btn btn-danger">Remove</button>
@@ -179,43 +113,79 @@
 
 <!-- Create Pool Modal -->
 <div class="modal fade" id="createPoolModal" tabindex="-1" aria-labelledby="createPoolModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
+        <!-- Changed to modal-lg for larger width -->
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="createPoolModalLabel">Create Backup Pool</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label for="poolLabelInput" class="form-label">Pool Label</label>
-                    <input type="text" class="form-control" id="poolLabelInput" name="PoolLabel"
-                        placeholder="Enter pool label" required>
+            <form id="createPoolForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createPoolModalLabel">Create Backup Pool</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <table class="table table-striped" id="selectedDrivesTable">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Size</th>
-                            <th>Vendor</th>
-                            <th>Model</th>
-                            <th>Serial</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="5" class="text-center">No drives selected</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="modal-body">
+                    <!-- Pool Creation Form -->
+                    <div id="poolCreationForm">
+                        <div class="mb-3">
+                            <label for="poolLabelInput" class="form-label">Pool Label</label>
+                            <input type="text" class="form-control" id="poolLabelInput" name="PoolLabel"
+                                placeholder="Enter pool label" required>
+                        </div>
+                        <table class="table table-striped" id="selectedDrivesTable">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Drive Name</th>
+                                    <th>Vendor</th>
+                                    <th>Model</th>
+                                    <th>Serial</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="text-center">No drives selected</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Command Outputs -->
+                    <div id="commandOutputs" style="display: none;">
+                        <pre class="command-output"></pre>
+                    </div>
+                </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="createPoolSubmit">Create Pool</button>
+                    <!-- Buttons will be dynamically updated -->
+                    <button type="submit" class="btn btn-primary">Create Pool</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
+                        id="cancelCreatePoolButton">Cancel</button>
                 </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Toast for Drive Selection -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="driveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="false">
+        <div class="toast-header">
+            <img src="/icons/info-circle.svg" class="rounded me-2" alt="Info" style="height: 20px;">
+            <strong class="me-auto">Drive Selection</strong>
+            <small>Now</small>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            Drives selected for pool creation.
+            <div class="mt-2 pt-2 border-top">
+                <button type="button" class="btn btn-primary btn-sm" id="createPoolToastButton">Create
+                    Pool</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="abortSelectionButton">Cancel</button>
             </div>
         </div>
     </div>
 </div>
 
-<script src="/js/Index.js"></script>
-<!-- Link to external CSS file -->
-<link rel="stylesheet" href="/css/Index.css">
+<!-- Include Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-9NDLz0zvQl8bkfWlYAnPjvzmrIyYPu22VZzxPBihZ+/ZpYJQ85u5DRrAXxK4tXt1"
+    crossorigin="anonymous"></script>
+
+<script src="/js/Drive.js"></script>
+<link rel="stylesheet" href="/css/Drive.css">
