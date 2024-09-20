@@ -60,3 +60,26 @@
     white-space: nowrap;
     vertical-align: bottom;
 }
+
+.chevron-icon {
+    transition: transform 0.3s ease;
+}
+
+.chevron-button.collapsed .chevron-icon {
+    transform: rotate(0deg);
+}
+
+.chevron-button:not(.collapsed) .chevron-icon {
+    transform: rotate(180deg);
+}
+
+.progress-with-border {
+    border: 1px solid white;
+    border-radius: 5px;
+    /* Optional: Adds rounded corners */
+}
+
+.progress-with-border .progress-bar {
+    background-color: #145b3a;
+    /* Moved to Step 3 */
+}

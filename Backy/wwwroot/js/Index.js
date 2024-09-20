@@ -241,25 +241,44 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (toggleButton) {
-    var chevron = toggleButton.querySelector('img');
+// document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (toggleButton) {
+//     var chevron = toggleButton.querySelector('img');
 
-    toggleButton.addEventListener('click', function () {
-        var targetId = toggleButton.getAttribute('data-bs-target');
-        var collapseElement = document.querySelector(targetId);
+//     toggleButton.addEventListener('click', function () {
+//         var targetId = toggleButton.getAttribute('data-bs-target');
+//         var collapseElement = document.querySelector(targetId);
+
+//         collapseElement.addEventListener('shown.bs.collapse', function () {
+//             if (chevron) {
+//                 chevron.src = '/icons/chevron-up.svg';
+//             }
+//         });
+//         collapseElement.addEventListener('hidden.bs.collapse', function () {
+//             if (chevron) {
+//                 chevron.src = '/icons/chevron-down.svg';
+//             }
+//         });
+//     });
+// });
+
+document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (toggleButton) {
+    var targetId = toggleButton.getAttribute('data-bs-target');
+    var collapseElement = document.querySelector(targetId);
+
+    if (collapseElement && toggleButton) {
+        // Initialize collapsed state
+        toggleButton.classList.add('collapsed');
 
         collapseElement.addEventListener('shown.bs.collapse', function () {
-            if (chevron) {
-                chevron.src = '/icons/chevron-up.svg';
-            }
+            toggleButton.classList.remove('collapsed');
         });
+
         collapseElement.addEventListener('hidden.bs.collapse', function () {
-            if (chevron) {
-                chevron.src = '/icons/chevron-down.svg';
-            }
+            toggleButton.classList.add('collapsed');
         });
-    });
+    }
 });
+
 
 document.getElementById('driveSearchInput').addEventListener('input', function () {
     const searchTerm = this.value.toLowerCase();
