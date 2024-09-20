@@ -387,7 +387,8 @@ namespace Backy.Pages
         /// </summary>
         private (bool success, string message) WipeDrive(string driveName, List<string> outputList)
         {
-            var command = $"wipefs -a /dev/{driveName}";
+            Thread.Sleep(5000);
+            var command = $"wipefs -f -a /dev/{driveName}";
             return ExecuteShellCommand(command, outputList);
         }
 
@@ -396,6 +397,7 @@ namespace Backy.Pages
         /// </summary>
         private (string partitionName, bool success, string message) CreatePartition(string driveName, List<string> outputList)
         {
+            Thread.Sleep(5000);
             var command = $"parted /dev/{driveName} --script mklabel gpt mkpart primary ext4 0% 100%";
             var result = ExecuteShellCommand(command, outputList);
             if (result.success)
@@ -410,20 +412,21 @@ namespace Backy.Pages
         /// </summary>
         private (bool success, string message) FormatPartition(string partitionName, List<string> outputList)
         {
-            var command = $"mkfs.ext4 /dev/{partitionName}";
+            Thread.Sleep(5000);
+            var command = $"mkfs.ext4 -F /dev/{partitionName}";
             return ExecuteShellCommand(command, outputList);
         }
 
         /// <summary>
         /// Mounts a partition.
         /// </summary>
-        private (bool success, string message) MountPartition(string partitionName, string uuid, List<string> outputList)
+        private (bool success, string message) MountPartition(string partitionName, string uuid, List<string>? outputList = null)
         {
+            outputList ??= new List<string>(); // Ensure outputList is not null
             var mountPath = $"/mnt/backy/{uuid}";
             var command = $"mkdir -p {mountPath} && mount /dev/{partitionName} {mountPath}";
             return ExecuteShellCommand(command, outputList);
         }
-
 
         /// <summary>
         /// Gets the UUID of a partition.
@@ -491,17 +494,29 @@ namespace Backy.Pages
             return BadRequest(new { success = false, message = "Drive not found." });
         }
 
-        // Unmounts a partition
+        /// <summary>
+        /// Unmounts a specific partition if it is currently mounted.
+        /// </summary>
+        /// <param name="partitionName">The name of the partition (e.g., "sdd1").</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         private (bool success, string message) UnmountPartition(string partitionName)
         {
-            var command = $"umount -f /dev/{partitionName}";
+            // Construct the shell command to conditionally unmount the partition
+            var command = $"! mountpoint -q '/dev/{partitionName}' || umount '/dev/{partitionName}'";
             return ExecuteShellCommand(command);
         }
 
-        // Unmounts a drive
+        /// <summary>
+        /// Unmounts all partitions of a specific drive if they are currently mounted.
+        /// </summary>
+        /// <param name="driveName">The name of the drive (e.g., "sdd").</param>
+        /// <param name="outputList">A list to capture command outputs.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         private (bool success, string message) UnmountDrive(string driveName, List<string> outputList)
         {
-            var command = $"umount -f /dev/{driveName}*";
+            // Construct the shell command to conditionally unmount all partitions of the drive
+            var command = $"! mountpoint -q '/dev/{driveName}' || umount '/dev/{driveName}'";
+
             return ExecuteShellCommand(command, outputList);
         }
 
@@ -536,11 +551,14 @@ namespace Backy.Pages
             }
         }
 
-
         /// <summary>
         /// Executes a shell command and returns success status and output message.
+        /// Treats "not mounted" messages as successful operations.
         /// </summary>
-        private (bool success, string message) ExecuteShellCommand(string command, List<string> outputList = null)
+        /// <param name="command">The shell command to execute.</param>
+        /// <param name="outputList">Optional list to capture command outputs.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
+        private (bool success, string message) ExecuteShellCommand(string command, List<string>? outputList = null)
         {
             outputList ??= new List<string>();
             string output;
@@ -548,7 +566,8 @@ namespace Backy.Pages
 
             try
             {
-                Console.WriteLine($"Executing: {command}");
+                _logger.LogInformation($"Executing command: {command}");
+
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -561,10 +580,13 @@ namespace Backy.Pages
                         CreateNoWindow = true,
                     }
                 };
+
                 process.Start();
-                output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+                string stdout = process.StandardOutput.ReadToEnd();
+                string stderr = process.StandardError.ReadToEnd();
                 process.WaitForExit();
-                System.Threading.Thread.Sleep(500);
+
+                output = stdout + stderr;
                 exitCode = process.ExitCode;
 
                 if (outputList != null)
@@ -575,13 +597,13 @@ namespace Backy.Pages
 
                 if (exitCode == 0)
                 {
-                    Console.WriteLine($"Success Output: {output}");
-                    return (true, output);
+                    _logger.LogInformation($"Command executed successfully. Output: {output}");
+                    return (true, output.Trim());
                 }
                 else
                 {
-                    Console.WriteLine($"Failure Output: {output}");
-                    return (false, output);
+                    _logger.LogWarning($"Command failed with exit code {exitCode}. Output: {output}");
+                    return (false, output.Trim());
                 }
             }
             catch (Exception ex)
@@ -594,6 +616,7 @@ namespace Backy.Pages
                 return (false, "An error occurred while executing the command.");
             }
         }
+
 
         /// <summary>
         /// Gets the used space of a mounted partition.
