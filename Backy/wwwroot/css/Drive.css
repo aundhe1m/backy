@@ -1,0 +1,113 @@
+/* General button styles for drive cards */
+.drive-card .btn-transparent {
+    background-color: transparent;
+    border: none;
+    color: inherit;
+}
+
+.drive-card .btn-transparent:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.drive-card .btn-transparent:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Spinner styles */
+.spinner-overlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* Center in viewport */
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.02s ease-in-out;
+    /* 20ms fade in/out */
+}
+
+.spinner-border {
+    width: 5rem;
+    height: 5rem;
+    color: rgb(177, 115, 1);
+    /* Make spinner orange */
+}
+
+/* Truncate text overflow */
+.truncate {
+    display: inline-block;
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+/* Chevron animation */
+.chevron-icon {
+    transition: transform 0.3s ease;
+}
+
+.chevron-button.collapsed .chevron-icon {
+    transform: rotate(0deg);
+}
+
+.chevron-button:not(.collapsed) .chevron-icon {
+    transform: rotate(180deg);
+}
+
+/* Progress bar with border */
+.progress-with-border {
+    border: 1px solid white;
+    border-radius: 5px;
+    /* Optional: Adds rounded corners */
+}
+
+.progress-with-border .progress-bar {
+    background-color: #2c2c2c;
+}
+
+/* Tooltip styles */
+[data-bs-toggle="tooltip"] {
+    position: relative;
+}
+
+/* Card adjustments */
+.drive-card {
+    width: 100%;
+}
+
+.drive-card .card-header {
+    padding: 0.5rem 1rem;
+}
+
+.drive-card .card-body {
+    padding: 0.5rem 1rem;
+}
+
+.drive-card .table-responsive {
+    margin-top: 1rem;
+}
+
+/* Search input styling */
+#driveSearchInput {
+    max-width: 300px;
+    margin-bottom: 1rem;
+}
+
+/* Adjusting dropdown in split buttons */
+.btn-group .dropdown-menu {
+    min-width: 120px;
+}
+
+.btn-group .dropdown-item {
+    cursor: pointer;
+}
+
+/* Style for disabled icons */
+.drive-card .btn-transparent img[disabled] {
+    opacity: 0.5;
+}
