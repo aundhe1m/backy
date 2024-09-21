@@ -49,15 +49,16 @@
             <!-- Left Button -->
             @if (Model.IsMounted)
             {
-                <button type="button" class="btn btn-transparent eject-drive-button"
-                    data-partition-name="@Model.Partitions.FirstOrDefault()?.Name" data-bs-toggle="tooltip" title="Eject">
+                <button type="button" class="btn btn-transparent eject-drive-button" data-partition-name="@Model.UUID"
+                    data-bs-toggle="tooltip" title="Unmount Drive">
                     <img src="/icons/eject-fill.svg" alt="Eject" style="height: 24px;">
                 </button>
             }
             else if (Model.IsConnected && !Model.IsMounted)
             {
                 <button type="button" class="btn btn-transparent mount-drive-button"
-                    data-partition-name="@Model.Partitions.FirstOrDefault()?.Name" data-bs-toggle="tooltip" title="Mount">
+                    data-partition-name="@Model.Partitions.FirstOrDefault()?.Name" data-bs-toggle="tooltip"
+                    title="Mount Drive">
                     <img src="/icons/play-fill.svg" alt="Mount" style="height: 24px;">
                 </button>
             }

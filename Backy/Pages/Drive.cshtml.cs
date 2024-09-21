@@ -31,11 +31,11 @@ namespace Backy.Pages
         /// </summary>
         public void OnGet()
         {
-            _logger.LogInformation("Starting OnGet...");
+            _logger.LogDebug("Starting OnGet...");
 
             // Load persistent data
             var persistentData = LoadPersistentData();
-            _logger.LogInformation($"Loaded Persistent Data: {JsonSerializer.Serialize(persistentData)}");
+            _logger.LogDebug($"Loaded Persistent Data: {JsonSerializer.Serialize(persistentData)}");
 
             // Organize drives into PoolGroups and NewDrives
             OrganizeDrives(persistentData);
@@ -43,7 +43,7 @@ namespace Backy.Pages
             // Save the updated data back to persistent storage
             SavePersistentData(persistentData);
 
-            _logger.LogInformation("OnGet completed.");
+            _logger.LogDebug("OnGet completed.");
         }
 
         /// <summary>
@@ -55,7 +55,7 @@ namespace Backy.Pages
             {
                 if (System.IO.File.Exists(persistentFilePath))
                 {
-                    _logger.LogInformation($"Loading persistent data from {persistentFilePath}");
+                    _logger.LogDebug($"Loading persistent data from {persistentFilePath}");
                     var json = System.IO.File.ReadAllText(persistentFilePath);
                     return JsonSerializer.Deserialize<PersistentData>(json) ?? new PersistentData();
                 }
@@ -75,10 +75,10 @@ namespace Backy.Pages
         {
             try
             {
-                _logger.LogInformation("Saving Persistent Data...");
+                _logger.LogDebug("Saving Persistent Data...");
                 var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
                 System.IO.File.WriteAllText(persistentFilePath, json);
-                _logger.LogInformation($"Data saved: {json}");
+                _logger.LogDebug($"Data saved: {json}");
             }
             catch (Exception ex)
             {
@@ -91,7 +91,7 @@ namespace Backy.Pages
         /// </summary>
         private void OrganizeDrives(PersistentData persistentData)
         {
-            _logger.LogInformation("Organizing drives...");
+            _logger.LogDebug("Organizing drives...");
 
             var activeDrives = UpdateActiveDrives();
             PoolGroups = persistentData.Pools;
@@ -130,7 +130,7 @@ namespace Backy.Pages
             var pooledDriveUUIDs = PoolGroups.SelectMany(p => p.Drives).Select(d => d.UUID).ToHashSet();
             NewDrives = activeDrives.Where(d => !pooledDriveUUIDs.Contains(d.UUID)).ToList();
 
-            _logger.LogInformation($"Drives organized. PoolGroups: {PoolGroups.Count}, NewDrives: {NewDrives.Count}");
+            _logger.LogDebug($"Drives organized. PoolGroups: {PoolGroups.Count}, NewDrives: {NewDrives.Count}");
         }
 
         /// <summary>
@@ -171,7 +171,7 @@ namespace Backy.Pages
         private List<DriveMetaData> UpdateActiveDrives()
         {
             var activeDrives = new List<DriveMetaData>();
-            _logger.LogInformation("Updating active drives...");
+            _logger.LogDebug("Updating active drives...");
 
             try
             {
@@ -191,7 +191,7 @@ namespace Backy.Pages
                 string jsonOutput = process.StandardOutput.ReadToEnd();
                 process.WaitForExit();
 
-                _logger.LogInformation($"lsblk output: {jsonOutput}");
+                _logger.LogDebug($"lsblk output: {jsonOutput}");
 
                 var lsblkOutput = JsonSerializer.Deserialize<LsblkOutput>(jsonOutput);
                 if (lsblkOutput?.Blockdevices != null)
@@ -251,7 +251,7 @@ namespace Backy.Pages
                             driveData.UUID = device.Uuid ?? driveData.Partitions.FirstOrDefault()?.UUID ?? "No UUID";
 
                             activeDrives.Add(driveData);
-                            _logger.LogInformation($"Active drive added: {JsonSerializer.Serialize(driveData)}");
+                            _logger.LogDebug($"Active drive added: {JsonSerializer.Serialize(driveData)}");
                         }
                     }
                 }
@@ -499,10 +499,10 @@ namespace Backy.Pages
         /// </summary>
         /// <param name="partitionName">The name of the partition (e.g., "sdd1").</param>
         /// <returns>A tuple indicating success status and a message.</returns>
-        private (bool success, string message) UnmountPartition(string partitionName)
+        private (bool success, string message) UnmountPartition(string uuid)
         {
             // Construct the shell command to conditionally unmount the partition
-            var command = $"! mountpoint -q '/dev/{partitionName}' || umount '/dev/{partitionName}'";
+            var command = $"! mountpoint -q '/mnt/backy/{uuid}' || umount '/mnt/backy/{uuid}'";
             return ExecuteShellCommand(command);
         }
 

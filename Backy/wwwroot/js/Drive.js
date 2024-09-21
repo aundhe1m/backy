@@ -284,8 +284,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     ejectButtons.forEach(button => {
         button.addEventListener('click', function () {
-            const partitionName = button.getAttribute('data-partition-name');
-            unmountPartition(partitionName);
+            const uuid = button.getAttribute('data-partition-name');
+            unmountPartition(uuid);
         });
     });
 
@@ -296,13 +296,13 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    function unmountPartition(partitionName) {
+    function unmountPartition(uuid) {
         // Disable button and show spinner
-        const button = document.querySelector(`.eject-drive-button[data-partition-name="${partitionName}"]`);
+        const button = document.querySelector(`.eject-drive-button[data-partition-name="${uuid}"]`);
         button.disabled = true;
         showSpinner();
 
-        fetch(`/Drive?handler=UnmountPartition&partitionName=${partitionName}`, {
+        fetch(`/Drive?handler=UnmountPartition&uuid=${uuid}`, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -312,17 +312,17 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 hideSpinner();
                 if (data.success) {
-                    showToast(`Partition ${partitionName} unmounted successfully.`, true);
+                    showToast(`Partition /mnt/backy/${uuid} unmounted successfully.`, true);
                     location.reload();
                 } else {
-                    showToast(`Failed to unmount partition ${partitionName}: ${data.message}`, false);
+                    showToast(`Failed to unmount partition /mnt/backy/${uuid}: ${data.message}`, false);
                     button.disabled = false;
                 }
             })
             .catch(error => {
                 hideSpinner();
                 console.error('Error unmounting partition:', error);
-                showToast(`Error unmounting partition ${partitionName}: ${error}`, false);
+                showToast(`Error unmounting partition /mnt/backy/${uuid}: ${error}`, false);
                 button.disabled = false;
             });
     }
