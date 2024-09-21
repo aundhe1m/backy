@@ -8,11 +8,11 @@
     }
     else if (Model.IsConnected && !Model.IsMounted)
     {
-        headerBackgroundColor = "#90ee90"; // Light green
+        headerBackgroundColor = "#add8e6"; // Light blue
     }
     else // Connected and Mounted
     {
-        headerBackgroundColor = "#add8e6"; // Light blue
+        headerBackgroundColor = "#90ee90"; // Light green
     }
 
     var usedPercentage = Model.PartitionSize > 0 ? (Model.UsedSpace * 100) / Model.PartitionSize : 0;
@@ -69,21 +69,22 @@
                 </button>
             }
             <!-- Dropdown Button -->
-            <button type="button" class="btn btn-transparent dropdown-toggle dropdown-toggle-split"
-                data-bs-toggle="dropdown" aria-expanded="false">
-                <span class="visually-hidden">Toggle Dropdown</span>
-            </button>
-            <ul class="dropdown-menu">
-                <li>
-                    <button class="dropdown-item" data-bs-toggle="modal"
-                        data-bs-target="#renameModal-@Model.UUID">Rename</button>
-                </li>
-                <li>
-                    <form method="post" asp-page-handler="RemoveDrive" asp-route-uuid="@Model.UUID">
-                        <button type="submit" class="dropdown-item">Remove</button>
-                    </form>
-                </li>
-            </ul>
+            <span data-bs-toggle="tooltip" title="Options" alt="Options">
+                <button type="button" class="btn btn-transparent" data-bs-toggle="dropdown" aria-expanded="false">
+                    <img src="/icons/gear.svg" title="Options" alt="Options" style="height: 24px;">
+                </button>
+                <ul class="dropdown-menu">
+                    <li>
+                        <button class="dropdown-item" data-bs-toggle="modal"
+                            data-bs-target="#renameModal-@Model.UUID">Rename</button>
+                    </li>
+                    <li>
+                        <form method="post" asp-page-handler="RemoveDrive" asp-route-uuid="@Model.UUID">
+                            <button type="submit" class="dropdown-item">Remove</button>
+                        </form>
+                    </li>
+                </ul>
+            </span>
         </div>
     </div>
 

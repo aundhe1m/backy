@@ -12,8 +12,16 @@
                 aria-controls="driveDetails-@Model.Name">
                 <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon" style="height: 24px;">
             </button>
+            <!-- Drive Name -->
             <img src="/icons/device-hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
-            <span>@(string.IsNullOrEmpty(Model.Label) ? "Unnamed Drive" : Model.Label)</span>
+            <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
+        </div>
+        <!-- Drive Size -->
+        <div>
+            <!-- Progress Bar -->
+            <div>
+                <span>@String.Format("{0:F2} GB", Model.PartitionSize / 1024.0 / 1024.0 / 1024.0)</span>
+            </div>
         </div>
         <!-- Split Button -->
         <div class="btn-group">
@@ -23,15 +31,16 @@
                 <img src="/icons/plus-square.svg" alt="Select Drive" style="height: 24px;">
             </button>
             <!-- Dropdown Button -->
-            <button type="button" class="btn btn-transparent dropdown-toggle dropdown-toggle-split"
-                data-bs-toggle="dropdown" aria-expanded="false">
-                <span class="visually-hidden">Toggle Dropdown</span>
-            </button>
-            <ul class="dropdown-menu">
-                <li>
-                    <button class="dropdown-item wipe-drive-button">Wipe Drive</button>
-                </li>
-            </ul>
+            <span data-bs-toggle="tooltip" title="Options" alt="Options">
+                <button type="button" class="btn btn-transparent" data-bs-toggle="dropdown" aria-expanded="false">
+                    <img src="/icons/gear.svg" alt="Toggle Actions" style="height: 24px;">
+                </button>
+                <ul class="dropdown-menu">
+                    <li>
+                        <button class="dropdown-item wipe-drive-button">Wipe Drive</button>
+                    </li>
+                </ul>
+            </span>
         </div>
     </div>
     <!-- Collapsible Details -->
