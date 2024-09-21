@@ -449,12 +449,12 @@ namespace Backy.Pages
         }
 
         // Handles POST requests to unmount a partition
-        public IActionResult OnPostUnmountPartition(string partitionName)
+        public IActionResult OnPostUnmountUUID(string uuid)
         {
-            var result = UnmountPartition(partitionName);
+            var result = UnmountUUID(uuid);
             if (result.success)
             {
-                return new JsonResult(new { success = true, message = $"Partition {partitionName} unmounted successfully." });
+                return new JsonResult(new { success = true, message = $"Path /mnt/backy/{uuid} unmounted successfully." });
             }
             else
             {
@@ -499,11 +499,45 @@ namespace Backy.Pages
         /// </summary>
         /// <param name="partitionName">The name of the partition (e.g., "sdd1").</param>
         /// <returns>A tuple indicating success status and a message.</returns>
-        private (bool success, string message) UnmountPartition(string uuid)
+        private (bool success, string message) UnmountUUID(string uuid)
         {
-            // Construct the shell command to conditionally unmount the partition
-            var command = $"! mountpoint -q '/mnt/backy/{uuid}' || umount '/mnt/backy/{uuid}'";
-            return ExecuteShellCommand(command);
+            var unmountPath = $"/mnt/backy/{uuid}";
+            // Check if the mountpoint exists
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "bash",
+                    Arguments = $"-c \"mountpoint '{unmountPath}'\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+            process.WaitForExit();
+
+            int exitCode = process.ExitCode;
+            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+
+            // Handle exit code 32: already unmounted
+            if (exitCode == 32)
+            {
+                return (true, $"{unmountPath} is already unmounted.");
+            }
+            // Handle exit code 0: mounted, proceed with unmount
+            else if (exitCode == 0)
+            {
+                var command = $"umount '{unmountPath}'";
+                return ExecuteShellCommand(command); // ExecuteShellCommand handles the unmount command and returns a result
+            }
+            // Handle other exit codes: error
+            else
+            {
+                return (false, $"Error: {output.Trim()}");
+            }
         }
 
         /// <summary>
@@ -514,10 +548,44 @@ namespace Backy.Pages
         /// <returns>A tuple indicating success status and a message.</returns>
         private (bool success, string message) UnmountDrive(string driveName, List<string> outputList)
         {
-            // Construct the shell command to conditionally unmount all partitions of the drive
-            var command = $"! mountpoint -q '/dev/{driveName}' || umount '/dev/{driveName}'";
+            var unmountPath = $"/dev/{driveName}";
+            // Check if the mountpoint exists
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "bash",
+                    Arguments = $"-c \"mountpoint '{unmountPath}'\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
 
-            return ExecuteShellCommand(command, outputList);
+            process.Start();
+            process.WaitForExit();
+
+            int exitCode = process.ExitCode;
+            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+
+            // Handle exit code 32: already unmounted
+            if (exitCode == 32)
+            {
+                return (true, $"{unmountPath} is already unmounted.");
+            }
+            // Handle exit code 0: mounted, proceed with unmount
+            else if (exitCode == 0)
+            {
+                var command = $"umount '{unmountPath}'";
+                return ExecuteShellCommand(command, outputList); // ExecuteShellCommand handles the unmount command and returns a result
+            }
+            // Handle other exit codes: error
+            else
+            {
+                return (false, $"Error: {output.Trim()}");
+            }
+
         }
 
         // Handles POST requests to wipe a drive

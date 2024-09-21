@@ -285,7 +285,7 @@ document.addEventListener('DOMContentLoaded', function () {
     ejectButtons.forEach(button => {
         button.addEventListener('click', function () {
             const uuid = button.getAttribute('data-partition-name');
-            unmountPartition(uuid);
+            unmountUUID(uuid);
         });
     });
 
@@ -296,13 +296,13 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    function unmountPartition(uuid) {
+    function unmountUUID(uuid) {
         // Disable button and show spinner
         const button = document.querySelector(`.eject-drive-button[data-partition-name="${uuid}"]`);
         button.disabled = true;
         showSpinner();
 
-        fetch(`/Drive?handler=UnmountPartition&uuid=${uuid}`, {
+        fetch(`/Drive?handler=UnmountUUID&uuid=${uuid}`, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -312,17 +312,17 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 hideSpinner();
                 if (data.success) {
-                    showToast(`Partition /mnt/backy/${uuid} unmounted successfully.`, true);
+                    showToast(`UUID Path /mnt/backy/${uuid} unmounted successfully.`, true);
                     location.reload();
                 } else {
-                    showToast(`Failed to unmount partition /mnt/backy/${uuid}: ${data.message}`, false);
+                    showToast(`Failed to unmount UUID Path /mnt/backy/${uuid}: ${data.message}`, false);
                     button.disabled = false;
                 }
             })
             .catch(error => {
                 hideSpinner();
-                console.error('Error unmounting partition:', error);
-                showToast(`Error unmounting partition /mnt/backy/${uuid}: ${error}`, false);
+                console.error('Error unmounting UUID Path:', error);
+                showToast(`Error unmounting UUID Path /mnt/backy/${uuid}: ${error}`, false);
                 button.disabled = false;
             });
     }
