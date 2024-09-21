@@ -42,8 +42,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 model: card.getAttribute('data-model'),
                 serial: card.getAttribute('data-serial')
             };
-            // Add drive to selected drives list
-            addDriveToPool(driveData);
+            // Toggle drive selection
+            toggleDriveSelection(driveData);
         });
 
         // Handle wipe drive button click
@@ -55,26 +55,40 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Function to add drive to pool selection
-    function addDriveToPool(driveData) {
-        // Check if drive is already selected
-        if (selectedDrives.find(d => d.driveName === driveData.driveName)) {
-            alert("Drive is already selected.");
-            return;
+    // Function to toggle drive selection
+    function toggleDriveSelection(driveData) {
+        // Find the index of the drive in the selectedDrives array
+        const existingDriveIndex = selectedDrives.findIndex(d => d.driveName === driveData.driveName);
+        const driveCard = document.querySelector(`.new-drive-card[data-drive-name="${driveData.driveName}"]`);
+        const selectButtonImg = driveCard.querySelector('.select-drive-button img');
+
+        if (existingDriveIndex !== -1) {
+            // Drive is already selected; deselect it
+            selectedDrives.splice(existingDriveIndex, 1);
+
+            // Reset the icon to 'plus-square.svg'
+            if (selectButtonImg) {
+                selectButtonImg.src = '/icons/plus-square.svg';
+            }
+
+            // Optionally, show a toast indicating deselection
+            showToast(`Drive ${driveData.driveName} deselected.`, true);
+        } else {
+            // Drive is not selected; select it
+            selectedDrives.push(driveData);
+
+            // Change the icon to 'plus-square-fill.svg' to indicate selection
+            if (selectButtonImg) {
+                selectButtonImg.src = '/icons/plus-square-fill.svg';
+            }
+
+            // Show the 'driveToast' only if it's not already visible
+            const toastElement = document.getElementById('driveToast');
+            if (!toastElement.classList.contains('show')) {
+                const toast = new bootstrap.Toast(toastElement);
+                toast.show();
+            }
         }
-
-        selectedDrives.push(driveData);
-
-        // Change the icon to 'plus-square-fill.svg' to indicate selection
-        const selectButtonImg = document.querySelector(`.new-drive-card[data-drive-name="${driveData.driveName}"] .select-drive-button img`);
-        if (selectButtonImg) {
-            selectButtonImg.src = '/icons/plus-square-fill.svg';
-        }
-
-        // Show the toast notification
-        const toastElement = document.getElementById('driveToast');
-        const toast = new bootstrap.Toast(toastElement);
-        toast.show();
 
         // Update the selected drives table
         populateSelectedDrivesTable();
@@ -147,7 +161,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Handle Abort button
     document.getElementById('abortSelectionButton').addEventListener('click', function () {
         // Deselect all selected drives
-        selectedDrives = [];
+        resetSelectedDrives();
         // Hide the toast
         const toastElement = document.getElementById('driveToast');
         const toast = bootstrap.Toast.getInstance(toastElement);
@@ -157,7 +171,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Handle Cancel button in Create Pool modal
     document.getElementById('cancelCreatePoolButton').addEventListener('click', function () {
         // Deselect all selected drives
-        selectedDrives = [];
+        resetSelectedDrives();
     });
 });
 

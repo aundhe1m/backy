@@ -138,22 +138,24 @@
                             <input type="text" class="form-control" id="poolLabelInput" name="PoolLabel"
                                 placeholder="Enter pool label" required>
                         </div>
-                        <table class="table table-striped" id="selectedDrivesTable">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Drive Name</th>
-                                    <th>Vendor</th>
-                                    <th>Model</th>
-                                    <th>Serial</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td colspan="5" class="text-center">No drives selected</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-striped" id="selectedDrivesTable">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Drive</th>
+                                        <th>Vendor</th>
+                                        <th>Model</th>
+                                        <th>Serial</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="5" class="text-center">No drives selected</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                     <!-- Command Outputs -->
                     <div id="commandOutputs" style="display: none;">
@@ -177,8 +179,6 @@
         <div class="toast-header">
             <img src="/icons/info-circle.svg" class="rounded me-2" alt="Info" style="height: 20px;">
             <strong class="me-auto">Drive Selection</strong>
-            <small>Now</small>
-            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
         <div class="toast-body">
             Drives selected for pool creation.
