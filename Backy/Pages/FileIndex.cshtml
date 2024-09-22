@@ -1,0 +1,42 @@
+@page
+@model Backy.Pages.FileIndexModel
+@{
+    ViewData["Title"] = "File Index";
+}
+
+<h2>File Index</h2>
+
+<div class="form-group">
+    <label>Select Storage Source:</label>
+    <select asp-for="SelectedStorageId" class="form-control" asp-items="Model.StorageOptions"
+        onchange="this.form.submit()">
+        <option value="">-- Select Storage --</option>
+        @foreach (var storage in Model.StorageOptions)
+        {
+            @* <option value="@storage.Value" @(storage.Value == Model.SelectedStorageId.ToString() ? "selected" : "")>
+        @storage.Text</option> *@
+        }
+    </select>
+</div>
+
+@if (Model.SelectedStorage != null)
+{
+    <h3>Storage: @Model.SelectedStorage.Name</h3>
+    <p>Total Size: @Model.TotalSize MB</p>
+    <p>Backup Percentage: @Model.BackupPercentage% | @Model.BackupCount/@Model.TotalFiles files backed up</p>
+
+    <!-- Display file explorer -->
+    <div id="fileExplorer">
+    @Html.Raw(Model.FileTreeHtml)
+</div>
+}
+else
+{
+    <p>Please select a storage source to view files.</p>
+}
+
+@section Scripts {
+    <script>
+        // Add any necessary JavaScript for interactivity
+    </script>
+}
