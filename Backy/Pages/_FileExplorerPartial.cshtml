@@ -1,0 +1,55 @@
+@model Backy.Pages.FileExplorerModel
+
+<div>
+    <h5>Path: @Model.CurrentPath</h5>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Size (MB)</th>
+                <th>Last Modified</th>
+                <th>Backup Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var dir in Model.Directories)
+            {
+                <tr>
+                    <td>
+                        <a href="javascript:void(0);" onclick="navigateTo('@dir')">
+                            <i class="fa fa-folder"></i> @System.IO.Path.GetFileName(dir)
+                        </a>
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+            }
+            @foreach (var file in Model.Files)
+            {
+                <tr>
+                    <td><i class="fa fa-file"></i> @file.FileName</td>
+                    <td>@(file.Size / (1024 * 1024))</td>
+                    <td>@file.LastModified.ToString("g")</td>
+                    <td>@(file.BackupExists ? "Backed Up" : "Pending")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<script>
+    function navigateTo(path) {
+        $.ajax({
+            url: '@Url.Page("FileIndex", "GetFileExplorer", new { storageId = Model.StorageId })',
+            data: { path: path },
+            method: 'GET',
+            success: function (data) {
+                $('#fileExplorerContent').html(data);
+            },
+            error: function () {
+                alert('Error loading directory.');
+            }
+        });
+    }
+</script>

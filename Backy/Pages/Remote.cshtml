@@ -190,8 +190,7 @@
 
         function clearModalFields() {
             $('#storageForm')[0].reset();
-            // Removed the following line to prevent setting storageId to empty string
-            // $('#storageId').val('');
+            $('#storageId').val('0');
             $('#storagePassword').val('');
             $('#storageSSHKey').val('');
             $('.alert-danger').remove();
@@ -211,7 +210,6 @@
                 $('#storagePassword').prop('required', false);
                 $('#storageSSHKey').prop('required', true);
             } else {
-                // Handle unexpected values gracefully
                 $('#passwordField').hide();
                 $('#sshKeyField').hide();
                 $('#storagePassword').prop('required', false);

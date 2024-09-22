@@ -1,42 +1,91 @@
 @page
 @model Backy.Pages.FileIndexModel
+@inject Microsoft.Extensions.Logging.ILogger<FileIndexModel> _logger
 @{
     ViewData["Title"] = "File Index";
 }
 
 <h2>File Index</h2>
 
-<div class="form-group">
-    <label>Select Storage Source:</label>
-    <select asp-for="SelectedStorageId" class="form-control" asp-items="Model.StorageOptions"
-        onchange="this.form.submit()">
-        <option value="">-- Select Storage --</option>
-        @foreach (var storage in Model.StorageOptions)
-        {
-            @* <option value="@storage.Value" @(storage.Value == Model.SelectedStorageId.ToString() ? "selected" : "")>
-        @storage.Text</option> *@
-        }
-    </select>
-</div>
+<form method="post" asp-page-handler="SelectStorage">
+    <div class="form-group">
+        <label>Select Storage Source:</label>
+        <select asp-for="SelectedStorageId" class="form-control" asp-items="Model.StorageOptions"
+            onchange="this.form.submit()">
+            <option value="">-- Select Storage --</option>
+            @* The options are already populated by asp-items *@
+        </select>
+    </div>
+</form>
 
 @if (Model.SelectedStorage != null)
 {
     <h3>Storage: @Model.SelectedStorage.Name</h3>
-    <p>Total Size: @Model.TotalSize MB</p>
-    <p>Backup Percentage: @Model.BackupPercentage% | @Model.BackupCount/@Model.TotalFiles files backed up</p>
 
-    <!-- Display file explorer -->
-    <div id="fileExplorer">
-    @Html.Raw(Model.FileTreeHtml)
+    @if (Model.IsIndexing)
+    {
+        <p><strong>Indexing is currently in progress...</strong></p>
+    }
+    else
+    {
+        <form method="post" asp-page-handler="StartIndexing" asp-route-storageId="@Model.SelectedStorage.Id">
+    <button type="submit" class="btn btn-primary">Start Indexing</button>
+</form>
+    }
+
+    <h4>Backup Overview:</h4>
+    <ul>
+    <li>Backup Percentage: @Model.BackupPercentage% (@Model.BackupCount / @Model.TotalFiles files backed up)</li>
+    <li>Total Size: @Model.TotalSize MB</li>
+    <li>Backed Up Size: @Model.TotalBackupSize MB</li>
+</ul>
+
+    <button class="btn btn-secondary" onclick="openFileExplorer()">Open File Explorer</button>
+
+    <!-- File Explorer Modal -->
+    <div class="modal fade" id="fileExplorerModal" tabindex="-1" role="dialog" aria-labelledby="fileExplorerModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document" style="max-width: 90%;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">File Explorer</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"
+                    onclick="closeFileExplorer()">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto; max-height: 80vh;">
+                <div id="fileExplorerContent">
+                    <!-- File explorer content will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
-}
-else
-{
-    <p>Please select a storage source to view files.</p>
-}
 
-@section Scripts {
+    @if (Model.SelectedStorage != null)
+    {
+        @section Scripts {
     <script>
-        // Add any necessary JavaScript for interactivity
+        function openFileExplorer() {
+            $.ajax({
+                url: '@Url.Page("_FileExplorerPartial", "GetFileExplorer", new { storageId = Model.SelectedStorage.Id })',
+                method: 'GET',
+                success: function (data) {
+                    $('#fileExplorerContent').html(data);
+                    $('#fileExplorerModal').modal('show');
+                },
+                error: function () {
+                    alert('Error loading file explorer.');
+                }
+            });
+        }
+
+        function closeFileExplorer() {
+            $('#fileExplorerModal').modal('hide');
+        }
     </script>
+}
+    }
+
 }

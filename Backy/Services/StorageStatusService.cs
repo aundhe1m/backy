@@ -36,54 +36,54 @@ namespace Backy.Services
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var storages = await context.RemoteStorages.Where(s => s.IsEnabled).ToListAsync(cancellationToken);
+            var storages = await context.RemoteStorages.ToListAsync(cancellationToken);
 
-            foreach (var storage in storages)
+            var tasks = storages.Select(storage => StorageStatusChecker.CheckAndUpdateStorageStatusAsync(storage, context, _protector, _logger));
+            await Task.WhenAll(tasks);
+        }
+    }
+
+    public static class StorageStatusChecker
+    {
+        public static async Task CheckAndUpdateStorageStatusAsync(RemoteStorage storage, ApplicationDbContext context, IDataProtector protector, ILogger logger)
+        {
+            bool isOnline = false;
+
+            try
             {
-                bool isOnline = false;
-
-                try
-                {
-                    using var client = CreateSftpClient(storage);
-                    client.Connect();
-                    isOnline = client.IsConnected;
-                    client.Disconnect();
-                    _logger.LogInformation("Storage {Name} is online.", storage.Name);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error connecting to {Name}", storage.Name);
-                }
-
-                storage.Status = isOnline ? "Online" : "Offline";
-                storage.LastChecked = DateTime.UtcNow;
-
-                context.RemoteStorages.Update(storage);
+                using var client = CreateSftpClient(storage, protector);
+                client.Connect();
+                isOnline = client.IsConnected;
+                client.Disconnect();
+                logger.LogInformation("Storage {Name} is online.", storage.Name);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error connecting to {Name}", storage.Name);
             }
 
-            await context.SaveChangesAsync(cancellationToken);
+            storage.Status = isOnline ? "Online" : "Offline";
+            storage.LastChecked = DateTime.UtcNow;
+
+            context.RemoteStorages.Update(storage);
+            await context.SaveChangesAsync();
         }
 
-        private SftpClient CreateSftpClient(RemoteStorage storage)
+        private static SftpClient CreateSftpClient(RemoteStorage storage, IDataProtector protector)
         {
             if (storage.AuthenticationMethod == "Password")
             {
-                return new SftpClient(storage.Host, storage.Port, storage.Username, Decrypt(storage.Password));
+                return new SftpClient(storage.Host, storage.Port, storage.Username, protector.Unprotect(storage.Password ?? string.Empty));
             }
             else
             {
-                using var keyStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Decrypt(storage.SSHKey)));
+                using var keyStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(protector.Unprotect(storage.SSHKey ?? string.Empty)));
                 var keyFile = new PrivateKeyFile(keyStream);
                 var keyFiles = new[] { keyFile };
                 var authMethod = new PrivateKeyAuthenticationMethod(storage.Username, keyFiles);
                 var connectionInfo = new Renci.SshNet.ConnectionInfo(storage.Host, storage.Port, storage.Username, authMethod);
                 return new SftpClient(connectionInfo);
             }
-        }
-
-        private string Decrypt(string input)
-        {
-            return _protector.Unprotect(input);
         }
     }
 }

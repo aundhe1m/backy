@@ -2,7 +2,7 @@ using Backy.Data;
 using Backy.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using MySql.EntityFrameworkCore.Extensions; // Add this using directive
+using MySql.EntityFrameworkCore.Extensions;
 
 namespace Backy;
 
@@ -26,6 +26,7 @@ public class Program
 
         // Register the hosted service
         builder.Services.AddHostedService<StorageStatusService>();
+        builder.Services.AddHostedService<FileIndexingService>();
 
         var app = builder.Build();
 

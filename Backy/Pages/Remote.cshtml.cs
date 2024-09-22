@@ -1,5 +1,6 @@
 using Backy.Data;
 using Backy.Models;
+using Backy.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -29,6 +30,12 @@ namespace Backy.Pages
         public async Task OnGetAsync()
         {
             RemoteStorages = await _context.RemoteStorages.ToListAsync();
+
+            // Check the status of each storage
+            foreach (var storage in RemoteStorages)
+            {
+                await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(storage, _context, _protector, _logger);
+            }
         }
 
         public async Task<JsonResult> OnGetGetStorageAsync(int id)
@@ -88,7 +95,7 @@ namespace Backy.Pages
                 return Page();
             }
 
-            // Custom validation: Ensure either Password or SSHKey is provided based on AuthenticationMethod
+            // Custom validation
             if (RemoteStorage.AuthenticationMethod == "Password")
             {
                 if (string.IsNullOrWhiteSpace(RemoteStorage.Password))
@@ -151,6 +158,9 @@ namespace Backy.Pages
 
             _logger.LogInformation("Storage added successfully: {Name}", RemoteStorage.Name);
 
+            // Check and update storage status
+            await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(RemoteStorage, _context, _protector, _logger);
+
             return RedirectToPage();
         }
 
@@ -178,7 +188,7 @@ namespace Backy.Pages
                 return Page();
             }
 
-            // Custom validation: Ensure either Password or SSHKey is provided based on AuthenticationMethod
+            // Custom validation
             if (RemoteStorage.AuthenticationMethod == "Password")
             {
                 if (string.IsNullOrWhiteSpace(RemoteStorage.Password))
@@ -260,6 +270,9 @@ namespace Backy.Pages
             {
                 await _context.SaveChangesAsync();
                 _logger.LogInformation("Storage updated successfully: {Name}", existingStorage.Name);
+
+                // Check and update storage status
+                await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(existingStorage, _context, _protector, _logger);
             }
             catch (DbUpdateConcurrencyException ex)
             {
@@ -273,6 +286,8 @@ namespace Backy.Pages
                     throw;
                 }
             }
+
+            await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(existingStorage, _context, _protector, _logger);
 
             return RedirectToPage();
         }
@@ -321,9 +336,9 @@ namespace Backy.Pages
             return _protector.Protect(input);
         }
 
-        private string Decrypt(string input)
+        private string Decrypt(string? input)
         {
-            return _protector.Unprotect(input);
+            return input != null ? _protector.Unprotect(input) : string.Empty;
         }
 
         private bool ValidateConnection(RemoteStorage storage)
