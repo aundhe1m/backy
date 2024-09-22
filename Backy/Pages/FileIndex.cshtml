@@ -18,6 +18,33 @@
     </div>
 </form>
 
+@if (Model.Schedules.Any())
+{
+    <h4>Index Schedules:</h4>
+    <table class="table">
+    <thead>
+        <tr>
+            <th>Day</th>
+            <th>Time</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var schedule in Model.Schedules)
+            {
+                <tr>
+                    <td>@Enum.GetName(typeof(DayOfWeek), schedule.DayOfWeek)</td>
+                    <td>@TimeSpan.FromMinutes(schedule.TimeOfDayMinutes).ToString(@"hh\:mm")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editSchedule(@schedule.Id)">Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteSchedule(@schedule.Id)">Remove</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
 @if (Model.SelectedStorage != null)
 {
     <h3>Storage: @Model.SelectedStorage.Name</h3>
@@ -69,7 +96,7 @@
     <script>
         function openFileExplorer() {
             $.ajax({
-                url: '@Url.Page("_FileExplorerPartial", "GetFileExplorer", new { storageId = Model.SelectedStorage.Id })',
+                url: '@Url.Page("FileIndex", "GetFileExplorer", new { storageId = Model.SelectedStorage.Id })',
                 method: 'GET',
                 success: function (data) {
                     $('#fileExplorerContent').html(data);

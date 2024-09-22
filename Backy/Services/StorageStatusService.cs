@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Renci.SshNet;
+using System.Threading.Tasks;
 
 namespace Backy.Services
 {
@@ -38,7 +39,13 @@ namespace Backy.Services
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var storages = await context.RemoteStorages.ToListAsync(cancellationToken);
 
-            var tasks = storages.Select(storage => StorageStatusChecker.CheckAndUpdateStorageStatusAsync(storage, context, _protector, _logger));
+            var tasks = storages.Select(storage => Task.Run(async () =>
+            {
+                using var innerScope = _scopeFactory.CreateScope();
+                var innerContext = innerScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(storage, innerContext, _protector, _logger);
+            }, cancellationToken));
+
             await Task.WhenAll(tasks);
         }
     }

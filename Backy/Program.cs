@@ -27,6 +27,7 @@ public class Program
         // Register the hosted service
         builder.Services.AddHostedService<StorageStatusService>();
         builder.Services.AddHostedService<FileIndexingService>();
+        builder.Services.AddSingleton<IIndexingQueue, IndexingQueue>();
 
         var app = builder.Build();
 

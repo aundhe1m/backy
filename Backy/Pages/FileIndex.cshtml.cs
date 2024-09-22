@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using Renci.SshNet;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
 namespace Backy.Pages
 {
@@ -14,19 +15,24 @@ namespace Backy.Pages
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<FileIndexModel> _logger;
+        public List<IndexSchedule> Schedules { get; set; } = new List<IndexSchedule>();
+
         private readonly IDataProtector _protector;
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly IIndexingQueue _indexingQueue;
 
         public FileIndexModel(
             ApplicationDbContext context,
             IDataProtectionProvider provider,
             ILogger<FileIndexModel> logger,
-            IServiceScopeFactory scopeFactory)
+            IServiceScopeFactory scopeFactory,
+            IIndexingQueue indexingQueue)
         {
             _context = context;
             _protector = provider.CreateProtector("Backy.RemoteStorage");
             _logger = logger;
             _scopeFactory = scopeFactory;
+            _indexingQueue = indexingQueue;
         }
 
         [BindProperty]
@@ -47,6 +53,17 @@ namespace Backy.Pages
         public void OnGet()
         {
             LoadStorageOptions();
+            LoadSchedules();
+        }
+
+        private void LoadSchedules()
+        {
+            if (SelectedStorageId.HasValue)
+            {
+                Schedules = _context.IndexSchedules
+                    .Where(s => s.RemoteStorageId == SelectedStorageId.Value)
+                    .ToList();
+            }
         }
 
         public IActionResult OnPostSelectStorage()
@@ -63,27 +80,10 @@ namespace Backy.Pages
 
         public async Task<IActionResult> OnPostStartIndexingAsync(int storageId)
         {
-            _logger.LogInformation("Starting indexing for storage: {Id}", storageId);
+            _logger.LogInformation("Enqueueing indexing for storage: {Id}", storageId);
 
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-            var storage = await dbContext.RemoteStorages.FindAsync(storageId);
-            if (storage == null)
-            {
-                _logger.LogWarning("Storage not found: {Id}", storageId);
-                return NotFound();
-            }
-
-            if (!storage.IsIndexing)
-            {
-                storage.IsIndexing = true;
-                dbContext.RemoteStorages.Update(storage);
-                await dbContext.SaveChangesAsync();
-
-                // Start the indexing in a background task with a new scope
-                _ = Task.Run(() => IndexStorageAsync(storage.Id), cancellationToken: CancellationToken.None);
-            }
+            // Enqueue the indexing request
+            _indexingQueue.EnqueueIndexing(storageId);
 
             return RedirectToPage();
         }
@@ -116,92 +116,6 @@ namespace Backy.Pages
             BackupCount = files.Count(f => f.BackupExists);
             BackupPercentage = TotalFiles > 0 ? Math.Round((double)BackupCount / TotalFiles * 100, 2) : 0;
         }
-
-        private async Task IndexStorageAsync(int storageId)
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var storage = await context.RemoteStorages.FindAsync(storageId);
-            if (storage == null)
-            {
-                _logger.LogWarning("Storage not found during indexing: {Id}", storageId);
-                return;
-            }
-
-            storage.IsIndexing = true;
-            context.RemoteStorages.Update(storage);
-            await context.SaveChangesAsync();
-
-            try
-            {
-                using var client = CreateSftpClient(storage);
-                _logger.LogInformation("Connecting to storage: {Name} at {Host}:{Port}", storage.Name, storage.Host, storage.Port);
-                client.Connect();
-
-                _logger.LogInformation("Connected to storage: {Name}", storage.Name);
-
-                var files = new List<FileEntry>();
-
-                _logger.LogInformation("Traversing remote directory: {Path}", storage.RemotePath);
-                await TraverseRemoteDirectory(client, storage.RemotePath, files, storage.Id);
-
-                _logger.LogInformation("Found {FileCount} files in storage: {Name}", files.Count, storage.Name);
-
-                // Update the database
-                foreach (var file in files)
-                {
-                    var existingFile = await context.Files.FirstOrDefaultAsync(f => f.RemoteStorageId == storage.Id && f.FullPath == file.FullPath);
-                    if (existingFile == null)
-                    {
-                        _logger.LogInformation("Adding new file: {FullPath}", file.FullPath);
-                        context.Files.Add(file);
-                    }
-                    else
-                    {
-                        _logger.LogInformation("Updating existing file: {FullPath}", file.FullPath);
-                        existingFile.Size = file.Size;
-                        existingFile.LastModified = file.LastModified;
-                        existingFile.IsDeleted = false;
-                        context.Files.Update(existingFile);
-                    }
-                }
-
-                // Mark files that are no longer present as deleted
-                var existingFiles = await context.Files.Where(f => f.RemoteStorageId == storage.Id).ToListAsync();
-                foreach (var existingFile in existingFiles)
-                {
-                    if (!files.Any(f => f.FullPath == existingFile.FullPath))
-                    {
-                        _logger.LogInformation("Marking file as deleted: {FullPath}", existingFile.FullPath);
-                        existingFile.IsDeleted = true;
-                        context.Files.Update(existingFile);
-                    }
-                }
-
-                await context.SaveChangesAsync();
-
-                client.Disconnect();
-                _logger.LogInformation("Successfully indexed storage: {Name}", storage.Name);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error indexing storage: {Name}", storage.Name);
-            }
-            finally
-            {
-                using var scopeUpdate = _scopeFactory.CreateScope();
-                var dbContextUpdate = scopeUpdate.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-                var storageToUpdate = await dbContextUpdate.RemoteStorages.FindAsync(storageId);
-                if (storageToUpdate != null)
-                {
-                    storageToUpdate.IsIndexing = false;
-                    dbContextUpdate.RemoteStorages.Update(storageToUpdate);
-                    await dbContextUpdate.SaveChangesAsync();
-                }
-            }
-        }
-
 
         private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, List<FileEntry> files, int storageId)
         {
@@ -238,14 +152,7 @@ namespace Backy.Pages
             if (storage == null)
             {
                 _logger.LogWarning("Storage not found: {Id}", storageId);
-                var emptyModel = new FileExplorerModel
-                {
-                    StorageId = 0,
-                    CurrentPath = string.Empty,
-                    Files = new List<FileEntry>(),
-                    Directories = new List<string>()
-                };
-                return Partial("_FileExplorerPartial", emptyModel);
+                return NotFound();
             }
 
             var currentPath = path ?? storage.RemotePath;
@@ -259,6 +166,7 @@ namespace Backy.Pages
                 .Select(f => System.IO.Path.GetDirectoryName(f.FullPath))
                 .Where(d => d != null && d != currentPath)
                 .Distinct()
+                .Select(d => d!)
                 .ToList();
 
             var filesInCurrentDir = files
@@ -273,38 +181,11 @@ namespace Backy.Pages
                 Directories = directories
             };
 
-            return Partial("_FileExplorerPartial", model);
-        }
-
-
-        private SftpClient CreateSftpClient(RemoteStorage storage)
-        {
-            if (storage.AuthenticationMethod == "Password")
+            return new PartialViewResult
             {
-                return new SftpClient(storage.Host, storage.Port, storage.Username, Decrypt(storage.Password));
-            }
-            else
-            {
-                using var keyStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Decrypt(storage.SSHKey)));
-                var keyFile = new PrivateKeyFile(keyStream);
-                var keyFiles = new[] { keyFile };
-                var authMethod = new PrivateKeyAuthenticationMethod(storage.Username, keyFiles);
-                var connectionInfo = new Renci.SshNet.ConnectionInfo(storage.Host, storage.Port, storage.Username, authMethod);
-                return new SftpClient(connectionInfo);
-            }
+                ViewName = "_FileExplorerPartial",
+                ViewData = new ViewDataDictionary<FileExplorerModel>(ViewData, model)
+            };
         }
-
-        private string Decrypt(string? input)
-        {
-            return input != null ? _protector.Unprotect(input) : string.Empty;
-        }
-    }
-
-    public class FileExplorerModel
-    {
-        public int StorageId { get; set; }
-        public string CurrentPath { get; set; } = string.Empty;
-        public List<FileEntry> Files { get; set; } = new List<FileEntry>();
-        public List<string> Directories { get; set; } = new List<string>();
     }
 }

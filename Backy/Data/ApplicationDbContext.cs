@@ -6,6 +6,7 @@ namespace Backy.Data
     public class ApplicationDbContext : DbContext
     {
         public DbSet<RemoteStorage> RemoteStorages { get; set; }
+        public DbSet<IndexSchedule> IndexSchedules { get; set; }
         public DbSet<FileEntry> Files { get; set; }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)

@@ -1,9 +1,11 @@
 using Backy.Data;
 using Backy.Models;
-using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.DataProtection;
 using Renci.SshNet;
+using System.Threading.Tasks;
 
 namespace Backy.Services
 {
@@ -12,14 +14,42 @@ namespace Backy.Services
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IDataProtector _protector;
         private readonly ILogger<FileIndexingService> _logger;
+        private readonly IIndexingQueue _indexingQueue;
         private readonly TimeSpan _indexingInterval = TimeSpan.FromHours(6); // Adjust as needed
 
-        public FileIndexingService(IServiceScopeFactory scopeFactory, IDataProtectionProvider provider, ILogger<FileIndexingService> logger)
+        public FileIndexingService(
+            IServiceScopeFactory scopeFactory,
+            IDataProtectionProvider provider,
+            ILogger<FileIndexingService> logger,
+            IIndexingQueue indexingQueue)
         {
             _scopeFactory = scopeFactory;
             _protector = provider.CreateProtector("Backy.RemoteStorage");
             _logger = logger;
+            _indexingQueue = indexingQueue;
         }
+
+        private async Task CheckScheduledIndexingAsync(CancellationToken cancellationToken)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var now = DateTime.UtcNow;
+            int nowDayOfWeek = (int)now.DayOfWeek;
+            int nowMinutes = now.Hour * 60 + now.Minute;
+
+            var schedules = await context.IndexSchedules
+                .Include(s => s.RemoteStorage)
+                .Where(s => s.DayOfWeek == nowDayOfWeek && s.TimeOfDayMinutes == nowMinutes)
+                .ToListAsync(cancellationToken);
+
+            foreach (var schedule in schedules)
+            {
+                _logger.LogInformation("Scheduled indexing for storage: {Id}", schedule.RemoteStorageId);
+                _indexingQueue.EnqueueIndexing(schedule.RemoteStorageId);
+            }
+        }
+
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -27,37 +57,83 @@ namespace Backy.Services
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                await IndexAllStoragesAsync(stoppingToken);
-                await Task.Delay(_indexingInterval, stoppingToken);
+                // Check for scheduled indexing every minute
+                await CheckScheduledIndexingAsync(stoppingToken);
+
+                _logger.LogInformation("Waiting for indexing signals or periodic interval.");
+
+                var delayTask = Task.Delay(_indexingInterval, stoppingToken);
+                var dequeueTask = _indexingQueue.DequeueAsync(stoppingToken);
+
+                var completedTask = await Task.WhenAny(delayTask, dequeueTask);
+
+                if (completedTask == dequeueTask)
+                {
+                    var storageId = await dequeueTask;
+                    _logger.LogInformation("Processing indexing for storage: {Id}", storageId);
+                    try
+                    {
+                        await IndexStorageAsync(storageId, stoppingToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error during indexing for storage: {Id}", storageId);
+                    }
+                }
+                else
+                {
+                    // Periodic indexing
+                    _logger.LogInformation("Starting periodic indexing of all enabled storages.");
+                    try
+                    {
+                        await IndexAllStoragesAsync(stoppingToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error during periodic indexing.");
+                    }
+                }
             }
+
+            _logger.LogInformation("FileIndexingService is stopping.");
         }
 
         private async Task IndexAllStoragesAsync(CancellationToken cancellationToken)
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var storages = await context.RemoteStorages.Where(s => s.IsEnabled && !s.IsIndexing).ToListAsync(cancellationToken);
+            var storages = await context.RemoteStorages
+                .Where(s => s.IsEnabled && !s.IsIndexing)
+                .ToListAsync(cancellationToken);
 
             foreach (var storage in storages)
             {
-                _ = Task.Run(() => IndexStorageAsync(storage.Id), cancellationToken);
+                _logger.LogInformation("Enqueueing periodic indexing for storage: {Id}", storage.Id);
+                _indexingQueue.EnqueueIndexing(storage.Id);
             }
         }
 
-        private async Task IndexStorageAsync(int storageId)
+        private async Task IndexStorageAsync(int storageId, CancellationToken cancellationToken)
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var storage = await context.RemoteStorages.FindAsync(storageId);
+            var storage = await context.RemoteStorages.FindAsync(new object[] { storageId }, cancellationToken);
             if (storage == null)
             {
                 _logger.LogWarning("Storage not found during indexing: {Id}", storageId);
                 return;
             }
 
+            // Prevent multiple indexing operations on the same storage
+            if (storage.IsIndexing)
+            {
+                _logger.LogInformation("Storage {Id} is already being indexed.", storageId);
+                return;
+            }
+
             storage.IsIndexing = true;
             context.RemoteStorages.Update(storage);
-            await context.SaveChangesAsync();
+            await context.SaveChangesAsync(cancellationToken);
 
             try
             {
@@ -70,14 +146,15 @@ namespace Backy.Services
                 var files = new List<FileEntry>();
 
                 _logger.LogInformation("Traversing remote directory: {Path}", storage.RemotePath);
-                await TraverseRemoteDirectory(client, storage.RemotePath, files, storage.Id);
+                await TraverseRemoteDirectory(client, storage.RemotePath, files, storage.Id, cancellationToken);
 
                 _logger.LogInformation("Found {FileCount} files in storage: {Name}", files.Count, storage.Name);
 
                 // Update the database
                 foreach (var file in files)
                 {
-                    var existingFile = await context.Files.FirstOrDefaultAsync(f => f.RemoteStorageId == storage.Id && f.FullPath == file.FullPath);
+                    var existingFile = await context.Files
+                        .FirstOrDefaultAsync(f => f.RemoteStorageId == storage.Id && f.FullPath == file.FullPath, cancellationToken);
                     if (existingFile == null)
                     {
                         _logger.LogInformation("Adding new file: {FullPath}", file.FullPath);
@@ -94,7 +171,9 @@ namespace Backy.Services
                 }
 
                 // Mark files that are no longer present as deleted
-                var existingFiles = await context.Files.Where(f => f.RemoteStorageId == storage.Id).ToListAsync();
+                var existingFiles = await context.Files
+                    .Where(f => f.RemoteStorageId == storage.Id)
+                    .ToListAsync(cancellationToken);
                 foreach (var existingFile in existingFiles)
                 {
                     if (!files.Any(f => f.FullPath == existingFile.FullPath))
@@ -105,7 +184,7 @@ namespace Backy.Services
                     }
                 }
 
-                await context.SaveChangesAsync();
+                await context.SaveChangesAsync(cancellationToken);
 
                 client.Disconnect();
                 _logger.LogInformation("Successfully indexed storage: {Name}", storage.Name);
@@ -118,11 +197,11 @@ namespace Backy.Services
             {
                 storage.IsIndexing = false;
                 context.RemoteStorages.Update(storage);
-                await context.SaveChangesAsync();
+                await context.SaveChangesAsync(cancellationToken);
             }
         }
 
-        private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, List<FileEntry> files, int storageId)
+        private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, List<FileEntry> files, int storageId, CancellationToken cancellationToken)
         {
             var items = client.ListDirectory(remotePath);
             foreach (var item in items)
@@ -134,7 +213,7 @@ namespace Backy.Services
                 if (item.IsDirectory)
                 {
                     _logger.LogInformation("Traversing directory: {FullPath}", fullPath);
-                    await TraverseRemoteDirectory(client, fullPath, files, storageId);
+                    await TraverseRemoteDirectory(client, fullPath, files, storageId, cancellationToken);
                 }
                 else if (item.IsRegularFile)
                 {
@@ -147,6 +226,13 @@ namespace Backy.Services
                         Size = item.Attributes.Size,
                         LastModified = item.LastWriteTime
                     });
+                }
+
+                // Respect cancellation
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogInformation("Indexing canceled for storage: {Id}", storageId);
+                    break;
                 }
             }
         }
