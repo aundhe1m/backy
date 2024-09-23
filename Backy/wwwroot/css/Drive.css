@@ -164,3 +164,24 @@ button:focus {
     white-space: pre-wrap;
     /* Allows wrapping */
 }
+
+.storage-card .btn-transparent:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.storage-card .btn-transparent:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.storage-card .card-header {
+    padding: 0.5rem 1rem;
+}
+
+.storage-card .card-body {
+    padding: 0.5rem 1rem;
+}
+
+.storage-card .table-responsive {
+    margin-top: 1rem;
+}

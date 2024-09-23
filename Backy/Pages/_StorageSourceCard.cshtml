@@ -1,0 +1,176 @@
+@model Backy.Pages.RemoteScanModel.StorageSourceViewModel
+
+@{
+    var storage = Model.RemoteStorage;
+    var usedPercentage = Model.BackupPercentage;
+    var headerBackgroundColor = storage.Status == "Online" ? "#90ee90" : "#d3d3d3"; // Green if online, gray if offline
+}
+
+<div class="card storage-card mb-3">
+    <!-- Card Header -->
+    <div class="card-header d-flex justify-content-between align-items-center"
+        style="background-color:@headerBackgroundColor; color:black;">
+        <div class="d-flex align-items-center">
+            <!-- Expand/Collapse button -->
+            <button class="btn btn-link p-0 me-2 chevron-button" type="button" data-bs-toggle="collapse"
+                data-bs-target="#storageDetails-@storage.Id" aria-expanded="false"
+                aria-controls="storageDetails-@storage.Id">
+                <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon" style="height: 24px;">
+            </button>
+            <!-- Storage Icon -->
+            <img src="/icons/hdd-network.svg" alt="Storage Icon" style="height: 24px; margin-right: 8px;" />
+            <span>@storage.Name</span>
+        </div>
+        <div>
+            <!-- Progress Bar -->
+            <div>
+                <span>@Model.BackupPercentage% Backup</span>
+            </div>
+            <div class="progress progress-with-border" style="height: 4px">
+                <div class="progress-bar" role="progressbar" style="width: @usedPercentage%"
+                    aria-valuenow="@usedPercentage" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+        </div>
+        <!-- Buttons -->
+        <div class="btn-group">
+            <!-- Enable/Disable Button -->
+            @if (storage.IsEnabled)
+            {
+                <button type="button" class="btn btn-transparent" onclick="toggleEnable('@storage.Id')">
+                    <img src="/icons/pause-circle.svg" alt="Disable" style="height: 24px;" data-bs-toggle="tooltip"
+                        title="Disable">
+                </button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-transparent" onclick="toggleEnable('@storage.Id')">
+                    <img src="/icons/play.svg" alt="Enable" style="height: 24px;" data-bs-toggle="tooltip" title="Enable">
+                </button>
+            }
+            <!-- Start Indexing -->
+            <button type="button" class="btn btn-transparent" onclick="startIndexing('@storage.Id')">
+                <img src="/icons/arrow-clockwise.svg" alt="Start Indexing" style="height: 24px;"
+                    data-bs-toggle="tooltip" title="Start Indexing">
+            </button>
+            <!-- Open File Explorer -->
+            <button type="button" class="btn btn-transparent" onclick="openFileExplorer('@storage.Id')">
+                <img src="/icons/layout-text-window-reverse.svg" alt="Open File Explorer" style="height: 24px;"
+                    data-bs-toggle="tooltip" title="Open File Explorer">
+            </button>
+            <!-- Edit -->
+            <button type="button" class="btn btn-transparent" onclick="openEditModal('@storage.Id')">
+                <img src="/icons/pencil-square.svg" alt="Edit" style="height: 24px;" data-bs-toggle="tooltip"
+                    title="Edit">
+            </button>
+            <!-- Delete -->
+            <form method="post" asp-page-handler="Delete" asp-route-id="@storage.Id" style="display:inline;">
+                <button type="submit" class="btn btn-transparent-warning"
+                    onclick="return confirm('Are you sure you want to delete this storage?');">
+                    <img src="/icons/trash.svg" alt="Delete" style="height: 24px;" data-bs-toggle="tooltip"
+                        title="Delete">
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Collapsible Details -->
+    <div class="collapse" id="storageDetails-@storage.Id">
+        <div class="card-body">
+            <h5>File and Backup Info</h5>
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <tbody>
+                        <tr>
+                            <th>Total Files</th>
+                            <td>@Model.TotalFiles</td>
+                        </tr>
+                        <tr>
+                            <th>Files Backed Up</th>
+                            <td>@Model.BackupCount</td>
+                        </tr>
+                        <tr>
+                            <th>Total Size</th>
+                            @* <td>@formatBytes(Model.TotalSize)</td> *@
+                        </tr>
+                        <tr>
+                            <th>Backed Up Size</th>
+                            @* <td>@formatBytes(Model.TotalBackupSize)</td> *@
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <h5>Connection Info</h5>
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <tbody>
+                        <tr>
+                            <th>Hostname/IP</th>
+                            <td>@storage.Host</td>
+                        </tr>
+                        <tr>
+                            <th>Port</th>
+                            <td>@storage.Port</td>
+                        </tr>
+                        <tr>
+                            <th>Status</th>
+                            <td>@storage.Status</td>
+                        </tr>
+                        <tr>
+                            <th>Last Checked</th>
+                            <td>@storage.LastChecked?.ToString("g")</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function formatSize(sizeInBytes) {
+            if (sizeInBytes === null || sizeInBytes === 0) return 'Unknown size';
+
+            let size = sizeInBytes;
+            const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let suffixIndex = 0;
+
+            while (size >= 1024 && suffixIndex < suffixes.length - 1) {
+                size /= 1024;
+                suffixIndex++;
+            }
+
+            return size.toFixed(2) + ' ' + suffixes[suffixIndex];
+        }
+
+        function toggleEnable(id) {
+            $.ajax({
+                url: '?handler=ToggleEnable',
+                type: 'POST',
+                data: { id: id },
+                headers: { 'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val() },
+                success: function () {
+                    location.reload();
+                }
+            });
+        }
+
+        function startIndexing(id) {
+            $.ajax({
+                url: '?handler=StartIndexing',
+                type: 'POST',
+                data: { id: id },
+                headers: { 'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val() },
+                success: function () {
+                    alert('Indexing started.');
+                }
+            });
+        }
+
+        function openFileExplorer(storageId) {
+            // Implement file explorer opening logic here
+            // You can reuse the file explorer code from FileIndex.cshtml
+            openFileExplorer(storageId);
+        }
+    </script>
+}
