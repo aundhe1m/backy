@@ -66,7 +66,9 @@ namespace Backy.Services
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error connecting to {Name}", storage.Name);
+                // Expanded the logs to include more connection details
+                logger.LogError(ex, "Error connecting to storage. Id: {Id}, Name: {Name}, Host: {Host}, Port: {Port}, Username: {Username}, RemotePath: {RemotePath}",
+                    storage.Id, storage.Name, storage.Host, storage.Port, storage.Username, storage.RemotePath);
             }
 
             storage.Status = isOnline ? "Online" : "Offline";

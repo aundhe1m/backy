@@ -38,7 +38,7 @@ namespace Backy.Pages
             }
         }
 
-        public async Task<JsonResult> OnGetGetStorageAsync(int id)
+        public async Task<JsonResult> OnGetGetStorageAsync(Guid id)
         {
             var storage = await _context.RemoteStorages.FindAsync(id);
             if (storage == null)
@@ -82,9 +82,12 @@ namespace Backy.Pages
                 foreach (var key in ModelState.Keys)
                 {
                     var state = ModelState[key];
-                    foreach (var error in state.Errors)
+                    if (state?.Errors != null)
                     {
-                        _logger.LogWarning("ModelState Error - Key: {Key}, Error: {ErrorMessage}", key, error.ErrorMessage);
+                        foreach (var error in state.Errors)
+                        {
+                            _logger.LogWarning("ModelState Error - Key: {Key}, Error: {ErrorMessage}", key, error.ErrorMessage);
+                        }
                     }
                 }
 
@@ -126,9 +129,6 @@ namespace Backy.Pages
                 // Return the page with ModelState errors
                 return Page();
             }
-
-            // Set Id to 0 to ensure EF Core treats it as a new entity
-            RemoteStorage.Id = 0;
 
             // Encrypt sensitive data
             if (RemoteStorage.AuthenticationMethod == "Password" && !string.IsNullOrEmpty(RemoteStorage.Password))
@@ -175,9 +175,12 @@ namespace Backy.Pages
                 foreach (var key in ModelState.Keys)
                 {
                     var state = ModelState[key];
-                    foreach (var error in state.Errors)
+                    if (state?.Errors != null)
                     {
-                        _logger.LogWarning("ModelState Error - Key: {Key}, Error: {ErrorMessage}", key, error.ErrorMessage);
+                        foreach (var error in state.Errors)
+                        {
+                            _logger.LogWarning("ModelState Error - Key: {Key}, Error: {ErrorMessage}", key, error.ErrorMessage);
+                        }
                     }
                 }
 
@@ -292,7 +295,7 @@ namespace Backy.Pages
             return RedirectToPage();
         }
 
-        public async Task<IActionResult> OnPostDeleteAsync(int id)
+        public async Task<IActionResult> OnPostDeleteAsync(Guid id)
         {
             _logger.LogInformation("Deleting storage: {Id}", id);
             var storage = await _context.RemoteStorages.FindAsync(id);
@@ -309,7 +312,7 @@ namespace Backy.Pages
             return RedirectToPage();
         }
 
-        public async Task<IActionResult> OnPostToggleEnableAsync(int id)
+        public async Task<IActionResult> OnPostToggleEnableAsync(Guid id)
         {
             _logger.LogInformation("Toggling enable status for storage: {Id}", id);
             var storage = await _context.RemoteStorages.FindAsync(id);
@@ -326,7 +329,7 @@ namespace Backy.Pages
             return RedirectToPage();
         }
 
-        private bool RemoteStorageExists(int id)
+        private bool RemoteStorageExists(Guid id)
         {
             return _context.RemoteStorages.Any(e => e.Id == id);
         }

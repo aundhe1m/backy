@@ -1,5 +1,12 @@
-public interface IIndexingQueue
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Backy.Services
 {
-    void EnqueueIndexing(int storageId);
-    Task<int> DequeueAsync(CancellationToken cancellationToken);
+    public interface IIndexingQueue
+    {
+        void EnqueueIndexing(Guid storageId);
+        Task<Guid> DequeueAsync(CancellationToken cancellationToken);
+    }
 }

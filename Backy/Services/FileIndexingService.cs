@@ -5,6 +5,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using Renci.SshNet;
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Backy.Services
@@ -46,10 +48,9 @@ namespace Backy.Services
             foreach (var schedule in schedules)
             {
                 _logger.LogInformation("Scheduled indexing for storage: {Id}", schedule.RemoteStorageId);
-                _indexingQueue.EnqueueIndexing(schedule.RemoteStorageId);
+                _indexingQueue.EnqueueIndexing(schedule.RemoteStorageId); // Guid
             }
         }
-
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -69,7 +70,7 @@ namespace Backy.Services
 
                 if (completedTask == dequeueTask)
                 {
-                    var storageId = await dequeueTask;
+                    var storageId = await dequeueTask; // Guid
                     _logger.LogInformation("Processing indexing for storage: {Id}", storageId);
                     try
                     {
@@ -109,11 +110,11 @@ namespace Backy.Services
             foreach (var storage in storages)
             {
                 _logger.LogInformation("Enqueueing periodic indexing for storage: {Id}", storage.Id);
-                _indexingQueue.EnqueueIndexing(storage.Id);
+                _indexingQueue.EnqueueIndexing(storage.Id); // Guid
             }
         }
 
-        private async Task IndexStorageAsync(int storageId, CancellationToken cancellationToken)
+        private async Task IndexStorageAsync(Guid storageId, CancellationToken cancellationToken) // Changed to Guid
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -146,7 +147,7 @@ namespace Backy.Services
                 var files = new List<FileEntry>();
 
                 _logger.LogInformation("Traversing remote directory: {Path}", storage.RemotePath);
-                await TraverseRemoteDirectory(client, storage.RemotePath, files, storage.Id, cancellationToken);
+                await TraverseRemoteDirectory(client, storage.RemotePath, files, storage.Id, cancellationToken); // Guid
 
                 _logger.LogInformation("Found {FileCount} files in storage: {Name}", files.Count, storage.Name);
 
@@ -201,7 +202,7 @@ namespace Backy.Services
             }
         }
 
-        private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, List<FileEntry> files, int storageId, CancellationToken cancellationToken)
+        private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, List<FileEntry> files, Guid storageId, CancellationToken cancellationToken) // Changed to Guid
         {
             var items = client.ListDirectory(remotePath);
             foreach (var item in items)

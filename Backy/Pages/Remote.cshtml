@@ -29,7 +29,8 @@
                 <td>@storage.Status</td>
                 <td>@storage.LastChecked?.ToString("g")</td>
                 <td>
-                    <button type="button" class="btn btn-sm btn-primary" onclick="openEditModal(@storage.Id)">Edit</button>
+                    <button type="button" class="btn btn-sm btn-primary"
+                        onclick="openEditModal('@storage.Id')">Edit</button>
                     <form method="post" asp-page-handler="Delete" asp-route-id="@storage.Id" style="display:inline;">
                         <button type="submit" class="btn btn-sm btn-danger"
                             onclick="return confirm('Are you sure you want to delete this storage?');">Delete</button>
@@ -142,8 +143,8 @@
             $('#storageModalLabel').text('Add New Storage Source');
             $('#modalSubmitButton').text('Add Storage');
             $('#storageForm').attr('action', '?handler=Add');
-            $('#storageId').val('0'); // Set Id to 0 for Add
-            $('#storageModal').modal('show');
+        @* $('#storageId').val(''); *@
+                $('#storageModal').modal('show');
         }
 
         function openEditModal(id) {
@@ -161,8 +162,8 @@
                     $('#storageModalLabel').text('Edit Storage Source');
                     $('#modalSubmitButton').text('Save Changes');
                     $('#storageForm').attr('action', '?handler=Edit');
-                    $('#storageId').val(data.id);
-                    $('#storageName').val(data.name);
+        @* $('#storageId').val(data.id); *@
+                        $('#storageName').val(data.name);
                     $('#storageHost').val(data.host);
                     $('#storagePort').val(data.port);
                     $('#storageUsername').val(data.username);
@@ -190,8 +191,8 @@
 
         function clearModalFields() {
             $('#storageForm')[0].reset();
-            $('#storageId').val('0');
-            $('#storagePassword').val('');
+        @* $('#storageId').val(''); *@
+                $('#storagePassword').val('');
             $('#storageSSHKey').val('');
             $('.alert-danger').remove();
             toggleAuthFields();

@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using Renci.SshNet;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using System.Text.Json;
 
 namespace Backy.Pages
 {
@@ -36,7 +37,7 @@ namespace Backy.Pages
         }
 
         [BindProperty]
-        public int? SelectedStorageId { get; set; }
+        public Guid? SelectedStorageId { get; set; }
 
         public RemoteStorage? SelectedStorage { get; set; }
 
@@ -54,6 +55,11 @@ namespace Backy.Pages
         {
             LoadStorageOptions();
             LoadSchedules();
+
+            if (SelectedStorageId.HasValue)
+            {
+                LoadStorageData(SelectedStorageId.Value);
+            }
         }
 
         private void LoadSchedules()
@@ -78,7 +84,7 @@ namespace Backy.Pages
             return Page();
         }
 
-        public async Task<IActionResult> OnPostStartIndexingAsync(int storageId)
+        public IActionResult OnPostStartIndexing(Guid storageId)
         {
             _logger.LogInformation("Enqueueing indexing for storage: {Id}", storageId);
 
@@ -87,6 +93,7 @@ namespace Backy.Pages
 
             return RedirectToPage();
         }
+
 
         private void LoadStorageOptions()
         {
@@ -97,7 +104,7 @@ namespace Backy.Pages
             }).ToList();
         }
 
-        private void LoadStorageData(int storageId)
+        private void LoadStorageData(Guid storageId)
         {
             SelectedStorage = _context.RemoteStorages.Find(storageId);
             if (SelectedStorage == null)
@@ -110,41 +117,14 @@ namespace Backy.Pages
 
             var files = _context.Files.Where(f => f.RemoteStorageId == storageId).ToList();
 
-            TotalSize = files.Sum(f => f.Size) / (1024 * 1024); // Convert to MB
-            TotalBackupSize = files.Where(f => f.BackupExists).Sum(f => f.Size) / (1024 * 1024); // MB
+            TotalSize = files.Sum(f => f.Size); // In bytes
+            TotalBackupSize = files.Where(f => f.BackupExists).Sum(f => f.Size); // In bytes
             TotalFiles = files.Count;
             BackupCount = files.Count(f => f.BackupExists);
             BackupPercentage = TotalFiles > 0 ? Math.Round((double)BackupCount / TotalFiles * 100, 2) : 0;
         }
 
-        private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, List<FileEntry> files, int storageId)
-        {
-            var items = client.ListDirectory(remotePath);
-            foreach (var item in items)
-            {
-                if (item.Name == "." || item.Name == "..")
-                    continue;
-
-                var fullPath = item.FullName;
-                if (item.IsDirectory)
-                {
-                    await TraverseRemoteDirectory(client, fullPath, files, storageId);
-                }
-                else if (item.IsRegularFile)
-                {
-                    files.Add(new FileEntry
-                    {
-                        RemoteStorageId = storageId,
-                        FileName = item.Name,
-                        FullPath = fullPath,
-                        Size = item.Attributes.Size,
-                        LastModified = item.LastWriteTime
-                    });
-                }
-            }
-        }
-
-        public IActionResult OnGetGetFileExplorer(int storageId, string? path)
+        public JsonResult OnGetGetFileExplorer(Guid storageId, string? path, string? search)
         {
             _logger.LogInformation("GetFileExplorer called with storageId={StorageId}, path={Path}", storageId, path);
 
@@ -152,14 +132,20 @@ namespace Backy.Pages
             if (storage == null)
             {
                 _logger.LogWarning("Storage not found: {Id}", storageId);
-                return NotFound();
+                return new JsonResult(new { success = false, message = "Storage not found" });
             }
 
             var currentPath = path ?? storage.RemotePath;
 
-            var files = _context.Files
-                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted)
-                .ToList();
+            var filesQuery = _context.Files
+                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted);
+
+            if (!string.IsNullOrEmpty(search))
+            {
+                filesQuery = filesQuery.Where(f => f.FileName.Contains(search));
+            }
+
+            var files = filesQuery.ToList();
 
             var directories = files
                 .Where(f => f.FullPath != currentPath && f.FullPath.StartsWith(currentPath))
@@ -173,19 +159,52 @@ namespace Backy.Pages
                 .Where(f => System.IO.Path.GetDirectoryName(f.FullPath) == currentPath)
                 .ToList();
 
-            var model = new FileExplorerModel
+            // Build directory tree for the left navigation
+            var directoryTree = BuildDirectoryTree(files, storage.RemotePath);
+
+            var model = new
             {
-                StorageId = storage.Id,
-                CurrentPath = currentPath,
-                Files = filesInCurrentDir,
-                Directories = directories
+                success = true,
+                storageId = storage.Id,
+                currentPath = currentPath,
+                files = filesInCurrentDir.Select(f => new
+                {
+                    name = f.FileName,
+                    size = f.Size,
+                    lastModified = f.LastModified,
+                    backupExists = f.BackupExists
+                }),
+                directories = directories.Select(d => new
+                {
+                    name = System.IO.Path.GetFileName(d),
+                    fullPath = d
+                }),
+                directoryTree = directoryTree
             };
 
-            return new PartialViewResult
+            return new JsonResult(model);
+        }
+
+        private List<dynamic> BuildDirectoryTree(List<FileEntry> files, string rootPath)
+        {
+            var directories = files
+                .Select(f => System.IO.Path.GetDirectoryName(f.FullPath))
+                .Where(d => d != null)
+                .Distinct()
+                .ToList();
+
+            var tree = new List<dynamic>();
+
+            foreach (var dir in directories)
             {
-                ViewName = "_FileExplorerPartial",
-                ViewData = new ViewDataDictionary<FileExplorerModel>(ViewData, model)
-            };
+                tree.Add(new
+                {
+                    name = dir!.Replace(rootPath, ""),
+                    fullPath = dir
+                });
+            }
+
+            return tree;
         }
     }
 }

@@ -4,7 +4,8 @@ namespace Backy.Models
 {
     public class RemoteStorage
     {
-        public int Id { get; set; }
+        [Key]
+        public Guid Id { get; set; } = Guid.NewGuid();
 
         [Required(ErrorMessage = "Name is required.")]
         public string Name { get; set; } = string.Empty;
