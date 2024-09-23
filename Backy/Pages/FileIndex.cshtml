@@ -53,11 +53,10 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">File Explorer - @Model.SelectedStorage.Name</h5>
-                <div class="input-group" style="width: 50%;">
+                <div class="input-group" style="width: 50%; position: relative;">
                     <input type="text" class="form-control" placeholder="Search..." id="searchInput">
-                    <div class="input-group-append">
-                        <button class="btn btn-outline-secondary" type="button" onclick="searchFiles()">Search</button>
-                    </div>
+                    <!-- Suggestions dropdown -->
+                    <div id="searchSuggestions" class="dropdown-menu" style="width: 100%;"></div>
                 </div>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close"
                     onclick="closeFileExplorer()">
@@ -92,6 +91,23 @@
 
             document.getElementById('totalSize').textContent = formatBytes(totalSizeBytes);
             document.getElementById('backedUpSize').textContent = formatBytes(backedUpSizeBytes);
+
+            // Event listener for search input
+            $('#searchInput').keyup(function () {
+                const query = $(this).val();
+                if (query.length >= 3) {
+                    searchFiles(query);
+                } else {
+                    $('#searchSuggestions').hide();
+                }
+            });
+        });
+
+        // Close suggestions when clicking outside
+        $(document).click(function (event) {
+            if (!$(event.target).closest('#searchInput').length && !$(event.target).closest('#searchSuggestions').length) {
+                $('#searchSuggestions').hide();
+            }
         });
 
         function openFileExplorer() {
@@ -103,7 +119,7 @@
             $('#fileExplorerModal').modal('hide');
         }
 
-        function fetchFileExplorerData(storageId, path, searchQuery = '') {
+        function fetchFileExplorerData(storageId, path, searchQuery = '', highlightFile = '') {
             console.log('fetchFileExplorerData called with path:', path);
             $.ajax({
                 url: '@Url.Page("FileIndex", "GetFileExplorer")',
@@ -111,7 +127,7 @@
                 method: 'GET',
                 success: function (data) {
                     if (data.success) {
-                        renderFileExplorer(data);
+                        renderFileExplorer(data, highlightFile);
                     } else {
                         alert('Error: ' + data.message);
                     }
@@ -122,9 +138,7 @@
             });
         }
 
-
-
-        function renderFileExplorer(data) {
+        function renderFileExplorer(data, highlightFile = '') {
             const contentDiv = $('#fileExplorerContent');
             contentDiv.empty();
 
@@ -229,6 +243,11 @@
                 row.append('<td>' + formatBytes(file.size) + '</td>');
                 const backupStatus = file.backupExists ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-warning">No</span>';
                 row.append('<td>' + backupStatus + '</td>');
+
+                if (file.name === highlightFile) {
+                    row.addClass('highlighted-file');
+                }
+
                 tableBody.append(row);
             });
 
@@ -238,12 +257,67 @@
             container.append(leftCol);
             container.append(rightCol);
             contentDiv.append(container);
+
+            // Scroll to highlighted file
+            if (highlightFile !== '') {
+                const highlightedRow = tableBody.find('.highlighted-file');
+                if (highlightedRow.length > 0) {
+                    highlightedRow[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
         }
 
+        function searchFiles(query) {
+            $.ajax({
+                url: '@Url.Page("FileIndex", "SearchFiles")',
+                data: { storageId: storageId, query: query },
+                method: 'GET',
+                success: function (data) {
+                    if (data.success) {
+                        renderSearchSuggestions(data.results);
+                    } else {
+                        $('#searchSuggestions').hide();
+                    }
+                },
+                error: function () {
+                    $('#searchSuggestions').hide();
+                }
+            });
+        }
 
-        function searchFiles() {
-            const query = $('#searchInput').val();
-            fetchFileExplorerData(storageId, null, query);
+        function renderSearchSuggestions(results) {
+            const suggestionsDiv = $('#searchSuggestions');
+            suggestionsDiv.empty();
+
+            if (results.length === 0) {
+                suggestionsDiv.hide();
+                return;
+            }
+
+            results.forEach(function (result) {
+                const item = $('<a class="dropdown-item" href="javascript:void(0);"></a>');
+                item.text(result.name + ' (' + result.navPath + ')');
+                item.click(function () {
+                    navigateToSearchResult(result);
+                    suggestionsDiv.hide();
+                });
+                suggestionsDiv.append(item);
+            });
+
+            suggestionsDiv.show();
+        }
+
+        function navigateToSearchResult(result) {
+            $('#searchInput').val('');
+            $('#searchSuggestions').hide();
+            if (result.type === 'Directory') {
+                // Navigate to the directory
+                fetchFileExplorerData(storageId, result.fullPath);
+            } else if (result.type === 'File') {
+                // Navigate to the directory containing the file and highlight the file
+                const directoryPath = result.fullPath.substring(0, result.fullPath.lastIndexOf('/'));
+                fetchFileExplorerData(storageId, directoryPath, '', result.name);
+            }
         }
 
         function renderDirectoryNode(node) {
@@ -284,7 +358,7 @@
 
             // Child nodes
             if (node.children && node.children.length > 0) {
-                childUl = $('<ul class="list-group"></ul>'); // Now childUl is in scope
+                childUl = $('<ul class="list-group"></ul>');
 
                 node.children.forEach(function (childNode) {
                     const childLi = renderDirectoryNode(childNode);
@@ -304,7 +378,6 @@
 
             return li;
         }
-
     </script>
 }
 }

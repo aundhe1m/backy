@@ -14,4 +14,12 @@ namespace Backy.Models
         public string FullPath { get; set; } = "";
         public List<DirectoryNode> Children { get; set; } = new List<DirectoryNode>();
     }
+
+    public class SearchResultItem
+    {
+        public string Type { get; set; } // "File" or "Directory"
+        public string Name { get; set; }
+        public string FullPath { get; set; }
+        public string NavPath { get; set; }
+    }
 }

@@ -31,3 +31,17 @@
     left: 0;
     top: 5px;
 }
+
+#searchSuggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1000;
+    display: none;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.highlighted-file {
+    background-color: yellow;
+}

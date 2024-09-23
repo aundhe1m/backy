@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Renci.SshNet;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using System.Text.Json;
+using System.Linq;
+using System.IO;
 
 namespace Backy.Pages
 {
@@ -236,6 +238,74 @@ namespace Backy.Pages
             return root;
         }
 
+        public JsonResult OnGetSearchFiles(Guid storageId, string query)
+        {
+            var storage = _context.RemoteStorages.Find(storageId);
+            if (storage == null)
+            {
+                return new JsonResult(new { success = false, message = "Storage not found" });
+            }
+
+            var remotePath = NormalizePath(storage.RemotePath);
+
+            // Normalize query for case-insensitive search
+            query = query.ToLowerInvariant();
+
+            // Search for matching files
+            var matchingFiles = _context.Files
+                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted && EF.Functions.Like(f.FileName.ToLower(), $"%{query}%"))
+                .Select(f => new
+                {
+                    f.FileName,
+                    f.FullPath
+                })
+                .AsEnumerable() // Switch to client-side evaluation
+                .Select(f => new SearchResultItem
+                {
+                    Type = "File",
+                    Name = f.FileName,
+                    FullPath = NormalizePath(f.FullPath),
+                    NavPath = GetNavPath(NormalizePath(f.FullPath), remotePath)
+                });
+
+            // Get all directories with normalized paths
+            var allDirectories = _context.Files
+                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted)
+                .Select(f => NormalizePath(Path.GetDirectoryName(f.FullPath)))
+                .Distinct()
+                .ToList();
+
+            // Filter directories on the client side
+            var matchingDirectories = allDirectories
+                .Where(d => !string.IsNullOrEmpty(d) && Path.GetFileName(d).ToLower().Contains(query))
+                .Select(d => new SearchResultItem
+                {
+                    Type = "Directory",
+                    Name = Path.GetFileName(d),
+                    FullPath = d, // Already normalized
+                    NavPath = GetNavPath(d, remotePath)
+                });
+
+            // Combine results and eliminate duplicates
+            var results = matchingFiles.Concat(matchingDirectories)
+                .GroupBy(r => new { r.Type, r.FullPath })
+                .Select(g => g.First())
+                .OrderBy(r => r.Name)
+                .Take(8)
+                .ToList();
+
+            return new JsonResult(new { success = true, results = results });
+        }
+
+
+        private string GetNavPath(string fullPath, string remotePath)
+        {
+            if (fullPath.StartsWith(remotePath))
+            {
+                return fullPath.Substring(remotePath.Length).TrimStart('/', '\\');
+            }
+            return fullPath;
+        }
 
 
         private void AddPathToTree(DirectoryNode currentNode, string[] parts, string currentFullPath)
@@ -266,7 +336,6 @@ namespace Backy.Pages
         {
             return path.Replace('\\', '/').TrimEnd('/');
         }
-
 
         private void SortDirectoryTree(DirectoryNode node)
         {
