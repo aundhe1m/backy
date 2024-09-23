@@ -1,37 +1,42 @@
+/* Remove border-left and border color from directory navigation */
 .list-group-item ul {
     margin-left: 15px;
     padding-left: 15px;
-    border-left: 1px solid #ddd;
+    border-left: none;
+    /* Removed border-left */
 }
 
-/* .list-group-item {
-    position: relative;
-} */
+/* Style links: bold text without underline */
+.list-group-item a {
+    text-decoration: none;
+    font-weight: bold;
+}
 
-/* .list-group-item>button {
-    position: absolute;
-    left: -15px;
-    top: 5px;
-} */
-
+/* Adjust padding to accommodate icons */
 .list-group-item {
     position: relative;
-    padding-left: 20px;
-    /* Adjust as needed for alignment */
+    padding-left: 30px;
+    /* Increased padding for icons */
 }
 
+/* Style the expand/collapse buttons */
 .list-group-item>button {
     position: absolute;
     left: 0;
     top: 5px;
+    background: none;
+    border: none;
+    padding: 0;
 }
 
+/* Style the spacer for alignment */
 .list-group-item>span {
     position: absolute;
     left: 0;
     top: 5px;
 }
 
+/* Style the search suggestions dropdown */
 #searchSuggestions {
     position: absolute;
     top: 100%;
@@ -40,12 +45,104 @@
     display: none;
     max-height: 200px;
     overflow-y: auto;
+    width: 100%;
 }
 
+/* Transition for chevron rotation */
+.chevron-icon {
+    transition: transform 0.3s ease;
+}
+
+.chevron-icon.rotated {
+    transform: rotate(90deg);
+}
+
+/* Transition for highlighted file */
 .table tbody tr {
     transition: background-color 1s ease;
 }
 
 .highlighted-file {
     background-color: rgba(255, 255, 0, 0.5);
+}
+
+/* Style for inactive back icon */
+.inactive-icon {
+    opacity: 0.5;
+}
+
+/* Icon styles */
+.directory-icon,
+.directory-open-icon,
+.file-table-icon,
+.directory-table-icon,
+.badge-icon,
+.back-icon,
+.search-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+/* Make the back icon bigger */
+.back-icon {
+    width: 20px;
+    /* Increased size */
+    height: 20px;
+}
+
+/* Additional styles for alignment */
+.file-table-icon,
+.directory-table-icon {
+    display: inline-block;
+}
+
+/* Adjust the search button icon */
+.input-group-append .btn img.search-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* Vertically center back button and breadcrumb */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+}
+
+/* Ensure the back button aligns with the breadcrumb items */
+.breadcrumb .btn {
+    display: flex;
+    align-items: center;
+    padding: 0;
+    margin-right: 10px;
+}
+
+/* Directory table icon */
+.directory-table-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* File table icon */
+.file-table-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* Badge icons */
+.badge-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* Ensure the search button icon is appropriately sized */
+.input-group-append .btn img.search-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* Optional: Remove border lines around right directory nav if present */
+.directory-navigation {
+    border: none;
 }

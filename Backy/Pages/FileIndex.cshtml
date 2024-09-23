@@ -55,6 +55,13 @@
                 <h5 class="modal-title">File Explorer - @Model.SelectedStorage.Name</h5>
                 <div class="input-group" style="width: 50%; position: relative;">
                     <input type="text" class="form-control" placeholder="Search..." id="searchInput">
+                    <!-- Search button with icon -->
+                    <div class="input-group-append">
+                        <button class="btn btn-outline-secondary" type="button"
+                            onclick="searchFiles($('#searchInput').val())">
+                            <img src="/icons/search.svg" alt="Search" class="search-icon">
+                        </button>
+                    </div>
                     <!-- Suggestions dropdown -->
                     <div id="searchSuggestions" class="dropdown-menu" style="width: 100%;"></div>
                 </div>
@@ -105,7 +112,7 @@
 
         // Close suggestions when clicking outside
         $(document).click(function (event) {
-            if (!$(event.target).closest('#searchInput').length && !$(event.target).closest('#searchSuggestions').length) {
+            if (!$(event.target).closest('#searchInput').length && !$(event.target).closest('#searchSuggestions').length && !$(event.target).closest('.input-group-append').length) {
                 $('#searchSuggestions').hide();
             }
         });
@@ -145,7 +152,7 @@
             const container = $('<div class="row"></div>');
 
             // Left column for directory navigation
-            const leftCol = $('<div class="col-md-3" style="max-height: 80vh; overflow-y: auto;"></div>');
+            const leftCol = $('<div class="col-md-3 directory-navigation"></div>');
             const dirNav = $('<ul class="list-group"></ul>');
 
             // Assuming directoryTree is the root node
@@ -164,12 +171,21 @@
 
             // Breadcrumb
             const breadcrumb = $('<nav aria-label="breadcrumb"></nav>');
-            const breadcrumbList = $('<ol class="breadcrumb"></ol>');
+            const breadcrumbList = $('<ol class="breadcrumb align-items-center"></ol>');
 
             const navPathSegments = data.navPath.split('/').filter(s => s.length > 0);
             const remotePath = data.remotePath;
             let cumulativeNavPath = '';
             let cumulativeFullPath = remotePath;
+
+            // Back button
+            const backButton = $('<button class="btn btn-link p-0 mr-2" id="backButton"><img src="/icons/arrow-left-circle.svg" class="back-icon" alt="Back"></button>');
+            backButton.click(function () {
+                if (!backButton.find('img').hasClass('inactive-icon')) {
+                    fetchFileExplorerData(storageId, data.parentPath);
+                }
+            });
+            breadcrumbList.append(backButton);
 
             // Root link
             const rootLi = $('<li class="breadcrumb-item"></li>');
@@ -199,15 +215,13 @@
             breadcrumb.append(breadcrumbList);
             rightCol.append(breadcrumb);
 
-            // Go back icon
-            if (data.currentPath !== data.remotePath) {
-                const goBackIcon = $('<button class="btn btn-link">&larr; Back</button>');
-                goBackIcon.click(function () {
-                    fetchFileExplorerData(storageId, data.parentPath);
-                });
-                rightCol.append(goBackIcon);
+            // Update the back icon's opacity based on current path
+            const backButtonImg = $('#backButton img');
+            if (data.currentPath === data.remotePath) {
+                backButtonImg.addClass('inactive-icon');
+            } else {
+                backButtonImg.removeClass('inactive-icon');
             }
-
 
             // File table
             const fileTable = $('<table class="table table-striped"></table>');
@@ -220,12 +234,17 @@
             data.directories.forEach(dir => {
                 const row = $('<tr></tr>');
                 const nameCell = $('<td></td>');
-                const link = $('<a href="javascript:void(0);"></a>');
-                link.text(dir.name);
+
+                // Directory icon: use folder2-open.svg if directory is currently opened
+                const isDirectoryOpen = expandedPaths.has(dir.fullPath);
+                const dirIconSrc = isDirectoryOpen ? '/icons/folder2-open.svg' : '/icons/folder.svg';
+                const dirIcon = $('<img src="' + dirIconSrc + '" class="directory-table-icon">');
+
+                const link = $('<a href="javascript:void(0);"></a>').append(dirIcon).append(' ' + dir.name);
                 link.click(function () {
                     fetchFileExplorerData(storageId, dir.fullPath);
                 });
-                nameCell.append('<i class="fa fa-folder"></i> ').append(link);
+                nameCell.append(link);
                 row.append(nameCell);
                 row.append('<td>Directory</td>');
                 row.append('<td>N/A</td>');
@@ -237,11 +256,22 @@
             data.files.forEach(file => {
                 const row = $('<tr></tr>');
                 const nameCell = $('<td></td>');
-                nameCell.append('<i class="fa fa-file"></i> ' + file.name);
+
+                // File icon
+                const fileIcon = $('<img src="/icons/file-earmark.svg" class="file-table-icon">');
+
+                nameCell.append(fileIcon).append(' ' + file.name);
                 row.append(nameCell);
                 row.append('<td>File</td>');
                 row.append('<td>' + formatBytes(file.size) + '</td>');
-                const backupStatus = file.backupExists ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-warning">No</span>';
+
+                // Backup status
+                let backupStatus;
+                if (file.backupExists) {
+                    backupStatus = '<img src="/icons/check2.svg" class="badge-icon" alt="Yes">';
+                } else {
+                    backupStatus = '<img src="/icons/x.svg" class="badge-icon" alt="No">';
+                }
                 row.append('<td>' + backupStatus + '</td>');
 
                 if (file.name === highlightFile) {
@@ -325,37 +355,41 @@
             }
         }
 
-        function renderDirectoryNode(node) {
+        function renderDirectoryNode(node, renderedPaths = new Set()) {
+            // Check for cycles
+            if (renderedPaths.has(node.fullPath)) {
+                console.warn('Cycle detected for path:', node.fullPath);
+                return $('<li class="list-group-item">Cycle detected: ' + node.name + '</li>');
+            }
+
+            // Mark the current path as rendered
+            renderedPaths.add(node.fullPath);
+
             const li = $('<li class="list-group-item"></li>');
 
-            // Declare childUl here so it's accessible in the expandButton.click handler
+            // Directory icon
+            let folderIcon;
+            if (expandedPaths.has(node.fullPath)) {
+                folderIcon = $('<img src="/icons/folder2-open.svg" class="directory-icon">');
+            } else {
+                folderIcon = $('<img src="/icons/folder.svg" class="directory-icon">');
+            }
+
+            // Declare childUl first
             let childUl;
 
             // Expand button (if the node has children)
             let expandButton;
             if (node.children && node.children.length > 0) {
-                expandButton = $('<button class="btn btn-sm btn-link">+</button>');
-                expandButton.click(function (e) {
-                    e.stopPropagation(); // Prevent the click from triggering other events
-                    if (childUl.is(':visible')) {
-                        childUl.hide();
-                        expandButton.text('+');
-                        expandedPaths.delete(node.fullPath);
-                    } else {
-                        childUl.show();
-                        expandButton.text('-');
-                        expandedPaths.add(node.fullPath);
-                    }
-                });
+                expandButton = $('<button class="btn btn-sm btn-link"><img src="/icons/chevron-right.svg" class="chevron-icon"></button>');
                 li.append(expandButton);
             } else {
                 // Add spacing for alignment if there's no expand button
                 li.append('<span style="display:inline-block; width:16px;"></span>');
             }
 
-            // Directory link
-            const link = $('<a href="javascript:void(0);"></a>');
-            link.text(' ' + node.name); // Add a space for better alignment
+            // Directory link with icon
+            const link = $('<a href="javascript:void(0);"></a>').append(folderIcon).append(' ' + node.name);
             link.click(function () {
                 fetchFileExplorerData(storageId, node.fullPath);
             });
@@ -366,7 +400,7 @@
                 childUl = $('<ul class="list-group"></ul>');
 
                 node.children.forEach(function (childNode) {
-                    const childLi = renderDirectoryNode(childNode);
+                    const childLi = renderDirectoryNode(childNode, new Set(renderedPaths)); // Pass a new copy of renderedPaths
                     childUl.append(childLi);
                 });
                 li.append(childUl);
@@ -374,10 +408,30 @@
                 // Set initial visibility based on expandedPaths
                 if (expandedPaths.has(node.fullPath)) {
                     childUl.show();
-                    if (expandButton) expandButton.text('-');
+                    if (expandButton) expandButton.find('.chevron-icon').addClass('rotated');
+                    if (folderIcon) folderIcon.attr('src', '/icons/folder2-open.svg');
                 } else {
                     childUl.hide();
-                    if (expandButton) expandButton.text('+');
+                    if (expandButton) expandButton.find('.chevron-icon').removeClass('rotated');
+                    if (folderIcon) folderIcon.attr('src', '/icons/folder.svg');
+                }
+
+                // Attach click handler after childUl is defined
+                if (expandButton) {
+                    expandButton.click(function (e) {
+                        e.stopPropagation(); // Prevent the click from triggering other events
+                        if (childUl.is(':visible')) {
+                            childUl.hide();
+                            expandButton.find('.chevron-icon').removeClass('rotated');
+                            folderIcon.attr('src', '/icons/folder.svg'); // Change to closed folder
+                            expandedPaths.delete(node.fullPath);
+                        } else {
+                            childUl.show();
+                            expandButton.find('.chevron-icon').addClass('rotated');
+                            folderIcon.attr('src', '/icons/folder2-open.svg'); // Change to open folder
+                            expandedPaths.add(node.fullPath);
+                        }
+                    });
                 }
             }
 
@@ -385,6 +439,6 @@
         }
     </script>
 }
-}
 
+}
 <link rel="stylesheet" href="/css/FileIndex.css">
