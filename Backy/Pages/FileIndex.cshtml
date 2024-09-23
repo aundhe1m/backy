@@ -263,6 +263,11 @@
                 const highlightedRow = tableBody.find('.highlighted-file');
                 if (highlightedRow.length > 0) {
                     highlightedRow[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                    // Remove the highlight after 3 seconds
+                    setTimeout(function () {
+                        highlightedRow.removeClass('highlighted-file');
+                    }, 3000); // 3000 milliseconds = 3 seconds
                 }
             }
         }

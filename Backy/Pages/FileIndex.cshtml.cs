@@ -252,13 +252,15 @@ namespace Backy.Pages
             query = query.ToLowerInvariant();
 
             // Search for matching files
-            var matchingFiles = _context.Files
+            var matchingFilesQuery = _context.Files
                 .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted && EF.Functions.Like(f.FileName.ToLower(), $"%{query}%"))
                 .Select(f => new
                 {
                     f.FileName,
                     f.FullPath
-                })
+                });
+
+            var matchingFiles = matchingFilesQuery
                 .AsEnumerable() // Switch to client-side evaluation
                 .Select(f => new SearchResultItem
                 {
@@ -268,16 +270,21 @@ namespace Backy.Pages
                     NavPath = GetNavPath(NormalizePath(f.FullPath), remotePath)
                 });
 
-            // Get all directories with normalized paths
-            var allDirectories = _context.Files
+            // Get all directories
+            var allDirectoriesQuery = _context.Files
                 .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted)
-                .Select(f => NormalizePath(Path.GetDirectoryName(f.FullPath)))
+                .Select(f => Path.GetDirectoryName(f.FullPath));
+
+            var allDirectories = allDirectoriesQuery
+                .AsEnumerable()
+                .Where(d => !string.IsNullOrEmpty(d))
+                .Select(d => NormalizePath(d))
                 .Distinct()
                 .ToList();
 
             // Filter directories on the client side
             var matchingDirectories = allDirectories
-                .Where(d => !string.IsNullOrEmpty(d) && Path.GetFileName(d).ToLower().Contains(query))
+                .Where(d => Path.GetFileName(d).ToLower().Contains(query))
                 .Select(d => new SearchResultItem
                 {
                     Type = "Directory",
@@ -297,8 +304,7 @@ namespace Backy.Pages
             return new JsonResult(new { success = true, results = results });
         }
 
-
-        private string GetNavPath(string fullPath, string remotePath)
+        private static string GetNavPath(string fullPath, string remotePath)
         {
             if (fullPath.StartsWith(remotePath))
             {

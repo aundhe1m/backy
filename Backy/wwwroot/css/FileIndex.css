@@ -42,6 +42,10 @@
     overflow-y: auto;
 }
 
+.table tbody tr {
+    transition: background-color 1s ease;
+}
+
 .highlighted-file {
-    background-color: yellow;
+    background-color: rgba(255, 255, 0, 0.5);
 }
