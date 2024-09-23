@@ -76,6 +76,7 @@
     @section Scripts {
     <script>
         let storageId = '@Model.SelectedStorage.Id';
+        let expandedPaths = new Set();
 
         function formatBytes(bytes) {
             if (bytes === 0) return '0 Bytes';
@@ -103,9 +104,10 @@
         }
 
         function fetchFileExplorerData(storageId, path, searchQuery = '') {
+            console.log('fetchFileExplorerData called with path:', path);
             $.ajax({
                 url: '@Url.Page("FileIndex", "GetFileExplorer")',
-                data: { storageId: storageId, path: path, search: searchQuery },
+                data: { storageId: storageId, path: path },
                 method: 'GET',
                 success: function (data) {
                     if (data.success) {
@@ -120,6 +122,8 @@
             });
         }
 
+
+
         function renderFileExplorer(data) {
             const contentDiv = $('#fileExplorerContent');
             contentDiv.empty();
@@ -130,16 +134,14 @@
             const leftCol = $('<div class="col-md-3" style="max-height: 80vh; overflow-y: auto;"></div>');
             const dirNav = $('<ul class="list-group"></ul>');
 
-            data.directoryTree.forEach(function (dir) {
-                const li = $('<li class="list-group-item"></li>');
-                const link = $('<a href="javascript:void(0);"></a>');
-                link.text(dir.name);
-                link.click(function () {
-                    fetchFileExplorerData(storageId, dir.fullPath);
+            // Assuming directoryTree is the root node
+            const rootNode = data.directoryTree;
+            if (rootNode && rootNode.children && rootNode.children.length > 0) {
+                rootNode.children.forEach(function (childNode) {
+                    const childLi = renderDirectoryNode(childNode);
+                    dirNav.append(childLi);
                 });
-                li.append(link);
-                dirNav.append(li);
-            });
+            }
 
             leftCol.append(dirNav);
 
@@ -150,37 +152,48 @@
             const breadcrumb = $('<nav aria-label="breadcrumb"></nav>');
             const breadcrumbList = $('<ol class="breadcrumb"></ol>');
 
-            const pathSegments = data.currentPath.split('/').filter(s => s.length > 0);
-            let cumulativePath = '';
+            const navPathSegments = data.navPath.split('/').filter(s => s.length > 0);
+            const remotePath = data.remotePath;
+            let cumulativeNavPath = '';
+            let cumulativeFullPath = remotePath;
 
-            // Go back icon
-            const goBackIcon = $('<button class="btn btn-link">&larr; Back</button>');
-            goBackIcon.click(function () {
-                if (pathSegments.length > 1) {
-                    pathSegments.pop();
-                    cumulativePath = '/' + pathSegments.join('/');
-                    fetchFileExplorerData(storageId, cumulativePath);
-                } else {
-                    cumulativePath = null;
-                    fetchFileExplorerData(storageId, null);
-                }
+            // Root link
+            const rootLi = $('<li class="breadcrumb-item"></li>');
+            const rootLink = $('<a href="javascript:void(0);">Root</a>');
+            rootLink.click(function () {
+                fetchFileExplorerData(storageId, remotePath);
             });
+            rootLi.append(rootLink);
+            breadcrumbList.append(rootLi);
 
-            rightCol.append(goBackIcon);
-
-            // Build breadcrumb
-            cumulativePath = '';
-            breadcrumbList.append($('<li class="breadcrumb-item"><a href="javascript:void(0);" onclick="fetchFileExplorerData(' + storageId + ', null)">Root</a></li>'));
-            pathSegments.forEach((segment, index) => {
-                cumulativePath += '/' + segment;
-                if (index === pathSegments.length - 1) {
+            navPathSegments.forEach((segment, index) => {
+                cumulativeNavPath += '/' + segment;
+                cumulativeFullPath += '/' + segment;
+                const currentFullPath = cumulativeFullPath; // Capture the current value
+                if (index === navPathSegments.length - 1) {
                     breadcrumbList.append($('<li class="breadcrumb-item active" aria-current="page">' + segment + '</li>'));
                 } else {
-                    breadcrumbList.append($('<li class="breadcrumb-item"><a href="javascript:void(0);" onclick="fetchFileExplorerData(' + storageId + ', \'' + cumulativePath + '\')">' + segment + '</a></li>'));
+                    const li = $('<li class="breadcrumb-item"></li>');
+                    const link = $('<a href="javascript:void(0);"></a>').text(segment);
+                    link.click(function () {
+                        fetchFileExplorerData(storageId, currentFullPath);
+                    });
+                    li.append(link);
+                    breadcrumbList.append(li);
                 }
             });
             breadcrumb.append(breadcrumbList);
             rightCol.append(breadcrumb);
+
+            // Go back icon
+            if (data.currentPath !== data.remotePath) {
+                const goBackIcon = $('<button class="btn btn-link">&larr; Back</button>');
+                goBackIcon.click(function () {
+                    fetchFileExplorerData(storageId, data.parentPath);
+                });
+                rightCol.append(goBackIcon);
+            }
+
 
             // File table
             const fileTable = $('<table class="table table-striped"></table>');
@@ -227,10 +240,73 @@
             contentDiv.append(container);
         }
 
+
         function searchFiles() {
             const query = $('#searchInput').val();
             fetchFileExplorerData(storageId, null, query);
         }
+
+        function renderDirectoryNode(node) {
+            const li = $('<li class="list-group-item"></li>');
+
+            // Declare childUl here so it's accessible in the expandButton.click handler
+            let childUl;
+
+            // Expand button (if the node has children)
+            let expandButton;
+            if (node.children && node.children.length > 0) {
+                expandButton = $('<button class="btn btn-sm btn-link">+</button>');
+                expandButton.click(function (e) {
+                    e.stopPropagation(); // Prevent the click from triggering other events
+                    if (childUl.is(':visible')) {
+                        childUl.hide();
+                        expandButton.text('+');
+                        expandedPaths.delete(node.fullPath);
+                    } else {
+                        childUl.show();
+                        expandButton.text('-');
+                        expandedPaths.add(node.fullPath);
+                    }
+                });
+                li.append(expandButton);
+            } else {
+                // Add spacing for alignment if there's no expand button
+                li.append('<span style="display:inline-block; width:16px;"></span>');
+            }
+
+            // Directory link
+            const link = $('<a href="javascript:void(0);"></a>');
+            link.text(' ' + node.name); // Add a space for better alignment
+            link.click(function () {
+                fetchFileExplorerData(storageId, node.fullPath);
+            });
+            li.append(link);
+
+            // Child nodes
+            if (node.children && node.children.length > 0) {
+                childUl = $('<ul class="list-group"></ul>'); // Now childUl is in scope
+
+                node.children.forEach(function (childNode) {
+                    const childLi = renderDirectoryNode(childNode);
+                    childUl.append(childLi);
+                });
+                li.append(childUl);
+
+                // Set initial visibility based on expandedPaths
+                if (expandedPaths.has(node.fullPath)) {
+                    childUl.show();
+                    if (expandButton) expandButton.text('-');
+                } else {
+                    childUl.hide();
+                    if (expandButton) expandButton.text('+');
+                }
+            }
+
+            return li;
+        }
+
     </script>
 }
 }
+
+<link rel="stylesheet" href="/css/FileIndex.css">

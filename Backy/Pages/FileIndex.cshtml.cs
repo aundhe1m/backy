@@ -135,7 +135,8 @@ namespace Backy.Pages
                 return new JsonResult(new { success = false, message = "Storage not found" });
             }
 
-            var currentPath = path ?? storage.RemotePath;
+            var rootPath = NormalizePath(storage.RemotePath);
+            var currentPath = NormalizePath(path ?? storage.RemotePath);
 
             var filesQuery = _context.Files
                 .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted);
@@ -145,28 +146,46 @@ namespace Backy.Pages
                 filesQuery = filesQuery.Where(f => f.FileName.Contains(search));
             }
 
-            var files = filesQuery.ToList();
+            var allFiles = filesQuery.ToList();
 
-            var directories = files
-                .Where(f => f.FullPath != currentPath && f.FullPath.StartsWith(currentPath))
-                .Select(f => System.IO.Path.GetDirectoryName(f.FullPath))
-                .Where(d => d != null && d != currentPath)
-                .Distinct()
-                .Select(d => d!)
+            // Files and directories in the current directory
+            var filesInCurrentDir = allFiles
+                .Where(f => NormalizePath(Path.GetDirectoryName(f.FullPath)) == currentPath)
+                .OrderBy(f => f.FileName)
                 .ToList();
 
-            var filesInCurrentDir = files
-                .Where(f => System.IO.Path.GetDirectoryName(f.FullPath) == currentPath)
+            var directoriesInCurrentDir = allFiles
+                .Select(f => NormalizePath(Path.GetDirectoryName(f.FullPath)))
+                .Where(d => d != null && NormalizePath(Path.GetDirectoryName(d)) == currentPath)
+                .Distinct()
+                .OrderBy(d => d)
                 .ToList();
 
             // Build directory tree for the left navigation
-            var directoryTree = BuildDirectoryTree(files, storage.RemotePath);
+            var directoryTree = BuildDirectoryTree(allFiles, rootPath);
+
+            // Compute navPath
+            var navPath = currentPath.StartsWith(rootPath)
+                ? currentPath.Substring(rootPath.Length)
+                : currentPath;
+
+            navPath = navPath.TrimStart('/');
+
+            // Compute parentPath
+            var parentPath = NormalizePath(Path.GetDirectoryName(currentPath));
+            if (string.IsNullOrEmpty(parentPath) || parentPath.Length < rootPath.Length)
+            {
+                parentPath = rootPath;
+            }
 
             var model = new
             {
                 success = true,
                 storageId = storage.Id,
                 currentPath = currentPath,
+                navPath = "/" + navPath,
+                remotePath = rootPath,
+                parentPath = parentPath,
                 files = filesInCurrentDir.Select(f => new
                 {
                     name = f.FileName,
@@ -174,9 +193,9 @@ namespace Backy.Pages
                     lastModified = f.LastModified,
                     backupExists = f.BackupExists
                 }),
-                directories = directories.Select(d => new
+                directories = directoriesInCurrentDir.Select(d => new
                 {
-                    name = System.IO.Path.GetFileName(d),
+                    name = Path.GetFileName(d),
                     fullPath = d
                 }),
                 directoryTree = directoryTree
@@ -185,26 +204,78 @@ namespace Backy.Pages
             return new JsonResult(model);
         }
 
-        private List<dynamic> BuildDirectoryTree(List<FileEntry> files, string rootPath)
+        private DirectoryNode BuildDirectoryTree(List<FileEntry> files, string rootPath)
         {
+            rootPath = NormalizePath(rootPath);
+
+            var root = new DirectoryNode
+            {
+                Name = "Root",
+                FullPath = rootPath
+            };
+
             var directories = files
-                .Select(f => System.IO.Path.GetDirectoryName(f.FullPath))
+                .Select(f => NormalizePath(Path.GetDirectoryName(f.FullPath)))
                 .Where(d => d != null)
                 .Distinct()
                 .ToList();
 
-            var tree = new List<dynamic>();
-
             foreach (var dir in directories)
             {
-                tree.Add(new
-                {
-                    name = dir!.Replace(rootPath, ""),
-                    fullPath = dir
-                });
+                var relativePath = Path.GetRelativePath(rootPath, dir);
+                relativePath = NormalizePath(relativePath);
+
+                var parts = relativePath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+
+                AddPathToTree(root, parts, rootPath);
             }
 
-            return tree;
+            // Sort the directory tree after building it
+            SortDirectoryTree(root);
+
+            return root;
         }
+
+
+
+        private void AddPathToTree(DirectoryNode currentNode, string[] parts, string currentFullPath)
+        {
+            if (parts.Length == 0)
+                return;
+
+            var part = parts[0];
+            var childFullPath = NormalizePath($"{currentFullPath}/{part}");
+
+            var childNode = currentNode.Children.FirstOrDefault(n => n.Name == part && n.FullPath == childFullPath);
+
+            if (childNode == null)
+            {
+                childNode = new DirectoryNode
+                {
+                    Name = part,
+                    FullPath = childFullPath
+                };
+                currentNode.Children.Add(childNode);
+            }
+
+            AddPathToTree(childNode, parts.Skip(1).ToArray(), childFullPath);
+        }
+
+
+        private string NormalizePath(string path)
+        {
+            return path.Replace('\\', '/').TrimEnd('/');
+        }
+
+
+        private void SortDirectoryTree(DirectoryNode node)
+        {
+            node.Children = node.Children.OrderBy(n => n.Name).ToList();
+            foreach (var child in node.Children)
+            {
+                SortDirectoryTree(child);
+            }
+        }
+
     }
 }

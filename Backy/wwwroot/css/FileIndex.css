@@ -1,0 +1,33 @@
+.list-group-item ul {
+    margin-left: 15px;
+    padding-left: 15px;
+    border-left: 1px solid #ddd;
+}
+
+/* .list-group-item {
+    position: relative;
+} */
+
+/* .list-group-item>button {
+    position: absolute;
+    left: -15px;
+    top: 5px;
+} */
+
+.list-group-item {
+    position: relative;
+    padding-left: 20px;
+    /* Adjust as needed for alignment */
+}
+
+.list-group-item>button {
+    position: absolute;
+    left: 0;
+    top: 5px;
+}
+
+.list-group-item>span {
+    position: absolute;
+    left: 0;
+    top: 5px;
+}
