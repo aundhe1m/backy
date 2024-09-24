@@ -26,7 +26,7 @@ namespace Backy.Services
             IIndexingQueue indexingQueue)
         {
             _scopeFactory = scopeFactory;
-            _protector = provider.CreateProtector("Backy.RemoteStorage");
+            _protector = provider.CreateProtector("Backy.RemoteScan");
             _logger = logger;
             _indexingQueue = indexingQueue;
         }
@@ -41,14 +41,14 @@ namespace Backy.Services
             int nowMinutes = now.Hour * 60 + now.Minute;
 
             var schedules = await context.IndexSchedules
-                .Include(s => s.RemoteStorage)
+                .Include(s => s.RemoteScan)
                 .Where(s => s.DayOfWeek == nowDayOfWeek && s.TimeOfDayMinutes == nowMinutes)
                 .ToListAsync(cancellationToken);
 
             foreach (var schedule in schedules)
             {
-                _logger.LogInformation("Scheduled indexing for storage: {Id}", schedule.RemoteStorageId);
-                _indexingQueue.EnqueueIndexing(schedule.RemoteStorageId); // Guid
+                _logger.LogInformation("Scheduled indexing for storage: {Id}", schedule.RemoteScanId);
+                _indexingQueue.EnqueueIndexing(schedule.RemoteScanId); // Guid
             }
         }
 
@@ -103,7 +103,7 @@ namespace Backy.Services
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var storages = await context.RemoteStorages
+            var storages = await context.RemoteScans
                 .Where(s => s.IsEnabled && !s.IsIndexing)
                 .ToListAsync(cancellationToken);
 
@@ -118,7 +118,7 @@ namespace Backy.Services
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var storage = await context.RemoteStorages.FindAsync(new object[] { storageId }, cancellationToken);
+            var storage = await context.RemoteScans.FindAsync(new object[] { storageId }, cancellationToken);
             if (storage == null)
             {
                 _logger.LogWarning("Storage not found during indexing: {Id}", storageId);
@@ -133,7 +133,7 @@ namespace Backy.Services
             }
 
             storage.IsIndexing = true;
-            context.RemoteStorages.Update(storage);
+            context.RemoteScans.Update(storage);
             await context.SaveChangesAsync(cancellationToken);
 
             try
@@ -155,7 +155,7 @@ namespace Backy.Services
                 foreach (var file in files)
                 {
                     var existingFile = await context.Files
-                        .FirstOrDefaultAsync(f => f.RemoteStorageId == storage.Id && f.FullPath == file.FullPath, cancellationToken);
+                        .FirstOrDefaultAsync(f => f.RemoteScanId == storage.Id && f.FullPath == file.FullPath, cancellationToken);
                     if (existingFile == null)
                     {
                         _logger.LogInformation("Adding new file: {FullPath}", file.FullPath);
@@ -173,7 +173,7 @@ namespace Backy.Services
 
                 // Mark files that are no longer present as deleted
                 var existingFiles = await context.Files
-                    .Where(f => f.RemoteStorageId == storage.Id)
+                    .Where(f => f.RemoteScanId == storage.Id)
                     .ToListAsync(cancellationToken);
                 foreach (var existingFile in existingFiles)
                 {
@@ -197,7 +197,7 @@ namespace Backy.Services
             finally
             {
                 storage.IsIndexing = false;
-                context.RemoteStorages.Update(storage);
+                context.RemoteScans.Update(storage);
                 await context.SaveChangesAsync(cancellationToken);
             }
         }
@@ -221,7 +221,7 @@ namespace Backy.Services
                     _logger.LogInformation("Found file: {FullPath}", fullPath);
                     files.Add(new FileEntry
                     {
-                        RemoteStorageId = storageId,
+                        RemoteScanId = storageId,
                         FileName = item.Name,
                         FullPath = fullPath,
                         Size = item.Attributes.Size,
@@ -238,7 +238,7 @@ namespace Backy.Services
             }
         }
 
-        private SftpClient CreateSftpClient(RemoteStorage storage)
+        private SftpClient CreateSftpClient(RemoteScan storage)
         {
             if (storage.AuthenticationMethod == "Password")
             {

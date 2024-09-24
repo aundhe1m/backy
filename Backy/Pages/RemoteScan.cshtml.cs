@@ -23,7 +23,7 @@ namespace Backy.Pages
             IIndexingQueue indexingQueue)
         {
             _context = context;
-            _protector = provider.CreateProtector("Backy.RemoteStorage");
+            _protector = provider.CreateProtector("Backy.RemoteScan");
             _logger = logger;
             _indexingQueue = indexingQueue;
         }
@@ -31,22 +31,22 @@ namespace Backy.Pages
         public IList<StorageSourceViewModel> StorageSources { get; set; } = new List<StorageSourceViewModel>();
 
         [BindProperty]
-        public RemoteStorage RemoteStorage { get; set; } = new RemoteStorage();
+        public RemoteScan RemoteScan { get; set; } = new RemoteScan();
 
         public async Task OnGetAsync()
         {
-            var remoteStorages = await _context.RemoteStorages.ToListAsync();
+            var RemoteScans = await _context.RemoteScans.ToListAsync();
 
-            foreach (var storage in remoteStorages)
+            foreach (var storage in RemoteScans)
             {
                 var model = new StorageSourceViewModel
                 {
-                    RemoteStorage = storage,
+                    RemoteScan = storage,
                     IsIndexing = storage.IsIndexing
                 };
 
                 // Calculate backup stats
-                var files = await _context.Files.Where(f => f.RemoteStorageId == storage.Id).ToListAsync();
+                var files = await _context.Files.Where(f => f.RemoteScanId == storage.Id).ToListAsync();
                 model.TotalSize = files.Sum(f => f.Size);
                 model.TotalBackupSize = files.Where(f => f.BackupExists).Sum(f => f.Size);
                 model.TotalFiles = files.Count;
@@ -59,7 +59,7 @@ namespace Backy.Pages
 
         public async Task<IActionResult> OnPostAddAsync()
         {
-            // Validate and add new RemoteStorage
+            // Validate and add new RemoteScan
 
             if (!ModelState.IsValid)
             {
@@ -68,23 +68,23 @@ namespace Backy.Pages
             }
 
             // Custom validation
-            if (RemoteStorage.AuthenticationMethod == "Password")
+            if (RemoteScan.AuthenticationMethod == "Password")
             {
-                if (string.IsNullOrWhiteSpace(RemoteStorage.Password))
+                if (string.IsNullOrWhiteSpace(RemoteScan.Password))
                 {
-                    ModelState.AddModelError(nameof(RemoteStorage.Password), "Password is required when using Password authentication.");
+                    ModelState.AddModelError(nameof(RemoteScan.Password), "Password is required when using Password authentication.");
                 }
             }
-            else if (RemoteStorage.AuthenticationMethod == "SSH Key")
+            else if (RemoteScan.AuthenticationMethod == "SSH Key")
             {
-                if (string.IsNullOrWhiteSpace(RemoteStorage.SSHKey))
+                if (string.IsNullOrWhiteSpace(RemoteScan.SSHKey))
                 {
-                    ModelState.AddModelError(nameof(RemoteStorage.SSHKey), "SSH Key is required when using SSH Key authentication.");
+                    ModelState.AddModelError(nameof(RemoteScan.SSHKey), "SSH Key is required when using SSH Key authentication.");
                 }
             }
             else
             {
-                ModelState.AddModelError(nameof(RemoteStorage.AuthenticationMethod), "Invalid Authentication Method.");
+                ModelState.AddModelError(nameof(RemoteScan.AuthenticationMethod), "Invalid Authentication Method.");
             }
 
             if (!ModelState.IsValid)
@@ -94,17 +94,17 @@ namespace Backy.Pages
             }
 
             // Encrypt sensitive data
-            if (RemoteStorage.AuthenticationMethod == "Password" && !string.IsNullOrEmpty(RemoteStorage.Password))
+            if (RemoteScan.AuthenticationMethod == "Password" && !string.IsNullOrEmpty(RemoteScan.Password))
             {
-                RemoteStorage.Password = Encrypt(RemoteStorage.Password);
+                RemoteScan.Password = Encrypt(RemoteScan.Password);
             }
-            else if (RemoteStorage.AuthenticationMethod == "SSH Key" && !string.IsNullOrEmpty(RemoteStorage.SSHKey))
+            else if (RemoteScan.AuthenticationMethod == "SSH Key" && !string.IsNullOrEmpty(RemoteScan.SSHKey))
             {
-                RemoteStorage.SSHKey = Encrypt(RemoteStorage.SSHKey);
+                RemoteScan.SSHKey = Encrypt(RemoteScan.SSHKey);
             }
 
             // Validate the connection
-            bool isValid = ValidateConnection(RemoteStorage);
+            bool isValid = ValidateConnection(RemoteScan);
             if (!isValid)
             {
                 ModelState.AddModelError(string.Empty, "Unable to connect with the provided details.");
@@ -112,11 +112,11 @@ namespace Backy.Pages
                 return Page();
             }
 
-            _context.RemoteStorages.Add(RemoteStorage);
+            _context.RemoteScans.Add(RemoteScan);
             await _context.SaveChangesAsync();
 
             // Check and update storage status
-            await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(RemoteStorage, _context, _protector, _logger);
+            await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(RemoteScan, _context, _protector, _logger);
 
             return RedirectToPage();
         }
@@ -130,23 +130,23 @@ namespace Backy.Pages
             }
 
             // Custom validation
-            if (RemoteStorage.AuthenticationMethod == "Password")
+            if (RemoteScan.AuthenticationMethod == "Password")
             {
-                if (string.IsNullOrWhiteSpace(RemoteStorage.Password))
+                if (string.IsNullOrWhiteSpace(RemoteScan.Password))
                 {
-                    ModelState.AddModelError(nameof(RemoteStorage.Password), "Password is required when using Password authentication.");
+                    ModelState.AddModelError(nameof(RemoteScan.Password), "Password is required when using Password authentication.");
                 }
             }
-            else if (RemoteStorage.AuthenticationMethod == "SSH Key")
+            else if (RemoteScan.AuthenticationMethod == "SSH Key")
             {
-                if (string.IsNullOrWhiteSpace(RemoteStorage.SSHKey))
+                if (string.IsNullOrWhiteSpace(RemoteScan.SSHKey))
                 {
-                    ModelState.AddModelError(nameof(RemoteStorage.SSHKey), "SSH Key is required when using SSH Key authentication.");
+                    ModelState.AddModelError(nameof(RemoteScan.SSHKey), "SSH Key is required when using SSH Key authentication.");
                 }
             }
             else
             {
-                ModelState.AddModelError(nameof(RemoteStorage.AuthenticationMethod), "Invalid Authentication Method.");
+                ModelState.AddModelError(nameof(RemoteScan.AuthenticationMethod), "Invalid Authentication Method.");
             }
 
             if (!ModelState.IsValid)
@@ -155,33 +155,33 @@ namespace Backy.Pages
                 return Page();
             }
 
-            var existingStorage = await _context.RemoteStorages.FindAsync(RemoteStorage.Id);
+            var existingStorage = await _context.RemoteScans.FindAsync(RemoteScan.Id);
             if (existingStorage == null)
             {
                 return NotFound();
             }
 
             // Update fields
-            existingStorage.Name = RemoteStorage.Name;
-            existingStorage.Host = RemoteStorage.Host;
-            existingStorage.Port = RemoteStorage.Port;
-            existingStorage.Username = RemoteStorage.Username;
-            existingStorage.AuthenticationMethod = RemoteStorage.AuthenticationMethod;
-            existingStorage.RemotePath = RemoteStorage.RemotePath;
+            existingStorage.Name = RemoteScan.Name;
+            existingStorage.Host = RemoteScan.Host;
+            existingStorage.Port = RemoteScan.Port;
+            existingStorage.Username = RemoteScan.Username;
+            existingStorage.AuthenticationMethod = RemoteScan.AuthenticationMethod;
+            existingStorage.RemotePath = RemoteScan.RemotePath;
 
             // Encrypt sensitive data
-            if (RemoteStorage.AuthenticationMethod == "Password")
+            if (RemoteScan.AuthenticationMethod == "Password")
             {
-                if (!string.IsNullOrEmpty(RemoteStorage.Password) && RemoteStorage.Password != "********")
+                if (!string.IsNullOrEmpty(RemoteScan.Password) && RemoteScan.Password != "********")
                 {
-                    existingStorage.Password = Encrypt(RemoteStorage.Password);
+                    existingStorage.Password = Encrypt(RemoteScan.Password);
                 }
             }
-            else if (RemoteStorage.AuthenticationMethod == "SSH Key")
+            else if (RemoteScan.AuthenticationMethod == "SSH Key")
             {
-                if (!string.IsNullOrEmpty(RemoteStorage.SSHKey) && RemoteStorage.SSHKey != "********")
+                if (!string.IsNullOrEmpty(RemoteScan.SSHKey) && RemoteScan.SSHKey != "********")
                 {
-                    existingStorage.SSHKey = Encrypt(RemoteStorage.SSHKey);
+                    existingStorage.SSHKey = Encrypt(RemoteScan.SSHKey);
                 }
             }
 
@@ -201,7 +201,7 @@ namespace Backy.Pages
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!RemoteStorageExists(RemoteStorage.Id))
+                if (!RemoteScanExists(RemoteScan.Id))
                 {
                     return NotFound();
                 }
@@ -216,10 +216,10 @@ namespace Backy.Pages
 
         public async Task<IActionResult> OnPostDeleteAsync(Guid id)
         {
-            var storage = await _context.RemoteStorages.FindAsync(id);
+            var storage = await _context.RemoteScans.FindAsync(id);
             if (storage != null)
             {
-                _context.RemoteStorages.Remove(storage);
+                _context.RemoteScans.Remove(storage);
                 await _context.SaveChangesAsync();
             }
             return RedirectToPage();
@@ -227,7 +227,7 @@ namespace Backy.Pages
 
         public async Task<IActionResult> OnPostToggleEnableAsync(Guid id)
         {
-            var storage = await _context.RemoteStorages.FindAsync(id);
+            var storage = await _context.RemoteScans.FindAsync(id);
             if (storage != null)
             {
                 storage.IsEnabled = !storage.IsEnabled;
@@ -244,9 +244,9 @@ namespace Backy.Pages
 
         // Helper methods
 
-        private bool RemoteStorageExists(Guid id)
+        private bool RemoteScanExists(Guid id)
         {
-            return _context.RemoteStorages.Any(e => e.Id == id);
+            return _context.RemoteScans.Any(e => e.Id == id);
         }
 
         private string Encrypt(string input)
@@ -259,7 +259,7 @@ namespace Backy.Pages
             return input != null ? _protector.Unprotect(input) : string.Empty;
         }
 
-        private bool ValidateConnection(RemoteStorage storage)
+        private bool ValidateConnection(RemoteScan storage)
         {
             try
             {
@@ -276,7 +276,7 @@ namespace Backy.Pages
             }
         }
 
-        private SftpClient CreateSftpClient(RemoteStorage storage)
+        private SftpClient CreateSftpClient(RemoteScan storage)
         {
             if (storage.AuthenticationMethod == "Password")
             {
@@ -297,7 +297,7 @@ namespace Backy.Pages
         {
             _logger.LogInformation("GetFileExplorer called with storageId={StorageId}, path={Path}", storageId, path);
 
-            var storage = await _context.RemoteStorages.FindAsync(storageId);
+            var storage = await _context.RemoteScans.FindAsync(storageId);
             if (storage == null)
             {
                 _logger.LogWarning("Storage not found: {Id}", storageId);
@@ -308,7 +308,7 @@ namespace Backy.Pages
             var currentPath = NormalizePath(path ?? storage.RemotePath);
 
             var filesQuery = _context.Files
-                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted);
+                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted);
 
             if (!string.IsNullOrEmpty(search))
             {
@@ -375,7 +375,7 @@ namespace Backy.Pages
 
         public JsonResult OnGetSearchFiles(Guid storageId, string query)
         {
-            var storage = _context.RemoteStorages.Find(storageId);
+            var storage = _context.RemoteScans.Find(storageId);
             if (storage == null)
             {
                 return new JsonResult(new { success = false, message = "Storage not found" });
@@ -388,7 +388,7 @@ namespace Backy.Pages
 
             // Search for matching files
             var matchingFilesQuery = _context.Files
-                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted && EF.Functions.Like(f.FileName.ToLower(), $"%{query}%"))
+                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted && EF.Functions.Like(f.FileName.ToLower(), $"%{query}%"))
                 .Select(f => new
                 {
                     f.FileName,
@@ -407,7 +407,7 @@ namespace Backy.Pages
 
             // Get all directories
             var allDirectoriesQuery = _context.Files
-                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted)
+                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted)
                 .Select(f => Path.GetDirectoryName(f.FullPath));
 
             var allDirectories = allDirectoriesQuery
@@ -520,7 +520,7 @@ namespace Backy.Pages
 
         public class StorageSourceViewModel
         {
-            public RemoteStorage RemoteStorage { get; set; } = new RemoteStorage();
+            public RemoteScan RemoteScan { get; set; } = new RemoteScan();
 
             public bool IsIndexing { get; set; }
 

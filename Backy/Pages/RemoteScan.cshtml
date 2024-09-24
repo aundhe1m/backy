@@ -47,53 +47,52 @@
                         </div>
                     }
 
-                    <input type="hidden" asp-for="RemoteStorage.Id" id="storageId" />
+                    <input type="hidden" asp-for="RemoteScan.Id" id="storageId" />
 
                     <div class="form-group">
                         <label>Name</label>
-                        <input asp-for="RemoteStorage.Name" class="form-control" id="storageName" required />
-                        <span asp-validation-for="RemoteStorage.Name" class="text-danger"></span>
+                        <input asp-for="RemoteScan.Name" class="form-control" id="storageName" required />
+                        <span asp-validation-for="RemoteScan.Name" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Host</label>
-                        <input asp-for="RemoteStorage.Host" class="form-control" id="storageHost" required />
-                        <span asp-validation-for="RemoteStorage.Host" class="text-danger"></span>
+                        <input asp-for="RemoteScan.Host" class="form-control" id="storageHost" required />
+                        <span asp-validation-for="RemoteScan.Host" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Port</label>
-                        <input asp-for="RemoteStorage.Port" class="form-control" id="storagePort" required />
-                        <span asp-validation-for="RemoteStorage.Port" class="text-danger"></span>
+                        <input asp-for="RemoteScan.Port" class="form-control" id="storagePort" required />
+                        <span asp-validation-for="RemoteScan.Port" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Username</label>
-                        <input asp-for="RemoteStorage.Username" class="form-control" id="storageUsername" required />
-                        <span asp-validation-for="RemoteStorage.Username" class="text-danger"></span>
+                        <input asp-for="RemoteScan.Username" class="form-control" id="storageUsername" required />
+                        <span asp-validation-for="RemoteScan.Username" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Authentication Method</label>
-                        <select asp-for="RemoteStorage.AuthenticationMethod" class="form-control" id="authMethod"
+                        <select asp-for="RemoteScan.AuthenticationMethod" class="form-control" id="authMethod"
                             onchange="toggleAuthFields()" required>
                             <option value="Password">Password</option>
                             <option value="SSH Key">SSH Key</option>
                         </select>
-                        <span asp-validation-for="RemoteStorage.AuthenticationMethod" class="text-danger"></span>
+                        <span asp-validation-for="RemoteScan.AuthenticationMethod" class="text-danger"></span>
                     </div>
                     <div class="form-group" id="passwordField">
                         <label>Password</label>
-                        <input asp-for="RemoteStorage.Password" class="form-control" id="storagePassword"
+                        <input asp-for="RemoteScan.Password" class="form-control" id="storagePassword"
                             type="password" />
-                        <span asp-validation-for="RemoteStorage.Password" class="text-danger"></span>
+                        <span asp-validation-for="RemoteScan.Password" class="text-danger"></span>
                     </div>
                     <div class="form-group" id="sshKeyField" style="display:none;">
                         <label>SSH Key</label>
-                        <textarea asp-for="RemoteStorage.SSHKey" class="form-control" id="storageSSHKey"></textarea>
-                        <span asp-validation-for="RemoteStorage.SSHKey" class="text-danger"></span>
+                        <textarea asp-for="RemoteScan.SSHKey" class="form-control" id="storageSSHKey"></textarea>
+                        <span asp-validation-for="RemoteScan.SSHKey" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Remote Path</label>
-                        <input asp-for="RemoteStorage.RemotePath" class="form-control" id="storageRemotePath"
-                            required />
-                        <span asp-validation-for="RemoteStorage.RemotePath" class="text-danger"></span>
+                        <input asp-for="RemoteScan.RemotePath" class="form-control" id="storageRemotePath" required />
+                        <span asp-validation-for="RemoteScan.RemotePath" class="text-danger"></span>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -195,7 +194,6 @@
 
         function clearModalFields() {
             $('#storageForm')[0].reset();
-            $('#storageId').val('');
             $('#storagePassword').val('');
             $('#storageSSHKey').val('');
             $('.alert-danger').remove();
@@ -234,25 +232,9 @@
             // Attach the toggle function to the AuthenticationMethod dropdown
             $('#authMethod').change(toggleAuthFields);
         });
-
-        // Scripts for File Explorer
-        let storageId = null;
-        let expandedPaths = new Set();
-
-        function openFileExplorer(selectedStorageId) {
-            storageId = selectedStorageId;
-            fetchFileExplorerData(storageId, null);
-            $('#fileExplorerModal').modal('show');
-        }
-
-        function closeFileExplorer() {
-            $('#fileExplorerModal').modal('hide');
-        }
-
-        // Include the rest of the File Explorer scripts here
-        // Adapted from your existing FileIndex.cshtml
     </script>
 }
 
+<script src="/js/RemoteScan.js"></script>
 <link rel="stylesheet" href="/css/Drive.css">
 <link rel="stylesheet" href="/css/FileIndex.css">

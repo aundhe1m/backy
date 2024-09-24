@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Backy.Models
 {
-    public class RemoteStorage
+    public class RemoteScan
     {
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();

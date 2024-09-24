@@ -32,7 +32,7 @@ namespace Backy.Pages
             IIndexingQueue indexingQueue)
         {
             _context = context;
-            _protector = provider.CreateProtector("Backy.RemoteStorage");
+            _protector = provider.CreateProtector("Backy.RemoteScan");
             _logger = logger;
             _scopeFactory = scopeFactory;
             _indexingQueue = indexingQueue;
@@ -41,7 +41,7 @@ namespace Backy.Pages
         [BindProperty]
         public Guid? SelectedStorageId { get; set; }
 
-        public RemoteStorage? SelectedStorage { get; set; }
+        public RemoteScan? SelectedStorage { get; set; }
 
         public List<SelectListItem> StorageOptions { get; set; } = new List<SelectListItem>();
 
@@ -69,7 +69,7 @@ namespace Backy.Pages
             if (SelectedStorageId.HasValue)
             {
                 Schedules = _context.IndexSchedules
-                    .Where(s => s.RemoteStorageId == SelectedStorageId.Value)
+                    .Where(s => s.RemoteScanId == SelectedStorageId.Value)
                     .ToList();
             }
         }
@@ -99,7 +99,7 @@ namespace Backy.Pages
 
         private void LoadStorageOptions()
         {
-            StorageOptions = _context.RemoteStorages.Select(s => new SelectListItem
+            StorageOptions = _context.RemoteScans.Select(s => new SelectListItem
             {
                 Value = s.Id.ToString(),
                 Text = s.Name
@@ -108,7 +108,7 @@ namespace Backy.Pages
 
         private void LoadStorageData(Guid storageId)
         {
-            SelectedStorage = _context.RemoteStorages.Find(storageId);
+            SelectedStorage = _context.RemoteScans.Find(storageId);
             if (SelectedStorage == null)
             {
                 _logger.LogWarning("Storage not found: {Id}", storageId);
@@ -117,7 +117,7 @@ namespace Backy.Pages
 
             IsIndexing = SelectedStorage.IsIndexing;
 
-            var files = _context.Files.Where(f => f.RemoteStorageId == storageId).ToList();
+            var files = _context.Files.Where(f => f.RemoteScanId == storageId).ToList();
 
             TotalSize = files.Sum(f => f.Size); // In bytes
             TotalBackupSize = files.Where(f => f.BackupExists).Sum(f => f.Size); // In bytes
@@ -130,7 +130,7 @@ namespace Backy.Pages
         {
             _logger.LogInformation("GetFileExplorer called with storageId={StorageId}, path={Path}", storageId, path);
 
-            var storage = _context.RemoteStorages.Find(storageId);
+            var storage = _context.RemoteScans.Find(storageId);
             if (storage == null)
             {
                 _logger.LogWarning("Storage not found: {Id}", storageId);
@@ -141,7 +141,7 @@ namespace Backy.Pages
             var currentPath = NormalizePath(path ?? storage.RemotePath);
 
             var filesQuery = _context.Files
-                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted);
+                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted);
 
             if (!string.IsNullOrEmpty(search))
             {
@@ -240,7 +240,7 @@ namespace Backy.Pages
 
         public JsonResult OnGetSearchFiles(Guid storageId, string query)
         {
-            var storage = _context.RemoteStorages.Find(storageId);
+            var storage = _context.RemoteScans.Find(storageId);
             if (storage == null)
             {
                 return new JsonResult(new { success = false, message = "Storage not found" });
@@ -253,7 +253,7 @@ namespace Backy.Pages
 
             // Search for matching files
             var matchingFilesQuery = _context.Files
-                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted && EF.Functions.Like(f.FileName.ToLower(), $"%{query}%"))
+                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted && EF.Functions.Like(f.FileName.ToLower(), $"%{query}%"))
                 .Select(f => new
                 {
                     f.FileName,
@@ -272,7 +272,7 @@ namespace Backy.Pages
 
             // Get all directories
             var allDirectoriesQuery = _context.Files
-                .Where(f => f.RemoteStorageId == storageId && !f.IsDeleted)
+                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted)
                 .Select(f => Path.GetDirectoryName(f.FullPath));
 
             var allDirectories = allDirectoriesQuery

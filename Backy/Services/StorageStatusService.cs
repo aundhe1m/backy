@@ -18,7 +18,7 @@ namespace Backy.Services
         public StorageStatusService(IServiceScopeFactory scopeFactory, IDataProtectionProvider provider, ILogger<StorageStatusService> logger)
         {
             _scopeFactory = scopeFactory;
-            _protector = provider.CreateProtector("Backy.RemoteStorage");
+            _protector = provider.CreateProtector("Backy.RemoteScan");
             _logger = logger;
         }
 
@@ -37,7 +37,7 @@ namespace Backy.Services
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var storages = await context.RemoteStorages.ToListAsync(cancellationToken);
+            var storages = await context.RemoteScans.ToListAsync(cancellationToken);
 
             var tasks = storages.Select(storage => Task.Run(async () =>
             {
@@ -52,7 +52,7 @@ namespace Backy.Services
 
     public static class StorageStatusChecker
     {
-        public static async Task CheckAndUpdateStorageStatusAsync(RemoteStorage storage, ApplicationDbContext context, IDataProtector protector, ILogger logger)
+        public static async Task CheckAndUpdateStorageStatusAsync(RemoteScan storage, ApplicationDbContext context, IDataProtector protector, ILogger logger)
         {
             bool isOnline = false;
 
@@ -74,11 +74,11 @@ namespace Backy.Services
             storage.Status = isOnline ? "Online" : "Offline";
             storage.LastChecked = DateTime.UtcNow;
 
-            context.RemoteStorages.Update(storage);
+            context.RemoteScans.Update(storage);
             await context.SaveChangesAsync();
         }
 
-        private static SftpClient CreateSftpClient(RemoteStorage storage, IDataProtector protector)
+        private static SftpClient CreateSftpClient(RemoteScan storage, IDataProtector protector)
         {
             if (storage.AuthenticationMethod == "Password")
             {

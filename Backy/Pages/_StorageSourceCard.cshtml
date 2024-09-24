@@ -1,7 +1,7 @@
 @model Backy.Pages.RemoteScanModel.StorageSourceViewModel
 
 @{
-    var storage = Model.RemoteStorage;
+    var storage = Model.RemoteScan;
     var usedPercentage = Model.BackupPercentage;
     var headerBackgroundColor = storage.Status == "Online" ? "#90ee90" : "#d3d3d3"; // Green if online, gray if offline
 }

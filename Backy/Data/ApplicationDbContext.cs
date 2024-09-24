@@ -5,7 +5,7 @@ namespace Backy.Data
 {
     public class ApplicationDbContext : DbContext
     {
-        public DbSet<RemoteStorage> RemoteStorages { get; set; }
+        public DbSet<RemoteScan> RemoteScans { get; set; }
         public DbSet<IndexSchedule> IndexSchedules { get; set; }
         public DbSet<FileEntry> Files { get; set; }
 
@@ -18,7 +18,7 @@ namespace Backy.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<FileEntry>()
-                .HasIndex(f => new { f.RemoteStorageId, f.FullPath })
+                .HasIndex(f => new { f.RemoteScanId, f.FullPath })
                 .IsUnique();
 
             base.OnModelCreating(modelBuilder);

@@ -8,10 +8,10 @@ namespace Backy.Models
         public int Id { get; set; }
 
         [Required]
-        public Guid RemoteStorageId { get; set; }
+        public Guid RemoteScanId { get; set; }
 
-        [ForeignKey("RemoteStorageId")]
-        public RemoteStorage? RemoteStorage { get; set; } // Removed default initialization
+        [ForeignKey("RemoteScanId")]
+        public RemoteScan? RemoteScan { get; set; } // Removed default initialization
 
         [Required]
         public string FileName { get; set; } = string.Empty;
