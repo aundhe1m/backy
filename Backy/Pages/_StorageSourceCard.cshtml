@@ -24,11 +24,12 @@
         <div>
             <!-- Progress Bar -->
             <div>
-                <span>@Model.BackupPercentage% Backup</span>
+                <span id="backupPercentage-@storage.Id">@Model.BackupPercentage% Backup</span>
             </div>
             <div class="progress progress-with-border" style="height: 4px">
-                <div class="progress-bar" role="progressbar" style="width: @usedPercentage%"
-                    aria-valuenow="@usedPercentage" aria-valuemin="0" aria-valuemax="100"></div>
+                <div class="progress-bar" id="progressBar-@storage.Id" role="progressbar"
+                    style="width: @usedPercentage%" aria-valuenow="@usedPercentage" aria-valuemin="0"
+                    aria-valuemax="100"></div>
             </div>
         </div>
         <!-- Buttons -->
@@ -48,9 +49,16 @@
                 </button>
             }
             <!-- Start Indexing -->
-            <button type="button" class="btn btn-transparent" onclick="startIndexing('@storage.Id')">
-                <img src="/icons/arrow-clockwise.svg" alt="Start Indexing" style="height: 24px;"
-                    data-bs-toggle="tooltip" title="Start Indexing">
+            <button type="button" class="btn btn-transparent" onclick="startIndexing('@storage.Id')"
+                id="startIndexingButton-@storage.Id" @(storage.IsIndexing ? "disabled" : "")>
+                <img src="/icons/arrow-clockwise.svg" alt="Start Indexing" id="startIndexingIcon-@storage.Id"
+                    style="height: 24px;" data-bs-toggle="tooltip" title="Start Indexing"
+                    class="@(storage.IsIndexing ? "rotating" : "")">
+            </button>
+            <!-- Schedule Index -->
+            <button type="button" class="btn btn-transparent" onclick="openScheduleModal('@storage.Id')">
+                <img src="/icons/calendar-week.svg" alt="Schedule Index" style="height: 24px;" data-bs-toggle="tooltip"
+                    title="Schedule Index">
             </button>
             <!-- Open File Explorer -->
             <button type="button" class="btn btn-transparent" onclick="openFileExplorer('@storage.Id')">
@@ -82,19 +90,19 @@
                     <tbody>
                         <tr>
                             <th>Total Files</th>
-                            <td>@Model.TotalFiles</td>
+                            <td id="totalFiles-@storage.Id">@Model.TotalFiles</td>
                         </tr>
                         <tr>
                             <th>Files Backed Up</th>
-                            <td>@Model.BackupCount</td>
+                            <td id="backupCount-@storage.Id">@Model.BackupCount</td>
                         </tr>
                         <tr>
                             <th>Total Size</th>
-                            @* <td>@formatBytes(Model.TotalSize)</td> *@
+                            <td id="totalSize-@storage.Id">@formatBytes(Model.TotalSize)</td>
                         </tr>
                         <tr>
                             <th>Backed Up Size</th>
-                            @* <td>@formatBytes(Model.TotalBackupSize)</td> *@
+                            <td id="totalBackupSize-@storage.Id">@formatBytes(Model.TotalBackupSize)</td>
                         </tr>
                     </tbody>
                 </table>
@@ -126,51 +134,16 @@
     </div>
 </div>
 
-@section Scripts {
-    <script>
-        function formatSize(sizeInBytes) {
-            if (sizeInBytes === null || sizeInBytes === 0) return 'Unknown size';
+@functions {
+    public string formatBytes(long bytes)
+    {
+        if (bytes == 0)
+            return "0 B";
 
-            let size = sizeInBytes;
-            const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            let suffixIndex = 0;
+        var sizes = new[] { "B", "KB", "MB", "GB", "TB" };
+        int order = (int)Math.Floor(Math.Log(bytes, 1024));
+        double adjustedSize = bytes / Math.Pow(1024, order);
 
-            while (size >= 1024 && suffixIndex < suffixes.length - 1) {
-                size /= 1024;
-                suffixIndex++;
-            }
-
-            return size.toFixed(2) + ' ' + suffixes[suffixIndex];
-        }
-
-        function toggleEnable(id) {
-            $.ajax({
-                url: '?handler=ToggleEnable',
-                type: 'POST',
-                data: { id: id },
-                headers: { 'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val() },
-                success: function () {
-                    location.reload();
-                }
-            });
-        }
-
-        function startIndexing(id) {
-            $.ajax({
-                url: '?handler=StartIndexing',
-                type: 'POST',
-                data: { id: id },
-                headers: { 'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val() },
-                success: function () {
-                    alert('Indexing started.');
-                }
-            });
-        }
-
-        function openFileExplorer(storageId) {
-            // Implement file explorer opening logic here
-            // You can reuse the file explorer code from FileIndex.cshtml
-            openFileExplorer(storageId);
-        }
-    </script>
+        return $"{adjustedSize:0.##} {sizes[order]}";
+    }
 }

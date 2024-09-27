@@ -185,3 +185,28 @@ button:focus {
 .storage-card .table-responsive {
     margin-top: 1rem;
 }
+
+.rotating {
+    animation: rotating 2s linear infinite;
+}
+
+@keyframes rotating {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Additional styles for schedule modal */
+.btn-transparent-warning {
+    background-color: rgba(255, 0, 0, 0.185);
+    border: none;
+    color: inherit;
+}
+
+.btn-transparent-warning:hover {
+    background-color: rgba(255, 0, 0, 0.5);
+}

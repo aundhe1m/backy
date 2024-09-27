@@ -114,7 +114,7 @@ namespace Backy.Services
             }
         }
 
-        private async Task IndexStorageAsync(Guid storageId, CancellationToken cancellationToken) // Changed to Guid
+        private async Task IndexStorageAsync(Guid storageId, CancellationToken cancellationToken)
         {
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -144,7 +144,7 @@ namespace Backy.Services
 
                 _logger.LogInformation("Connected to storage: {Name}", storage.Name);
 
-                var files = new List<FileEntry>();
+                var files = new Dictionary<string, FileEntry>();
 
                 _logger.LogInformation("Traversing remote directory: {Path}", storage.RemotePath);
                 await TraverseRemoteDirectory(client, storage.RemotePath, files, storage.Id, cancellationToken); // Guid
@@ -152,7 +152,7 @@ namespace Backy.Services
                 _logger.LogInformation("Found {FileCount} files in storage: {Name}", files.Count, storage.Name);
 
                 // Update the database
-                foreach (var file in files)
+                foreach (var file in files.Values)
                 {
                     var existingFile = await context.Files
                         .FirstOrDefaultAsync(f => f.RemoteScanId == storage.Id && f.FullPath == file.FullPath, cancellationToken);
@@ -177,7 +177,7 @@ namespace Backy.Services
                     .ToListAsync(cancellationToken);
                 foreach (var existingFile in existingFiles)
                 {
-                    if (!files.Any(f => f.FullPath == existingFile.FullPath))
+                    if (!files.ContainsKey(existingFile.FullPath))
                     {
                         _logger.LogInformation("Marking file as deleted: {FullPath}", existingFile.FullPath);
                         existingFile.IsDeleted = true;
@@ -202,7 +202,7 @@ namespace Backy.Services
             }
         }
 
-        private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, List<FileEntry> files, Guid storageId, CancellationToken cancellationToken) // Changed to Guid
+        private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, Dictionary<string, FileEntry> files, Guid storageId, CancellationToken cancellationToken)
         {
             var items = client.ListDirectory(remotePath);
             foreach (var item in items)
@@ -211,25 +211,39 @@ namespace Backy.Services
                     continue;
 
                 var fullPath = item.FullName;
+
                 if (item.IsDirectory)
                 {
-                    _logger.LogInformation("Traversing directory: {FullPath}", fullPath);
+                    if (!files.ContainsKey(fullPath))
+                    {
+                        files[fullPath] = new FileEntry
+                        {
+                            RemoteScanId = storageId,
+                            FileName = item.Name,
+                            FullPath = fullPath,
+                            IsDirectory = true,
+                            LastModified = item.LastWriteTime
+                        };
+                    }
+
                     await TraverseRemoteDirectory(client, fullPath, files, storageId, cancellationToken);
                 }
                 else if (item.IsRegularFile)
                 {
-                    _logger.LogInformation("Found file: {FullPath}", fullPath);
-                    files.Add(new FileEntry
+                    if (!files.ContainsKey(fullPath))
                     {
-                        RemoteScanId = storageId,
-                        FileName = item.Name,
-                        FullPath = fullPath,
-                        Size = item.Attributes.Size,
-                        LastModified = item.LastWriteTime
-                    });
+                        files[fullPath] = new FileEntry
+                        {
+                            RemoteScanId = storageId,
+                            FileName = item.Name,
+                            FullPath = fullPath,
+                            IsDirectory = false,
+                            Size = item.Attributes.Size,
+                            LastModified = item.LastWriteTime
+                        };
+                    }
                 }
 
-                // Respect cancellation
                 if (cancellationToken.IsCancellationRequested)
                 {
                     _logger.LogInformation("Indexing canceled for storage: {Id}", storageId);

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Renci.SshNet;
+using Newtonsoft.Json;
 
 namespace Backy.Pages
 {
@@ -129,19 +130,26 @@ namespace Backy.Pages
                 return Page();
             }
 
+            // Fetch existing storage first
+            var existingStorage = await _context.RemoteScans.FindAsync(RemoteScan.Id);
+            if (existingStorage == null)
+            {
+                return NotFound();
+            }
+
             // Custom validation
             if (RemoteScan.AuthenticationMethod == "Password")
             {
-                if (string.IsNullOrWhiteSpace(RemoteScan.Password))
+                if (!string.IsNullOrEmpty(RemoteScan.Password) && RemoteScan.Password != "********")
                 {
-                    ModelState.AddModelError(nameof(RemoteScan.Password), "Password is required when using Password authentication.");
+                    existingStorage.Password = Encrypt(RemoteScan.Password);
                 }
             }
             else if (RemoteScan.AuthenticationMethod == "SSH Key")
             {
-                if (string.IsNullOrWhiteSpace(RemoteScan.SSHKey))
+                if (!string.IsNullOrEmpty(RemoteScan.SSHKey) && RemoteScan.SSHKey != "********")
                 {
-                    ModelState.AddModelError(nameof(RemoteScan.SSHKey), "SSH Key is required when using SSH Key authentication.");
+                    existingStorage.SSHKey = Encrypt(RemoteScan.SSHKey);
                 }
             }
             else
@@ -153,12 +161,6 @@ namespace Backy.Pages
             {
                 await OnGetAsync();
                 return Page();
-            }
-
-            var existingStorage = await _context.RemoteScans.FindAsync(RemoteScan.Id);
-            if (existingStorage == null)
-            {
-                return NotFound();
             }
 
             // Update fields
@@ -225,22 +227,281 @@ namespace Backy.Pages
             return RedirectToPage();
         }
 
-        public async Task<IActionResult> OnPostToggleEnableAsync(Guid id)
+        public async Task<JsonResult> OnPostToggleEnableAsync(Guid id)
         {
             var storage = await _context.RemoteScans.FindAsync(id);
             if (storage != null)
             {
                 storage.IsEnabled = !storage.IsEnabled;
                 await _context.SaveChangesAsync();
+                return new JsonResult(new { success = true });
             }
-            return RedirectToPage();
+            return new JsonResult(new { success = false, message = "Storage not found." });
         }
 
-        public async Task<IActionResult> OnPostStartIndexingAsync(Guid id)
+
+        public JsonResult OnPostStartIndexing(Guid id)
         {
             _indexingQueue.EnqueueIndexing(id);
-            return RedirectToPage();
+            return new JsonResult(new { success = true });
         }
+
+        // New handler to update storage sources via AJAX
+        public async Task<JsonResult> OnGetUpdateStorageSourcesAsync()
+        {
+            var storageDtos = new List<StorageSourceDto>();
+
+            var RemoteScans = await _context.RemoteScans.ToListAsync();
+
+            foreach (var storage in RemoteScans)
+            {
+                var files = await _context.Files.Where(f => f.RemoteScanId == storage.Id).ToListAsync();
+
+                var dto = new StorageSourceDto
+                {
+                    Id = storage.Id,
+                    Name = storage.Name,
+                    IsEnabled = storage.IsEnabled,
+                    IsIndexing = storage.IsIndexing,
+                    Status = storage.Status,
+                    LastChecked = storage.LastChecked,
+                    TotalSize = files.Sum(f => f.Size),
+                    TotalBackupSize = files.Where(f => f.BackupExists).Sum(f => f.Size),
+                    TotalFiles = files.Count,
+                    BackupCount = files.Count(f => f.BackupExists),
+                    BackupPercentage = files.Count > 0 ? Math.Round((double)files.Count(f => f.BackupExists) / files.Count * 100, 2) : 0
+                };
+
+                storageDtos.Add(dto);
+            }
+
+            return new JsonResult(new { success = true, storageSources = storageDtos });
+        }
+
+        public async Task<JsonResult> OnGetGetStorageAsync(Guid id)
+        {
+            var storage = await _context.RemoteScans.FindAsync(id);
+            if (storage == null)
+            {
+                return new JsonResult(new { success = false, message = "Storage not found." });
+            }
+
+            return new JsonResult(new
+            {
+                success = true,
+                id = storage.Id,
+                name = storage.Name,
+                host = storage.Host,
+                port = storage.Port,
+                username = storage.Username,
+                authenticationMethod = storage.AuthenticationMethod,
+                remotePath = storage.RemotePath,
+                passwordSet = !string.IsNullOrEmpty(storage.Password),
+                sshKeySet = !string.IsNullOrEmpty(storage.SSHKey)
+            });
+        }
+
+        // Handler to get index schedules
+        public async Task<JsonResult> OnGetGetIndexSchedulesAsync(Guid id)
+        {
+            var schedules = await _context.IndexSchedules
+                .Where(s => s.RemoteScanId == id)
+                .GroupBy(s => s.TimeOfDayMinutes)
+                .Select(g => new
+                {
+                    Time = $"{g.Key / 60:D2}:{g.Key % 60:D2}",
+                    Days = g.Select(s => s.DayOfWeek).ToList()
+                })
+                .ToListAsync();
+
+            return new JsonResult(new { success = true, schedules = schedules });
+        }
+
+        // Handler to save index schedules
+        public async Task<JsonResult> OnPostSaveIndexSchedulesAsync()
+        {
+            try
+            {
+                using var reader = new StreamReader(Request.Body);
+                var body = await reader.ReadToEndAsync();
+
+                var scheduleData = JsonConvert.DeserializeObject<ScheduleSaveRequest>(body);
+
+                if (scheduleData == null)
+                {
+                    return new JsonResult(new { success = false, message = "Invalid data." });
+                }
+
+                var existingSchedules = _context.IndexSchedules.Where(s => s.RemoteScanId == scheduleData.StorageId);
+                _context.IndexSchedules.RemoveRange(existingSchedules);
+
+                foreach (var schedule in scheduleData.Schedules)
+                {
+                    foreach (var day in schedule.Days)
+                    {
+                        var timeParts = schedule.Time.Split(':');
+                        int hours = int.Parse(timeParts[0]);
+                        int minutes = int.Parse(timeParts[1]);
+                        int totalMinutes = hours * 60 + minutes;
+
+                        var indexSchedule = new IndexSchedule
+                        {
+                            RemoteScanId = scheduleData.StorageId,
+                            DayOfWeek = day,
+                            TimeOfDayMinutes = totalMinutes
+                        };
+                        _context.IndexSchedules.Add(indexSchedule);
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+
+                return new JsonResult(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving index schedules.");
+                return new JsonResult(new { success = false, message = "An error occurred." });
+            }
+        }
+
+        public async Task<JsonResult> OnGetGetFileExplorerAsync(Guid storageId, string? path)
+        {
+            var storage = await _context.RemoteScans.FindAsync(storageId);
+            if (storage == null)
+            {
+                return new JsonResult(new { success = false, message = "Storage not found." });
+            }
+
+            string currentPath = string.IsNullOrEmpty(path) ? storage.RemotePath : path;
+            string parentPath = System.IO.Path.GetDirectoryName(currentPath) ?? storage.RemotePath;
+
+            string currentPathWithSlash = currentPath.EndsWith("/") ? currentPath : currentPath + "/";
+            string pattern = currentPathWithSlash + "%";
+            string patternWithSubdirectory = currentPathWithSlash + "%/%";
+
+            // Fetch directories directly under the current path
+            var directories = await _context.Files
+                .Where(f => f.RemoteScanId == storageId
+                            && f.IsDirectory
+                            && !f.IsDeleted
+                            && f.FullPath != currentPath
+                            && EF.Functions.Like(f.FullPath, pattern)
+                            && !EF.Functions.Like(f.FullPath, patternWithSubdirectory))
+                .Select(f => new
+                {
+                    name = f.FileName,
+                    fullPath = f.FullPath
+                })
+                .ToListAsync();
+
+            // Fetch files directly under the current path
+            var files = await _context.Files
+                .Where(f => f.RemoteScanId == storageId
+                            && !f.IsDirectory
+                            && !f.IsDeleted
+                            && EF.Functions.Like(f.FullPath, pattern)
+                            && !EF.Functions.Like(f.FullPath, patternWithSubdirectory))
+                .Select(f => new
+                {
+                    name = f.FileName,
+                    size = f.Size,
+                    fullPath = f.FullPath,
+                    backupExists = f.BackupExists
+                })
+                .ToListAsync();
+
+            var data = new
+            {
+                success = true,
+                directoryTree = BuildDirectoryTree(storageId, storage.RemotePath),
+                directories = directories,
+                files = files,
+                navPath = currentPath.Replace(storage.RemotePath, ""),
+                remotePath = storage.RemotePath,
+                currentPath = currentPath,
+                parentPath = parentPath
+            };
+
+            return new JsonResult(data);
+        }
+
+        private DirectoryNode BuildDirectoryTree(Guid storageId, string path)
+        {
+            // Get all directories for the storage
+            var directories = _context.Files
+                .Where(f => f.RemoteScanId == storageId && f.IsDirectory && !f.IsDeleted)
+                .Select(f => new DirectoryInfoDto { FullPath = f.FullPath, FileName = f.FileName })
+                .ToList();
+
+            // Build a lookup for quick access
+            var lookup = directories.ToLookup(dir => System.IO.Path.GetDirectoryName(dir.FullPath));
+
+            // Create a root node
+            var rootNode = new DirectoryNode
+            {
+                Name = System.IO.Path.GetFileName(path),
+                FullPath = path,
+                Children = new List<DirectoryNode>()
+            };
+
+            // Build the tree recursively
+            BuildDirectoryChildren(rootNode, lookup);
+
+            return rootNode;
+        }
+
+
+        private void BuildDirectoryChildren(DirectoryNode node, ILookup<string?, DirectoryInfoDto> lookup)
+        {
+            var children = lookup[node.FullPath];
+
+            foreach (var child in children)
+            {
+                var childNode = new DirectoryNode
+                {
+                    Name = child.FileName,
+                    FullPath = child.FullPath,
+                    Children = new List<DirectoryNode>()
+                };
+
+                BuildDirectoryChildren(childNode, lookup);
+                node.Children.Add(childNode);
+            }
+        }
+
+
+        public async Task<JsonResult> OnGetSearchFilesAsync(Guid storageId, string query)
+        {
+            var storage = await _context.RemoteScans.FindAsync(storageId);
+            if (storage == null)
+            {
+                return new JsonResult(new { success = false, message = "Storage not found." });
+            }
+
+            // Search for files matching the query
+            var files = await _context.Files
+                .Where(f => f.RemoteScanId == storageId && f.FileName.Contains(query) && !f.IsDeleted)
+                .Select(f => new
+                {
+                    name = f.FileName,
+                    fullPath = f.FullPath,
+                    type = f.IsDirectory ? "Directory" : "File",
+                    navPath = f.FullPath.Replace(storage.RemotePath, "")
+                })
+                .ToListAsync();
+
+            return new JsonResult(new { success = true, results = files });
+        }
+
+
+        public class DirectoryNode
+        {
+            public string Name { get; set; } = "";
+            public string FullPath { get; set; } = "";
+            public List<DirectoryNode> Children { get; set; } = new List<DirectoryNode>();
+        }
+
 
         // Helper methods
 
@@ -293,229 +554,32 @@ namespace Backy.Pages
             }
         }
 
-        public async Task<JsonResult> OnGetGetFileExplorer(Guid storageId, string? path, string? search)
+        // Additional classes for data transfer
+        public class StorageSourceDto
         {
-            _logger.LogInformation("GetFileExplorer called with storageId={StorageId}, path={Path}", storageId, path);
-
-            var storage = await _context.RemoteScans.FindAsync(storageId);
-            if (storage == null)
-            {
-                _logger.LogWarning("Storage not found: {Id}", storageId);
-                return new JsonResult(new { success = false, message = "Storage not found" });
-            }
-
-            var rootPath = NormalizePath(storage.RemotePath);
-            var currentPath = NormalizePath(path ?? storage.RemotePath);
-
-            var filesQuery = _context.Files
-                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted);
-
-            if (!string.IsNullOrEmpty(search))
-            {
-                filesQuery = filesQuery.Where(f => f.FileName.Contains(search));
-            }
-
-            var allFiles = filesQuery.ToList();
-
-            // Files and directories in the current directory
-            var filesInCurrentDir = allFiles
-                .Where(f => NormalizePath(Path.GetDirectoryName(f.FullPath)) == currentPath)
-                .OrderBy(f => f.FileName)
-                .ToList();
-
-            var directoriesInCurrentDir = allFiles
-                .Select(f => NormalizePath(Path.GetDirectoryName(f.FullPath)))
-                .Where(d => d != null && NormalizePath(Path.GetDirectoryName(d)) == currentPath)
-                .Distinct()
-                .OrderBy(d => d)
-                .ToList();
-
-            // Build directory tree for the left navigation
-            var directoryTree = BuildDirectoryTree(allFiles, rootPath);
-
-            // Compute navPath
-            var navPath = currentPath.StartsWith(rootPath)
-                ? currentPath.Substring(rootPath.Length)
-                : currentPath;
-
-            navPath = navPath.TrimStart('/');
-
-            // Compute parentPath
-            var parentPath = NormalizePath(Path.GetDirectoryName(currentPath));
-            if (string.IsNullOrEmpty(parentPath) || parentPath.Length < rootPath.Length)
-            {
-                parentPath = rootPath;
-            }
-
-            var model = new
-            {
-                success = true,
-                storageId = storage.Id,
-                currentPath = currentPath,
-                navPath = "/" + navPath,
-                remotePath = rootPath,
-                parentPath = parentPath,
-                files = filesInCurrentDir.Select(f => new
-                {
-                    name = f.FileName,
-                    size = f.Size,
-                    lastModified = f.LastModified,
-                    backupExists = f.BackupExists
-                }),
-                directories = directoriesInCurrentDir.Select(d => new
-                {
-                    name = Path.GetFileName(d),
-                    fullPath = d
-                }),
-                directoryTree = directoryTree
-            };
-
-            return new JsonResult(model);
+            public Guid Id { get; set; }
+            public string Name { get; set; } = string.Empty;
+            public bool IsEnabled { get; set; }
+            public bool IsIndexing { get; set; }
+            public string Status { get; set; } = string.Empty;
+            public DateTime? LastChecked { get; set; }
+            public long TotalSize { get; set; }
+            public long TotalBackupSize { get; set; }
+            public int TotalFiles { get; set; }
+            public int BackupCount { get; set; }
+            public double BackupPercentage { get; set; }
         }
 
-        public JsonResult OnGetSearchFiles(Guid storageId, string query)
+        public class ScheduleSaveRequest
         {
-            var storage = _context.RemoteScans.Find(storageId);
-            if (storage == null)
-            {
-                return new JsonResult(new { success = false, message = "Storage not found" });
-            }
-
-            var remotePath = NormalizePath(storage.RemotePath);
-
-            // Normalize query for case-insensitive search
-            query = query.ToLowerInvariant();
-
-            // Search for matching files
-            var matchingFilesQuery = _context.Files
-                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted && EF.Functions.Like(f.FileName.ToLower(), $"%{query}%"))
-                .Select(f => new
-                {
-                    f.FileName,
-                    f.FullPath
-                });
-
-            var matchingFiles = matchingFilesQuery
-                .AsEnumerable()
-                .Select(f => new SearchResultItem
-                {
-                    Type = "File",
-                    Name = f.FileName,
-                    FullPath = NormalizePath(f.FullPath),
-                    NavPath = GetNavPath(NormalizePath(f.FullPath), remotePath)
-                });
-
-            // Get all directories
-            var allDirectoriesQuery = _context.Files
-                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted)
-                .Select(f => Path.GetDirectoryName(f.FullPath));
-
-            var allDirectories = allDirectoriesQuery
-                .AsEnumerable()
-                .Where(d => !string.IsNullOrEmpty(d))
-                .Select(d => NormalizePath(d))
-                .Distinct()
-                .ToList();
-
-            // Filter directories on the client side
-            var matchingDirectories = allDirectories
-                .Where(d => Path.GetFileName(d).ToLower().Contains(query))
-                .Select(d => new SearchResultItem
-                {
-                    Type = "Directory",
-                    Name = Path.GetFileName(d),
-                    FullPath = d,
-                    NavPath = GetNavPath(d, remotePath)
-                });
-
-            // Combine results and eliminate duplicates
-            var results = matchingFiles.Concat(matchingDirectories)
-                .GroupBy(r => new { r.Type, r.FullPath })
-                .Select(g => g.First())
-                .OrderBy(r => r.Name)
-                .Take(8)
-                .ToList();
-
-            return new JsonResult(new { success = true, results = results });
+            public Guid StorageId { get; set; }
+            public List<ScheduleDto> Schedules { get; set; } = new List<ScheduleDto>();
         }
 
-        // Helper methods from FileIndex.cshtml.cs
-        private string NormalizePath(string path)
+        public class ScheduleDto
         {
-            return path.Replace('\\', '/').TrimEnd('/');
-        }
-
-        private DirectoryNode BuildDirectoryTree(List<FileEntry> files, string rootPath)
-        {
-            rootPath = NormalizePath(rootPath);
-
-            var root = new DirectoryNode
-            {
-                Name = "Root",
-                FullPath = rootPath
-            };
-
-            var directories = files
-                .Select(f => NormalizePath(Path.GetDirectoryName(f.FullPath)))
-                .Where(d => d != null)
-                .Distinct()
-                .ToList();
-
-            foreach (var dir in directories)
-            {
-                var relativePath = Path.GetRelativePath(rootPath, dir);
-                relativePath = NormalizePath(relativePath);
-
-                var parts = relativePath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-
-                AddPathToTree(root, parts, rootPath);
-            }
-
-            // Sort the directory tree after building it
-            SortDirectoryTree(root);
-
-            return root;
-        }
-
-        private void AddPathToTree(DirectoryNode currentNode, string[] parts, string currentFullPath)
-        {
-            if (parts.Length == 0)
-                return;
-
-            var part = parts[0];
-            var childFullPath = NormalizePath($"{currentFullPath}/{part}");
-
-            var childNode = currentNode.Children.FirstOrDefault(n => n.Name == part && n.FullPath == childFullPath);
-
-            if (childNode == null)
-            {
-                childNode = new DirectoryNode
-                {
-                    Name = part,
-                    FullPath = childFullPath
-                };
-                currentNode.Children.Add(childNode);
-            }
-
-            AddPathToTree(childNode, parts.Skip(1).ToArray(), childFullPath);
-        }
-
-        private void SortDirectoryTree(DirectoryNode node)
-        {
-            node.Children = node.Children.OrderBy(n => n.Name).ToList();
-            foreach (var child in node.Children)
-            {
-                SortDirectoryTree(child);
-            }
-        }
-
-        private static string GetNavPath(string fullPath, string remotePath)
-        {
-            if (fullPath.StartsWith(remotePath))
-            {
-                return fullPath.Substring(remotePath.Length).TrimStart('/', '\\');
-            }
-            return fullPath;
+            public List<int> Days { get; set; } = new List<int>();
+            public string Time { get; set; } = "";
         }
 
         public class StorageSourceViewModel

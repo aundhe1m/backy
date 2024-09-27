@@ -47,31 +47,31 @@
                         </div>
                     }
 
-                    <input type="hidden" asp-for="RemoteScan.Id" id="storageId" />
+                    <input type="hidden" name="RemoteScan.Id" id="storageId" />
 
                     <div class="form-group">
                         <label>Name</label>
-                        <input asp-for="RemoteScan.Name" class="form-control" id="storageName" required />
+                        <input name="RemoteScan.Name" class="form-control" id="storageName" required />
                         <span asp-validation-for="RemoteScan.Name" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Host</label>
-                        <input asp-for="RemoteScan.Host" class="form-control" id="storageHost" required />
+                        <input name="RemoteScan.Host" class="form-control" id="storageHost" required />
                         <span asp-validation-for="RemoteScan.Host" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Port</label>
-                        <input asp-for="RemoteScan.Port" class="form-control" id="storagePort" required />
+                        <input name="RemoteScan.Port" class="form-control" id="storagePort" required />
                         <span asp-validation-for="RemoteScan.Port" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Username</label>
-                        <input asp-for="RemoteScan.Username" class="form-control" id="storageUsername" required />
+                        <input name="RemoteScan.Username" class="form-control" id="storageUsername" required />
                         <span asp-validation-for="RemoteScan.Username" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Authentication Method</label>
-                        <select asp-for="RemoteScan.AuthenticationMethod" class="form-control" id="authMethod"
+                        <select name="RemoteScan.AuthenticationMethod" class="form-control" id="authMethod"
                             onchange="toggleAuthFields()" required>
                             <option value="Password">Password</option>
                             <option value="SSH Key">SSH Key</option>
@@ -80,18 +80,17 @@
                     </div>
                     <div class="form-group" id="passwordField">
                         <label>Password</label>
-                        <input asp-for="RemoteScan.Password" class="form-control" id="storagePassword"
-                            type="password" />
+                        <input name="RemoteScan.Password" class="form-control" id="storagePassword" type="password" />
                         <span asp-validation-for="RemoteScan.Password" class="text-danger"></span>
                     </div>
                     <div class="form-group" id="sshKeyField" style="display:none;">
                         <label>SSH Key</label>
-                        <textarea asp-for="RemoteScan.SSHKey" class="form-control" id="storageSSHKey"></textarea>
+                        <textarea name="RemoteScan.SSHKey" class="form-control" id="storageSSHKey"></textarea>
                         <span asp-validation-for="RemoteScan.SSHKey" class="text-danger"></span>
                     </div>
                     <div class="form-group">
                         <label>Remote Path</label>
-                        <input asp-for="RemoteScan.RemotePath" class="form-control" id="storageRemotePath" required />
+                        <input name="RemoteScan.RemotePath" class="form-control" id="storageRemotePath" required />
                         <span asp-validation-for="RemoteScan.RemotePath" class="text-danger"></span>
                     </div>
                 </div>
@@ -139,6 +138,51 @@
     </div>
 </div>
 
+<!-- Index Schedule Modal -->
+<div class="modal fade" id="scheduleModal" tabindex="-1" role="dialog" aria-labelledby="scheduleModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <form id="scheduleForm">
+                <div class="modal-header">
+                    <h5 class="modal-title">Schedule Index</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"
+                        onclick="closeScheduleModal()">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- Schedules Table -->
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Mon</th>
+                                <th>Tue</th>
+                                <th>Wed</th>
+                                <th>Thu</th>
+                                <th>Fri</th>
+                                <th>Sat</th>
+                                <th>Sun</th>
+                                <th>Time</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleTableBody">
+                            <!-- Schedule entries will be inserted here -->
+                        </tbody>
+                    </table>
+                    <!-- Add Schedule Button -->
+                    <button type="button" class="btn btn-primary" onclick="addScheduleRow()">Add Schedule</button>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeScheduleModal()">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="saveSchedules()">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script>
         // Scripts for Add/Edit Modal
@@ -174,11 +218,19 @@
                     $('#storageRemotePath').val(data.remotePath);
                     toggleAuthFields();
                     if (data.authenticationMethod === 'Password') {
-                        $('#storagePassword').val(''); // Clear password field
-                        $('#storageSSHKey').val(''); // Clear SSH Key field
-                    } else {
-                        $('#storageSSHKey').val(''); // Clear SSH Key field
-                        $('#storagePassword').val(''); // Clear password field
+                        if (data.passwordSet) {
+                            $('#storagePassword').val('********'); // Indicate password is set
+                        } else {
+                            $('#storagePassword').val('');
+                        }
+                        $('#storageSSHKey').val('');
+                    } else if (data.authenticationMethod === 'SSH Key') {
+                        $('#storagePassword').val('');
+                        if (data.sshKeySet) {
+                            $('#storageSSHKey').val('********'); // Indicate SSH key is set
+                        } else {
+                            $('#storageSSHKey').val('');
+                        }
                     }
                     $('#storageModal').modal('show');
                 },
@@ -236,5 +288,6 @@
 }
 
 <script src="/js/RemoteScan.js"></script>
+<script src="/js/Toast.js"></script>
 <link rel="stylesheet" href="/css/Drive.css">
-<link rel="stylesheet" href="/css/FileIndex.css">
+<link rel="stylesheet" href="/css/FileExplorer.css">

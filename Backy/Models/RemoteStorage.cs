@@ -1,10 +1,12 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Backy.Models
 {
     public class RemoteScan
     {
         [Key]
+        [BindNever]
         public Guid Id { get; set; } = Guid.NewGuid();
 
         [Required(ErrorMessage = "Name is required.")]

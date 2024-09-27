@@ -10,16 +10,22 @@ namespace Backy.Models
 
     public class DirectoryNode
     {
-        public string Name { get; set; } = "";
-        public string FullPath { get; set; } = "";
+        public string Name { get; set; } = string.Empty;
+        public string FullPath { get; set; } = string.Empty;
         public List<DirectoryNode> Children { get; set; } = new List<DirectoryNode>();
     }
 
     public class SearchResultItem
     {
-        public string Type { get; set; } // "File" or "Directory"
-        public string Name { get; set; }
-        public string FullPath { get; set; }
-        public string NavPath { get; set; }
+        public string Type { get; set; } = string.Empty; // "File" or "Directory"
+        public string Name { get; set; } = string.Empty;
+        public string FullPath { get; set; } = string.Empty;
+        public string NavPath { get; set; } = string.Empty;
+    }
+
+    public class DirectoryInfoDto
+    {
+        public string FullPath { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
     }
 }

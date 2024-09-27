@@ -24,7 +24,7 @@
     /* Make spinner orange */
 }
 
-/* .toast-container {
+.toast-container {
     position: fixed;
     bottom: 20px;
     left: 50%;
@@ -36,20 +36,20 @@
     z-index: 10000;
     opacity: 0;
     transition: opacity 0.3s ease, bottom 0.3s ease;
-}  */
+}
 
 
-/* .toast-container.show {
+.toast-container.show {
     display: block;
     opacity: 1;
     bottom: 40px;
-} */
+}
 
-/* .toast-body {
+.toast-body {
     display: flex;
     justify-content: center;
     align-items: center;
-} */
+}
 
 .truncate {
     display: inline-block;

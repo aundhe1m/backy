@@ -1,6 +1,6 @@
 // Function to format size in bytes to human-readable format
 function formatSize(sizeInBytes) {
-    if (sizeInBytes === null || sizeInBytes === 0) return 'Unknown size';
+    if (sizeInBytes === null || sizeInBytes === 0) return '0 B';
 
     let size = sizeInBytes;
     const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -50,14 +50,37 @@ function toggleEnable(id) {
             'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
         }
     })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
         .then(data => {
-            location.reload();
+            if (data.success) {
+                showToast(`Storage status changed.`, true);
+            } else {
+                showToast(`Storage failed to change: ${data.message}`, false);
+            }
+        })
+        .catch(error => {
+            console.error('There was a problem with the fetch operation:', error);
+            showToast(`An error occurred while updating the storage status: ${error}`, false);
         });
 }
 
+
 // Function to start indexing
 function startIndexing(id) {
+    const startIndexingButton = document.getElementById(`startIndexingButton-${id}`);
+    const startIndexingIcon = document.getElementById(`startIndexingIcon-${id}`);
+
+    // Disable the button and add rotating class to icon
+    if (startIndexingButton && startIndexingIcon) {
+        startIndexingButton.disabled = true;
+        startIndexingIcon.classList.add('rotating');
+    }
+
     fetch(`/RemoteScan?handler=StartIndexing&id=${id}`, {
         method: 'POST',
         headers: {
@@ -65,11 +88,83 @@ function startIndexing(id) {
             'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
         }
     })
-        .then(response => response.json())
-        .then(data => {
-            alert('Indexing started.');
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .catch(error => {
+            console.error('There was a problem with the fetch operation:', error);
+            // Re-enable the button and remove rotating class
+            if (startIndexingButton && startIndexingIcon) {
+                startIndexingButton.disabled = false;
+                startIndexingIcon.classList.remove('rotating');
+                showToast(`Indexing failed: ${error}`, false);
+            }
         });
 }
+
+
+function updateStorageSources() {
+    fetch('/RemoteScan?handler=UpdateStorageSources')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                data.storageSources.forEach(source => {
+                    // Update BackupPercentage
+                    const backupPercentageElement = document.getElementById(`backupPercentage-${source.id}`);
+                    if (backupPercentageElement) {
+                        backupPercentageElement.textContent = `${source.backupPercentage}% Backup`;
+                    }
+
+                    // Update progress bar
+                    const progressBarElement = document.getElementById(`progressBar-${source.id}`);
+                    if (progressBarElement) {
+                        progressBarElement.style.width = `${source.backupPercentage}%`;
+                        progressBarElement.setAttribute('aria-valuenow', source.backupPercentage);
+                    }
+
+                    // Update File and Backup Info table
+                    const totalFilesElement = document.getElementById(`totalFiles-${source.id}`);
+                    if (totalFilesElement) {
+                        totalFilesElement.textContent = source.totalFiles;
+                    }
+
+                    const backupCountElement = document.getElementById(`backupCount-${source.id}`);
+                    if (backupCountElement) {
+                        backupCountElement.textContent = source.backupCount;
+                    }
+
+                    const totalSizeElement = document.getElementById(`totalSize-${source.id}`);
+                    if (totalSizeElement) {
+                        totalSizeElement.textContent = formatSize(source.totalSize);
+                    }
+
+                    const totalBackupSizeElement = document.getElementById(`totalBackupSize-${source.id}`);
+                    if (totalBackupSizeElement) {
+                        totalBackupSizeElement.textContent = formatSize(source.totalBackupSize);
+                    }
+
+                    // Update IsIndexing state
+                    const startIndexingButton = document.getElementById(`startIndexingButton-${source.id}`);
+                    const startIndexingIcon = document.getElementById(`startIndexingIcon-${source.id}`);
+                    if (startIndexingButton && startIndexingIcon) {
+                        if (source.isIndexing) {
+                            startIndexingButton.disabled = true;
+                            startIndexingIcon.classList.add('rotating');
+                        } else {
+                            startIndexingButton.disabled = false;
+                            startIndexingIcon.classList.remove('rotating');
+                        }
+                    }
+                });
+            }
+        })
+        .catch(error => console.error('Error updating storage sources:', error));
+}
+
+setInterval(updateStorageSources, 5000);
 
 // File Explorer functionality
 let storageId = null;
@@ -86,7 +181,6 @@ function closeFileExplorer() {
 }
 
 function fetchFileExplorerData(storageId, path, searchQuery = '', highlightFile = '') {
-    console.log('fetchFileExplorerData called with path:', path);
     $.ajax({
         url: '/RemoteScan?handler=GetFileExplorer',
         data: { storageId: storageId, path: path },
@@ -420,4 +514,123 @@ function navigateToSearchResult(result) {
         const directoryPath = result.fullPath.substring(0, result.fullPath.lastIndexOf('/'));
         fetchFileExplorerData(storageId, directoryPath, '', result.name);
     }
+}
+
+// Index Schedule functionality
+let currentStorageId = null;
+
+function openScheduleModal(storageId) {
+    currentStorageId = storageId;
+    $('#scheduleModal').modal('show');
+    loadSchedules();
+}
+
+function closeScheduleModal() {
+    $('#scheduleModal').modal('hide');
+    currentStorageId = null;
+}
+
+function loadSchedules() {
+    $.ajax({
+        url: '/RemoteScan?handler=GetIndexSchedules',
+        data: { id: currentStorageId },
+        method: 'GET',
+        success: function (data) {
+            if (data.success) {
+                renderSchedules(data.schedules);
+            } else {
+                alert('Error loading schedules.');
+            }
+        },
+        error: function () {
+            alert('Error loading schedules.');
+        }
+    });
+}
+
+function renderSchedules(schedules) {
+    const tableBody = $('#scheduleTableBody');
+    tableBody.empty();
+
+    schedules.forEach(schedule => {
+        const row = createScheduleRow(schedule);
+        tableBody.append(row);
+    });
+}
+
+function createScheduleRow(schedule = null) {
+    const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    const row = $('<tr></tr>');
+
+    days.forEach((day, index) => {
+        const dayCell = $('<td></td>');
+        const checkbox = $('<input type="checkbox">').attr('data-day', index);
+
+        if (schedule && schedule.days.includes(index)) {
+            checkbox.prop('checked', true);
+        }
+
+        dayCell.append(checkbox);
+        row.append(dayCell);
+    });
+
+    const timeCell = $('<td></td>');
+    const timeInput = $('<input type="time">').addClass('form-control').val(schedule ? schedule.time : '');
+    timeCell.append(timeInput);
+    row.append(timeCell);
+
+    const deleteCell = $('<td></td>');
+    const deleteButton = $('<button type="button" class="btn btn-transparent-warning"><img src="/icons/trash.svg" alt="Delete"></button>');
+    deleteButton.click(function () {
+        row.remove();
+    });
+    deleteCell.append(deleteButton);
+    row.append(deleteCell);
+
+    return row;
+}
+
+
+function addScheduleRow() {
+    const row = createScheduleRow();
+    $('#scheduleTableBody').append(row);
+}
+
+function saveSchedules() {
+    const schedules = [];
+    $('#scheduleTableBody tr').each(function () {
+        const row = $(this);
+        const days = [];
+        row.find('input[type="checkbox"]').each(function () {
+            if ($(this).is(':checked')) {
+                days.push(parseInt($(this).attr('data-day')));
+            }
+        });
+        const time = row.find('input[type="time"]').val();
+        if (days.length > 0 && time) {
+            schedules.push({ days: days, time: time });
+        }
+    });
+
+    $.ajax({
+        url: '/RemoteScan?handler=SaveIndexSchedules',
+        method: 'POST',
+        data: JSON.stringify({ storageId: currentStorageId, schedules: schedules }),
+        contentType: 'application/json',
+        headers: {
+            'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val(),
+            'X-Requested-With': 'XMLHttpRequest' // Ensure it's treated as an AJAX request
+        },
+        success: function (data) {
+            if (data.success) {
+                showToast(`Schedules saved successfully.`, true);
+                closeScheduleModal();
+            } else {
+                showToast(`Error saving schedules: ${data.message}`, false);
+            }
+        },
+        error: function () {
+            showToast(`Error saving schedules: ${data.message}`, false);
+        }
+    });
 }
