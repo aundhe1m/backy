@@ -169,6 +169,16 @@ namespace Backy.Services
                         existingFile.IsDeleted = false;
                         context.Files.Update(existingFile);
                     }
+
+                    try
+                    {
+                        await context.SaveChangesAsync(cancellationToken);
+                    }
+                    catch (DbUpdateException ex)
+                    {
+                        _logger.LogError(ex, "Error saving file: {FullPath}", file.FullPath);
+                        // Optionally, handle specific exceptions or implement retry logic
+                    }
                 }
 
                 // Mark files that are no longer present as deleted
