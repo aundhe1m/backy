@@ -22,25 +22,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-// Handle expand/collapse chevron rotation
-document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (toggleButton) {
-    var targetId = toggleButton.getAttribute('data-bs-target');
-    var collapseElement = document.querySelector(targetId);
-
-    if (collapseElement && toggleButton) {
-        // Initialize collapsed state
-        toggleButton.classList.add('collapsed');
-
-        collapseElement.addEventListener('shown.bs.collapse', function () {
-            toggleButton.classList.remove('collapsed');
-        });
-
-        collapseElement.addEventListener('hidden.bs.collapse', function () {
-            toggleButton.classList.add('collapsed');
-        });
-    }
-});
-
 // Function to toggle enable/disable
 function toggleEnable(id) {
     fetch(`/RemoteScan?handler=ToggleEnable&id=${id}`, {
@@ -50,12 +31,7 @@ function toggleEnable(id) {
             'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
         }
     })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
             if (data.success) {
                 showToast(`Storage status changed.`, true);
@@ -68,7 +44,6 @@ function toggleEnable(id) {
             showToast(`An error occurred while updating the storage status: ${error}`, false);
         });
 }
-
 
 // Function to start indexing
 function startIndexing(id) {
@@ -88,12 +63,7 @@ function startIndexing(id) {
             'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
         }
     })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
+        .then(response => response.json())
         .catch(error => {
             console.error('There was a problem with the fetch operation:', error);
             // Re-enable the button and remove rotating class
@@ -105,7 +75,7 @@ function startIndexing(id) {
         });
 }
 
-
+// Function to update storage sources periodically
 function updateStorageSources() {
     fetch('/RemoteScan?handler=UpdateStorageSources')
         .then(response => response.json())
@@ -168,25 +138,40 @@ setInterval(updateStorageSources, 5000);
 
 // File Explorer functionality
 let storageId = null;
+let expandedPaths = new Set();
+let storageContentCache = null; // Cache for storage content
+let currentNode = null; // Current node in the file explorer
 
+// Variables to store sorting state
+let sortColumn = 'name';
+let sortOrder = 'asc';
+
+// Function to open File Explorer modal
 function openFileExplorer(selectedStorageId) {
     storageId = selectedStorageId;
-    fetchFileExplorerData(storageId, null);
+    fetchFileExplorerData(storageId);
     $('#fileExplorerModal').modal('show');
 }
 
+// Function to close File Explorer modal
 function closeFileExplorer() {
     $('#fileExplorerModal').modal('hide');
+    expandedPaths.clear();
+    storageContentCache = null;
+    currentNode = null;
 }
 
-function fetchFileExplorerData(storageId, path, searchQuery = '', highlightFile = '') {
+// Function to fetch File Explorer data
+function fetchFileExplorerData(storageId) {
     $.ajax({
-        url: '/RemoteScan?handler=GetFileExplorer',
-        data: { storageId: storageId, path: path },
+        url: '/RemoteScan?handler=FileExplorer',
+        data: { storageId: storageId },
         method: 'GET',
         success: function (data) {
             if (data.success) {
-                renderFileExplorer(data, highlightFile);
+                storageContentCache = data.storageContent;
+                currentNode = storageContentCache;
+                renderFileExplorer();
             } else {
                 alert('Error: ' + data.message);
             }
@@ -197,7 +182,8 @@ function fetchFileExplorerData(storageId, path, searchQuery = '', highlightFile 
     });
 }
 
-function renderFileExplorer(data, highlightFile = '') {
+// Function to render File Explorer
+function renderFileExplorer(highlightFile = '') {
     try {
         const contentDiv = $('#fileExplorerContent');
         contentDiv.empty();
@@ -206,16 +192,19 @@ function renderFileExplorer(data, highlightFile = '') {
 
         // Left column for directory navigation
         const leftCol = $('<div class="col-md-3 directory-navigation"></div>');
-        const dirNav = $('<ul id="directoryTree" class="list-group"></ul>');
+        const dirNav = $('<ul class="list-group" id="directoryTree"></ul>');
 
-        // Populate the directory tree
-        if (data.directoryTree && data.directoryTree.children.length > 0) {
-            data.directoryTree.children.forEach(function (childNode) {
-                const childLi = renderDirectoryNode(childNode);
-                dirNav.append(childLi);
+        // Populate the directory tree with immediate children of root
+        if (storageContentCache.children && storageContentCache.children.length > 0) {
+            // Sort directories alphabetically
+            const sortedChildren = storageContentCache.children.slice().sort((a, b) => a.name.localeCompare(b.name));
+            sortedChildren.forEach(childNode => {
+                if (childNode.type === 'directory') {
+                    childNode.parent = storageContentCache; // Set parent reference
+                    const childLi = buildDirectoryTree(childNode);
+                    dirNav.append(childLi);
+                }
             });
-        } else {
-            console.warn('No children found in directoryTree:', data.directoryTree);
         }
 
         leftCol.append(dirNav);
@@ -223,223 +212,295 @@ function renderFileExplorer(data, highlightFile = '') {
         // Right column for files and breadcrumb
         const rightCol = $('<div class="col-md-9"></div>');
 
-        // Breadcrumb
-        const breadcrumb = $('<nav aria-label="breadcrumb"></nav>');
-        const breadcrumbList = $('<ol class="breadcrumb align-items-center"></ol>');
-
-        const navPathSegments = data.navPath.split('/').filter(s => s.length > 0);
-        const remotePath = data.remotePath;
-        let cumulativeNavPath = '';
-        let cumulativeFullPath = remotePath;
-
-        // Back button
-        const backButton = $('<button class="btn btn-link p-0 mr-2" id="backButton"><img src="/icons/arrow-left-circle.svg" class="back-icon" alt="Back"></button>');
-        backButton.click(function () {
-            if (!backButton.find('img').hasClass('inactive-icon')) {
-                fetchFileExplorerData(storageId, data.parentPath);
-            }
-        });
-        breadcrumbList.append(backButton);
-
-        // Root link
-        const rootLi = $('<li class="breadcrumb-item"></li>');
-        const rootLink = $('<a href="javascript:void(0);"><i class="fa fa-home"></i> Root</a>');
-        rootLink.click(function () {
-            fetchFileExplorerData(storageId, remotePath);
-        });
-        rootLi.append(rootLink);
-        breadcrumbList.append(rootLi);
-
-        navPathSegments.forEach((segment, index) => {
-            cumulativeNavPath += '/' + segment;
-            cumulativeFullPath += '/' + segment;
-            const currentFullPath = cumulativeFullPath; // Capture the current value
-            if (index === navPathSegments.length - 1) {
-                breadcrumbList.append($('<li class="breadcrumb-item active" aria-current="page">' + segment + '</li>'));
-            } else {
-                const li = $('<li class="breadcrumb-item"></li>');
-                const link = $('<a href="javascript:void(0);"></a>').text(segment);
-                link.click(function () {
-                    fetchFileExplorerData(storageId, currentFullPath);
-                });
-                li.append(link);
-                breadcrumbList.append(li);
-            }
-        });
-        breadcrumb.append(breadcrumbList);
+        // Breadcrumb and back button
+        const breadcrumb = buildBreadcrumb();
         rightCol.append(breadcrumb);
 
-        // Update the back icon's opacity based on current path
-        const backButtonImg = $('#backButton img');
-        if (data.currentPath === data.remotePath) {
-            backButtonImg.addClass('inactive-icon');
-        } else {
-            backButtonImg.removeClass('inactive-icon');
-        }
-
-        // Files table
-        const fileTable = $('<table class="table table-striped"></table>');
-        const tableHeader = $('<thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Backup</th></tr></thead>');
-        fileTable.append(tableHeader);
-
-        const tableBody = $('<tbody></tbody>');
-
-        // Directories in the right panel (optional)
-        if (data.directories && data.directories.length > 0) {
-            data.directories.forEach(dir => {
-                const row = $('<tr></tr>');
-                const nameCell = $('<td></td>');
-
-                // Directory icon
-                const dirIcon = $('<i class="fa fa-folder"></i>');
-                const link = $('<a href="javascript:void(0);"></a>').append(dirIcon).append(' ' + dir.Name);
-                link.click(function () {
-                    fetchFileExplorerData(storageId, dir.FullPath);
-                });
-                nameCell.append(link);
-                row.append(nameCell);
-                row.append('<td>Directory</td>');
-                row.append('<td>N/A</td>');
-                row.append('<td>N/A</td>');
-                tableBody.append(row);
-            });
-        }
-
-        // Files
-        data.files.forEach(file => {
-            const row = $('<tr></tr>');
-            const nameCell = $('<td></td>');
-
-            // File icon
-            const fileIcon = $('<i class="fa fa-file"></i>');
-
-            nameCell.append(fileIcon).append(' ' + file.name);
-            row.append(nameCell);
-            row.append('<td>File</td>');
-
-            // Size handled in JavaScript
-            const sizeCell = $('<td></td>').text(formatSize(file.size));
-            row.append(sizeCell);
-
-            // Backup status
-            let backupStatus;
-            if (file.backupExists) {
-                backupStatus = '<i class="fa fa-check-circle text-success" title="Backed Up"></i>';
-            } else {
-                backupStatus = '<i class="fa fa-times-circle text-danger" title="Pending Backup"></i>';
-            }
-            row.append('<td>' + backupStatus + '</td>');
-
-            if (file.name === highlightFile) {
-                row.addClass('highlighted-file');
-            }
-
-            tableBody.append(row);
-        });
-
-        fileTable.append(tableBody);
-        rightCol.append(fileTable);
+        // Files table container
+        const fileTableContainer = $('<div id="fileTableContainer"></div>');
+        rightCol.append(fileTableContainer);
+        fileTableContainer.append(buildFileTable(highlightFile));
 
         container.append(leftCol);
         container.append(rightCol);
         contentDiv.append(container);
-
-        // Initialize the directory tree if not already initialized
-        if ($('#directoryTree').children().length === 0) {
-            renderDirectoryTree(data.directoryTree);
-        }
-
-        // Scroll to highlighted file
-        if (highlightFile !== '') {
-            const highlightedRow = tableBody.find('.highlighted-file');
-            if (highlightedRow.length > 0) {
-                highlightedRow[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                // Remove the highlight after 3 seconds
-                setTimeout(function () {
-                    highlightedRow.removeClass('highlighted-file');
-                }, 3000);
-            }
-        }
-
-        // Format file sizes after rendering
-        $('td[data-size]').each(function () {
-            const sizeInBytes = parseInt($(this).attr('data-size'));
-            if (!isNaN(sizeInBytes)) {
-                $(this).text(formatSize(sizeInBytes));
-            } else {
-                $(this).text('N/A');
-            }
-        });
-
     } catch (error) {
         console.error('Error rendering File Explorer:', error);
         alert('An error occurred while rendering the File Explorer. Please try again.');
     }
 }
 
-
-// Function to render the directory tree in the left navigation
-function renderDirectoryTree(directoryNode) {
-    const directoryTree = $('#directoryTree');
-    directoryTree.empty();
-
-    if (directoryNode && directoryNode.children && directoryNode.children.length > 0) {
-        directoryNode.children.forEach(childNode => {
-            const childLi = renderDirectoryNode(childNode);
-            directoryTree.append(childLi);
-        });
-    } else {
-        console.warn('No children found in directoryTree:', directoryNode);
-    }
-}
-
-
-// Recursive function to render a directory node
-function renderDirectoryNode(node) {
+// Function to build the directory tree
+function buildDirectoryTree(node) {
     const li = $('<li class="list-group-item"></li>');
+    const fullPath = node.fullPath;
 
-    // Create a collapsible button if the node has children
-    if (node.children && node.children.length > 0) {
-        const toggleButton = $('<button class="btn btn-sm btn-link chevron-button collapsed" data-bs-toggle="collapse"></button>');
-        toggleButton.append('<i class="fa fa-chevron-right chevron-icon"></i>');
-        toggleButton.click(function () {
-            const icon = $(this).find('.chevron-icon');
-            icon.toggleClass('fa-chevron-right fa-chevron-down');
-        });
-        li.append(toggleButton);
+    // Directory icon
+    let folderIcon = $('<img src="/icons/folder.svg" class="directory-icon">');
+
+    // Check if directory has child directories
+    const hasChildDirectories = node.children && node.children.some(child => child.type === 'directory');
+
+    // Placeholder for alignment
+    const spacer = $('<span style="display:inline-block; width:16px;"></span>');
+
+    let expandButton;
+    let childUl;
+
+    // Expand button or spacer
+    if (hasChildDirectories) {
+        expandButton = $('<button class="btn btn-sm btn-link chevron-button"><img src="/icons/chevron-right.svg" class="chevron-icon"></button>');
+        li.append(expandButton);
     } else {
-        // Add spacing for alignment if there's no toggle button
-        li.append('<span style="display:inline-block; width:24px;"></span>');
+        li.append(spacer);
     }
 
-    // Directory link with icon
-    const dirIcon = $('<i class="fa fa-folder"></i>');
-    const link = $('<a href="javascript:void(0);"></a>').append(dirIcon).append(' ' + node.name);
+    // Directory link
+    const link = $('<a href="javascript:void(0);"></a>').append(folderIcon).append(' ' + node.name);
     link.click(function () {
-        fetchFileExplorerData(storageId, node.fullPath);
+        currentNode = node;
+        renderFileExplorer();
     });
     li.append(link);
 
-    // If the node has children, create a nested list
-    if (node.children && node.children.length > 0) {
-        const nestedUl = $('<ul class="list-group collapse"></ul>');
-        node.children.forEach(childNode => {
-            const childLi = renderDirectoryNode(childNode);
-            nestedUl.append(childLi);
+    // Child nodes
+    if (hasChildDirectories) {
+        childUl = $('<ul class="list-group"></ul>');
+        // Sort child directories alphabetically
+        const sortedChildren = node.children.slice().sort((a, b) => a.name.localeCompare(b.name));
+        sortedChildren.forEach(childNode => {
+            if (childNode.type === 'directory') {
+                childNode.parent = node; // Set parent reference
+                const childLi = buildDirectoryTree(childNode);
+                childUl.append(childLi);
+            }
         });
-        li.append(nestedUl);
+        li.append(childUl);
+
+        // Set initial visibility
+        if (expandedPaths.has(fullPath)) {
+            childUl.show();
+            expandButton.find('.chevron-icon').addClass('rotated');
+            folderIcon.attr('src', '/icons/folder2-open.svg');
+        } else {
+            childUl.hide();
+            expandButton.find('.chevron-icon').removeClass('rotated');
+            folderIcon.attr('src', '/icons/folder.svg');
+        }
+
+        // Toggle functionality
+        expandButton.click(function (e) {
+            e.stopPropagation();
+            if (childUl.is(':visible')) {
+                childUl.slideUp('fast');
+                expandButton.find('.chevron-icon').removeClass('rotated');
+                folderIcon.attr('src', '/icons/folder.svg');
+                expandedPaths.delete(fullPath);
+            } else {
+                childUl.slideDown('fast');
+                expandButton.find('.chevron-icon').addClass('rotated');
+                folderIcon.attr('src', '/icons/folder2-open.svg');
+                expandedPaths.add(fullPath);
+            }
+        });
     }
 
     return li;
 }
 
-function formatBytes(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+// Function to build the breadcrumb
+function buildBreadcrumb() {
+    const breadcrumb = $('<nav aria-label="breadcrumb"></nav>');
+    const breadcrumbList = $('<ol class="breadcrumb align-items-center"></ol>');
+
+    // Back button
+    const backButton = $('<button class="btn btn-link p-0 mr-2" id="backButton"><img src="/icons/arrow-left-circle.svg" class="back-icon" alt="Back"></button>');
+    backButton.click(function () {
+        if (currentNode.parent) {
+            currentNode = currentNode.parent;
+            renderFileExplorer();
+        }
+    });
+    breadcrumbList.append(backButton);
+
+    // Disable back button if at root
+    if (!currentNode.parent) {
+        backButton.prop('disabled', true);
+        backButton.find('img').addClass('inactive-icon');
+    } else {
+        backButton.prop('disabled', false);
+        backButton.find('img').removeClass('inactive-icon');
+    }
+
+    // Build breadcrumb items
+    let node = currentNode;
+    const nodes = [];
+    while (node) {
+        nodes.unshift(node);
+        node = node.parent;
+    }
+
+    nodes.forEach((node, index) => {
+        const li = $('<li class="breadcrumb-item"></li>');
+        if (index === nodes.length - 1) {
+            // Current node (active)
+            li.text(node.name);
+        } else {
+            // Ancestor nodes (clickable)
+            const link = $('<a href="javascript:void(0);"></a>').text(node.name);
+            link.click(function () {
+                currentNode = node;
+                renderFileExplorer();
+            });
+            li.append(link);
+        }
+        breadcrumbList.append(li);
+    });
+
+    breadcrumb.append(breadcrumbList);
+    return breadcrumb;
+}
+
+function buildFileTable(highlightFile) {
+    const fileTable = $('<table class="table table-striped"></table>');
+    const tableHeader = $(`
+        <thead>
+            <tr>
+                <th id="sort-name">Name <img src="/icons/caret-up-fill.svg" class="sort-icon"></th>
+                <th id="sort-size">Size</th>
+                <th id="sort-backup">Backup</th>
+            </tr>
+        </thead>
+    `);
+    fileTable.append(tableHeader);
+
+    const tableBody = $('<tbody></tbody>');
+
+    if (currentNode && currentNode.children) {
+        // Combine directories and files
+        let items = currentNode.children.map(item => {
+            return {
+                node: item,
+                name: item.name,
+                type: item.type,
+                size: item.size,
+                backupExists: item.backupExists,
+                fullPath: item.fullPath
+            };
+        });
+
+        // Sort the items
+        items.sort((a, b) => {
+            // Directories first
+            if (a.type !== b.type) {
+                return a.type === 'directory' ? -1 : 1;
+            }
+
+            let comparison = 0;
+            if (sortColumn === 'name') {
+                comparison = a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+            } else if (sortColumn === 'size') {
+                comparison = (a.size || 0) - (b.size || 0);
+            } else if (sortColumn === 'backup') {
+                comparison = a.backupExists === b.backupExists ? 0 : a.backupExists ? -1 : 1;
+            }
+
+            return sortOrder === 'asc' ? comparison : -comparison;
+        });
+
+        items.forEach(item => {
+            const row = $('<tr></tr>');
+            const nameCell = $('<td></td>');
+
+            if (item.type === 'directory') {
+                // Directory icon and link
+                const dirIcon = $('<img src="/icons/folder.svg" class="directory-table-icon">');
+                const link = $('<a href="javascript:void(0);"></a>').append(dirIcon).append(' ' + item.name);
+                link.click(function () {
+                    item.node.parent = currentNode; // Set parent reference
+                    currentNode = item.node;
+                    renderFileExplorer();
+                });
+                nameCell.append(link);
+            } else {
+                // File icon
+                const fileIcon = $('<img src="/icons/file-earmark.svg" class="file-table-icon">');
+                nameCell.append(fileIcon).append(' ' + item.name);
+            }
+
+            row.append(nameCell);
+            row.append('<td>' + (item.size !== undefined ? formatSize(item.size) : '') + '</td>');
+            row.append('<td>' + (item.backupExists ? '<img src="/icons/check2.svg" class="badge-icon" alt="Yes">' : '<img src="/icons/x.svg" class="badge-icon" alt="No">') + '</td>');
+
+            if (item.name === highlightFile) {
+                row.addClass('highlighted-file');
+            }
+
+            tableBody.append(row);
+        });
+    }
+
+    fileTable.append(tableBody);
+
+    // Attach click handlers for sorting
+    fileTable.find('#sort-name').click(function () {
+        toggleSort('name');
+        updateFileTable(highlightFile);
+    });
+    fileTable.find('#sort-size').click(function () {
+        toggleSort('size');
+        updateFileTable(highlightFile);
+    });
+    fileTable.find('#sort-backup').click(function () {
+        toggleSort('backup');
+        updateFileTable(highlightFile);
+    });
+
+    // Update sort icons
+    updateSortIcons(fileTable);
+
+    // Scroll to highlighted file
+    if (highlightFile !== '') {
+        const highlightedRow = tableBody.find('.highlighted-file');
+        if (highlightedRow.length > 0) {
+            highlightedRow[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Remove the highlight after 3 seconds
+            setTimeout(function () {
+                highlightedRow.removeClass('highlighted-file');
+            }, 3000);
+        }
+    }
+
+    return fileTable;
+}
+
+function updateFileTable(highlightFile) {
+    const fileTableContainer = $('#fileTableContainer');
+    fileTableContainer.empty().append(buildFileTable(highlightFile));
+}
+
+function toggleSort(column) {
+    if (sortColumn === column) {
+        sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortColumn = column;
+        sortOrder = 'asc';
+    }
+}
+
+function updateSortIcons(fileTable) {
+    fileTable.find('th img.sort-icon').remove();
+
+    const sortIcon = $('<img class="sort-icon">').attr('src', sortOrder === 'asc' ? '/icons/caret-up-fill.svg' : '/icons/caret-down-fill.svg');
+
+    if (sortColumn === 'name') {
+        fileTable.find('#sort-name').append(' ').append(sortIcon);
+    } else if (sortColumn === 'size') {
+        fileTable.find('#sort-size').append(' ').append(sortIcon);
+    } else if (sortColumn === 'backup') {
+        fileTable.find('#sort-backup').append(' ').append(sortIcon);
+    }
 }
 
 // Search functionality
@@ -459,22 +520,42 @@ $(document).click(function (event) {
     }
 });
 
+// Function to search files and directories from the cached data
 function searchFiles(query) {
-    $.ajax({
-        url: '/RemoteScan?handler=SearchFiles',
-        data: { storageId: storageId, query: query },
-        method: 'GET',
-        success: function (data) {
-            if (data.success) {
-                renderSearchSuggestions(data.results);
-            } else {
-                $('#searchSuggestions').hide();
+    if (!storageContentCache) {
+        return;
+    }
+
+    const results = [];
+    const maxResults = 10;
+    searchInNode(storageContentCache, query.toLowerCase(), results, maxResults);
+
+    renderSearchSuggestions(results);
+}
+
+// Recursive function to search within the node
+function searchInNode(node, query, results, maxResults) {
+    if (results.length >= maxResults) {
+        return;
+    }
+
+    if (node.name.toLowerCase().includes(query)) {
+        results.push({
+            node: node,
+            type: node.type.charAt(0).toUpperCase() + node.type.slice(1),
+            name: node.name,
+            fullPath: node.fullPath
+        });
+    }
+
+    if (node.children && results.length < maxResults) {
+        for (let child of node.children) {
+            searchInNode(child, query, results, maxResults);
+            if (results.length >= maxResults) {
+                break;
             }
-        },
-        error: function () {
-            $('#searchSuggestions').hide();
         }
-    });
+    }
 }
 
 function renderSearchSuggestions(results) {
@@ -488,11 +569,14 @@ function renderSearchSuggestions(results) {
 
     results.forEach(function (result) {
         const item = $('<a class="dropdown-item" href="javascript:void(0);"></a>');
+        let icon;
         if (result.type === "Directory") {
-            item.html('<i class="fa fa-folder"></i> ' + result.name + ' <span class="text-muted">[Directory]</span>');
+            icon = '<img src="/icons/folder.svg" class="directory-table-icon">';
         } else {
-            item.html('<i class="fa fa-file"></i> ' + result.name + ' <span class="text-muted">[File]</span>');
+            icon = '<img src="/icons/file-earmark.svg" class="file-table-icon">';
         }
+        const path = '<small class="text-muted"> [' + result.fullPath.replace(storageContentCache.fullPath, '') + ']</small>';
+        item.html(icon + ' ' + result.name + ' ' + path);
         item.click(function () {
             navigateToSearchResult(result);
             suggestionsDiv.hide();
@@ -507,12 +591,11 @@ function navigateToSearchResult(result) {
     $('#searchInput').val('');
     $('#searchSuggestions').hide();
     if (result.type === 'Directory') {
-        // Navigate to the directory
-        fetchFileExplorerData(storageId, result.fullPath);
+        currentNode = result.node;
+        renderFileExplorer();
     } else if (result.type === 'File') {
-        // Navigate to the directory containing the file and highlight the file
-        const directoryPath = result.fullPath.substring(0, result.fullPath.lastIndexOf('/'));
-        fetchFileExplorerData(storageId, directoryPath, '', result.name);
+        currentNode = result.node.parent;
+        renderFileExplorer(result.name);
     }
 }
 
@@ -566,7 +649,7 @@ function createScheduleRow(schedule = null) {
         const dayCell = $('<td></td>');
         const checkbox = $('<input type="checkbox">').attr('data-day', index);
 
-        if (schedule && schedule.days.includes(index)) {
+        if (schedule && schedule.Days.includes(index)) {
             checkbox.prop('checked', true);
         }
 
@@ -575,7 +658,7 @@ function createScheduleRow(schedule = null) {
     });
 
     const timeCell = $('<td></td>');
-    const timeInput = $('<input type="time">').addClass('form-control').val(schedule ? schedule.time : '');
+    const timeInput = $('<input type="time">').addClass('form-control').val(schedule ? schedule.Time : '');
     timeCell.append(timeInput);
     row.append(timeCell);
 
@@ -607,14 +690,14 @@ function saveSchedules() {
         });
         const time = row.find('input[type="time"]').val();
         if (days.length > 0 && time) {
-            schedules.push({ days: days, time: time });
+            schedules.push({ Days: days, Time: time });
         }
     });
 
     $.ajax({
         url: '/RemoteScan?handler=SaveIndexSchedules',
         method: 'POST',
-        data: JSON.stringify({ storageId: currentStorageId, schedules: schedules }),
+        data: JSON.stringify({ StorageId: currentStorageId, Schedules: schedules }),
         contentType: 'application/json',
         headers: {
             'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val(),

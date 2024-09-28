@@ -1,31 +1,39 @@
 using System.Text.Json.Serialization;
+using System.Collections.Generic;
 
 namespace Backy.Models
 {
     public class FileExplorerModel
     {
-        public Guid StorageId { get; set; } // Changed from int to Guid
-        public string CurrentPath { get; set; } = string.Empty;
-        public List<FileEntry> Files { get; set; } = new List<FileEntry>();
-        public List<DirectoryDto> Directories { get; set; } = new List<DirectoryDto>();
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
 
-        // Added properties
-        public string navPath { get; set; } = string.Empty;
-        public string remotePath { get; set; } = string.Empty;
-        public DirectoryNode DirectoryTree { get; set; } = new DirectoryNode();
+        [JsonPropertyName("storageContent")]
+        public StorageContentItem StorageContent { get; set; } = new StorageContentItem();
     }
 
-    public class DirectoryNode
+    public class StorageContentItem
     {
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
+        [JsonPropertyName("size")]
+        public long Size { get; set; }
+
         [JsonPropertyName("fullPath")]
         public string FullPath { get; set; } = string.Empty;
 
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = string.Empty; // "directory" or "file"
+
+        [JsonPropertyName("backupExists")]
+        public bool BackupExists { get; set; }
+
         [JsonPropertyName("children")]
-        public List<DirectoryNode> Children { get; set; } = new List<DirectoryNode>();
+        public List<StorageContentItem> Children { get; set; } = new List<StorageContentItem>();
     }
+
+
 
     public class SearchResultItem
     {
@@ -33,11 +41,5 @@ namespace Backy.Models
         public string Name { get; set; } = string.Empty;
         public string FullPath { get; set; } = string.Empty;
         public string NavPath { get; set; } = string.Empty;
-    }
-
-    public class DirectoryDto
-    {
-        public string Name { get; set; } = string.Empty;
-        public string FullPath { get; set; } = string.Empty;
     }
 }

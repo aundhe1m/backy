@@ -10,10 +10,15 @@
 .list-group-item a {
     text-decoration: none;
     font-weight: bold;
+    color: #007bff;
+    display: inline-block;
+    vertical-align: middle;
 }
 
 /* Adjust padding to accommodate icons */
 .list-group-item {
+    border: none;
+    background-color: transparent;
     position: relative;
     padding-left: 30px;
     /* Increased padding for icons */
@@ -36,21 +41,11 @@
     top: 5px;
 }
 
-/* Style the search suggestions dropdown */
-#searchSuggestions {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    z-index: 1000;
-    display: none;
-    max-height: 200px;
-    overflow-y: auto;
-    width: 100%;
-}
-
 /* Transition for chevron rotation */
 .chevron-icon {
-    transition: transform 0.3s ease;
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
 }
 
 .chevron-icon.rotated {
@@ -71,8 +66,16 @@
     opacity: 0.5;
 }
 
-/* Icon styles */
 .directory-icon,
+.directory-open-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    vertical-align: middle;
+    transition: transform 0.2s ease;
+}
+
+/* Icon styles */
 .directory-open-icon,
 .file-table-icon,
 .directory-table-icon,
@@ -145,4 +148,24 @@
 /* Optional: Remove border lines around right directory nav if present */
 .directory-navigation {
     border: none;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding-right: 15px;
+}
+
+/* Search suggestions dropdown */
+#searchSuggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1000;
+    display: none;
+    max-height: 200px;
+    overflow-y: auto;
+    width: 100%;
+}
+
+/* Fix alignment issue for directory name and icon */
+.list-group-item a {
+    white-space: nowrap;
 }

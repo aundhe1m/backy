@@ -442,84 +442,12 @@ namespace Backy.Pages
             return new JsonResult(data);
         }
 
-
-        public async Task<JsonResult> OnGetSearchFilesAsync(Guid storageId, string query)
-        {
-            if (string.IsNullOrWhiteSpace(query))
-            {
-                return new JsonResult(new { success = false, message = "Query cannot be empty." });
-            }
-
-            var storage = await _context.RemoteScans.FindAsync(storageId);
-            if (storage == null)
-            {
-                return new JsonResult(new { success = false, message = "Storage not found." });
-            }
-
-            // Step 1: Fetch files where the file name contains the query
-            var fileResults = await _context.Files
-                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted && f.FileName.Contains(query))
-                .Select(f => new SearchResultItem
-                {
-                    Type = "File",
-                    Name = f.FileName,
-                    FullPath = f.FullPath,
-                    NavPath = GetDirectoryPath(f.FullPath)
-                })
-                .ToListAsync();
-
-            // Step 2: Fetch directories where the directory name contains the query
-            var directoryResults = await GetDirectoriesContainingQuery(storage, query);
-
-            // Step 3: Combine file and directory results
-            var combinedResults = fileResults.Concat(directoryResults).ToList();
-
-            return new JsonResult(new { success = true, results = combinedResults });
-        }
-
-
-        private async Task<List<SearchResultItem>> GetDirectoriesContainingQuery(RemoteScan storage, string query)
-        {
-            // Step 1: Retrieve all file paths for the storage
-            var filePaths = await _context.Files
-                .Where(f => f.RemoteScanId == storage.Id && !f.IsDeleted && f.FileName.Contains(query))
-                .Select(f => f.FullPath)
-                .ToListAsync();
-
-            // Step 2: Extract directory paths from file paths
-            var directoryPaths = filePaths
-                .Select(f => GetDirectoryPath(f))
-                .Where(dirPath => !string.IsNullOrEmpty(dirPath))
-                .Distinct()
-                .ToList();
-
-            // Step 3: Filter directories where the directory name contains the query
-            var matchingDirectories = directoryPaths
-                .Where(dirPath => Path.GetFileName(dirPath.TrimEnd('/')).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
-                .Distinct()
-                .ToList();
-
-            // Step 4: Construct SearchResultItem objects for directories
-            var directoryResults = matchingDirectories
-                .Select(dirPath => new SearchResultItem
-                {
-                    Type = "Directory",
-                    Name = Path.GetFileName(dirPath.TrimEnd('/')),
-                    FullPath = dirPath,
-                    NavPath = GetDirectoryPath(dirPath)
-                })
-                .ToList();
-
-            return directoryResults;
-        }
-
-
         private async Task TraverseAndBuildStorageContent(
-    SftpClient client,
-    string remotePath,
-    StorageContentItem parentNode,
-    Guid storageId,
-    CancellationToken cancellationToken)
+            SftpClient client,
+            string remotePath,
+            StorageContentItem parentNode,
+            Guid storageId,
+            CancellationToken cancellationToken)
         {
             _logger.LogInformation("Traversing remote path: {RemotePath}", remotePath);
 
@@ -606,9 +534,6 @@ namespace Backy.Pages
             }
         }
 
-
-
-
         private string GetDirectoryPath(string fullPath)
         {
             if (string.IsNullOrEmpty(fullPath))
@@ -621,7 +546,6 @@ namespace Backy.Pages
             var directoryName = Path.GetDirectoryName(fullPath);
             return directoryName != null ? directoryName + "/" : "/";
         }
-
 
         private bool RemoteScanExists(Guid id)
         {
