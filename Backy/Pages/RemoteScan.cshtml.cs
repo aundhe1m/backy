@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Renci.SshNet;
-using Newtonsoft.Json;
+using System.Text.Json;
 using System;
 using System.IO;
 using System.Linq;
@@ -67,14 +67,13 @@ namespace Backy.Pages
         public async Task<IActionResult> OnPostAddAsync()
         {
             // Validate and add new RemoteScan
-
             if (!ModelState.IsValid)
             {
                 await OnGetAsync();
                 return Page();
             }
 
-            // Custom validation
+            // Custom validation for authentication method
             if (RemoteScan.AuthenticationMethod == "Password")
             {
                 if (string.IsNullOrWhiteSpace(RemoteScan.Password))
@@ -100,7 +99,7 @@ namespace Backy.Pages
                 return Page();
             }
 
-            // Encrypt sensitive data
+            // Encrypt sensitive data before saving
             if (RemoteScan.AuthenticationMethod == "Password" && !string.IsNullOrEmpty(RemoteScan.Password))
             {
                 RemoteScan.Password = Encrypt(RemoteScan.Password);
@@ -110,7 +109,7 @@ namespace Backy.Pages
                 RemoteScan.SSHKey = Encrypt(RemoteScan.SSHKey);
             }
 
-            // Validate the connection
+            // Validate the connection to the remote storage
             bool isValid = ValidateConnection(RemoteScan);
             if (!isValid)
             {
@@ -119,12 +118,17 @@ namespace Backy.Pages
                 return Page();
             }
 
+            // Add the new RemoteScan to the database
             _context.RemoteScans.Add(RemoteScan);
             await _context.SaveChangesAsync();
 
             // Check and update storage status
             await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(RemoteScan, _context, _protector, _logger);
 
+            // Enqueue indexing for the new storage source without blocking the frontend
+            _indexingQueue.EnqueueIndexing(RemoteScan.Id);
+
+            // Redirect to the same page
             return RedirectToPage();
         }
 
@@ -332,7 +336,7 @@ namespace Backy.Pages
                 using var reader = new StreamReader(Request.Body);
                 var body = await reader.ReadToEndAsync();
 
-                var scheduleData = JsonConvert.DeserializeObject<ScheduleSaveRequest>(body);
+                var scheduleData = JsonSerializer.Deserialize<ScheduleSaveRequest>(body);
 
                 if (scheduleData == null)
                 {
@@ -381,65 +385,55 @@ namespace Backy.Pages
         {
             _logger.LogInformation("OnGetFileExplorerAsync called with StorageId: {StorageId}, Path: {Path}", storageId, path);
 
-            var storage = await _context.RemoteScans.FindAsync(storageId);
-            if (storage == null)
+            // Fetch the pre-generated storageContent from the database
+            var storageContentJson = await _context.StorageContents
+                .Where(sc => sc.RemoteScanId == storageId)
+                .Select(sc => sc.ContentJson)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (storageContentJson == null)
             {
-                _logger.LogWarning("Storage with ID {StorageId} not found.", storageId);
-                return new JsonResult(new { success = false, message = "Storage not found." });
+                _logger.LogWarning("Storage content not found for storageId: {StorageId}", storageId);
+                return new JsonResult(new { success = false, message = "Storage content not available. Please index the storage first." });
             }
 
-            _logger.LogInformation("Storage found: {StorageName}", storage.Name);
+            // Deserialize the storageContent JSON
+            var rootItem = JsonSerializer.Deserialize<StorageContentItem>(storageContentJson);
 
-            string rootPath = storage.RemotePath.EndsWith("/") ? storage.RemotePath : storage.RemotePath + "/";
-            string currentPath = string.IsNullOrEmpty(path) ? rootPath : path;
-            _logger.LogInformation("Current Path: {CurrentPath}", currentPath);
+            StorageContentItem nodeToReturn = rootItem;
 
-            string parentPath = GetDirectoryPath(currentPath);
-            string currentPathWithSlash = currentPath.EndsWith("/") ? currentPath : currentPath + "/";
-
-            // Initialize storage content as StorageContentItem
-            StorageContentItem storageContent = new StorageContentItem
+            if (!string.IsNullOrEmpty(path))
             {
-                Name = Path.GetFileName(rootPath.TrimEnd('/')) ?? "/",
-                FullPath = rootPath,
-                Type = "directory",
-                Children = new List<StorageContentItem>()
-            };
-
-
-            _logger.LogInformation("Initialized storageContent for path: {Path}", currentPathWithSlash);
-
-            try
-            {
-                using var client = CreateSftpClient(storage);
-                _logger.LogInformation("Connecting to SFTP client for storage: {StorageName}", storage.Name);
-                client.Connect();
-                _logger.LogInformation("SFTP client connected: {IsConnected}", client.IsConnected);
-
-                // Traverse directories using SFTP and build storageContent
-                await TraverseAndBuildStorageContent(client, currentPathWithSlash, storageContent, storageId, cancellationToken);
-
-                client.Disconnect();
-                _logger.LogInformation("SFTP client disconnected.");
+                nodeToReturn = FindNodeByPath(rootItem, path) ?? rootItem;
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error traversing directories for storage: {StorageName}", storage.Name);
-                return new JsonResult(new { success = false, message = "Error traversing directories." });
-            }
-
-            // Log the final storageContent
-            _logger.LogInformation("Final storageContent built with {ChildCount} children.", storageContent.Children.Count);
 
             var data = new
             {
                 success = true,
-                storageContent,
-                storageRootPath = rootPath
+                storageContent = nodeToReturn
             };
 
-            _logger.LogInformation("Returning JSON response for FileExplorer.");
+            _logger.LogInformation("Returning stored storageContent for storageId: {StorageId}", storageId);
             return new JsonResult(data);
+        }
+
+        private StorageContentItem? FindNodeByPath(StorageContentItem node, string path)
+        {
+            if (node.FullPath == path)
+            {
+                return node;
+            }
+
+            foreach (var child in node.Children)
+            {
+                var result = FindNodeByPath(child, path);
+                if (result != null)
+                {
+                    return result;
+                }
+            }
+
+            return null;
         }
 
         private async Task TraverseAndBuildStorageContent(

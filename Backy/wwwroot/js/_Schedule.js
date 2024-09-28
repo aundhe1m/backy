@@ -1,4 +1,3 @@
-
 // Index Schedule functionality
 let currentStorageId = null;
 
@@ -42,14 +41,15 @@ function renderSchedules(schedules) {
 }
 
 function createScheduleRow(schedule = null) {
-    const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    // Adjusted days array to match C# DayOfWeek (0 = Sunday)
+    const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     const row = $('<tr></tr>');
 
     days.forEach((day, index) => {
         const dayCell = $('<td></td>');
         const checkbox = $('<input type="checkbox">').attr('data-day', index);
 
-        if (schedule && schedule.Days.includes(index)) {
+        if (schedule && Array.isArray(schedule.Days) && schedule.Days.includes(index)) {
             checkbox.prop('checked', true);
         }
 

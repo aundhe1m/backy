@@ -8,6 +8,7 @@ using Renci.SshNet;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 
 namespace Backy.Services
 {
@@ -146,7 +147,7 @@ namespace Backy.Services
                 var files = new Dictionary<string, FileEntry>();
 
                 _logger.LogInformation("Traversing remote directory: {Path}", storage.RemotePath);
-                await TraverseRemoteDirectory(client, storage.RemotePath, files, storage.Id, cancellationToken); // Guid
+                await TraverseRemoteDirectory(client, storage.RemotePath, files, storage.Id, cancellationToken);
 
                 _logger.LogInformation("Found {FileCount} files in storage: {Name}", files.Count, storage.Name);
 
@@ -198,6 +199,9 @@ namespace Backy.Services
 
                 client.Disconnect();
                 _logger.LogInformation("Successfully indexed storage: {Name}", storage.Name);
+
+                // Generate and store storageContent after indexing
+                await GenerateAndStoreStorageContentAsync(context, storageId, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -210,6 +214,139 @@ namespace Backy.Services
                 await context.SaveChangesAsync(cancellationToken);
             }
         }
+
+        private async Task GenerateAndStoreStorageContentAsync(ApplicationDbContext context, Guid storageId, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Generating storage content for storageId: {StorageId}", storageId);
+
+            // Fetch the RemoteScan to get the root path
+            var storage = await context.RemoteScans.FindAsync(new object[] { storageId }, cancellationToken);
+            if (storage == null)
+            {
+                _logger.LogWarning("Storage not found for storageId: {StorageId}", storageId);
+                return;
+            }
+
+            string rootPath = storage.RemotePath.EndsWith("/") ? storage.RemotePath : storage.RemotePath + "/";
+
+            // Fetch all files for the storage
+            var files = await context.Files
+                .Where(f => f.RemoteScanId == storageId && !f.IsDeleted)
+                .ToListAsync(cancellationToken);
+
+            // Build the storageContent tree
+            var rootItem = new StorageContentItem
+            {
+                Name = Path.GetFileName(rootPath.TrimEnd('/')) ?? "/",
+                FullPath = rootPath.TrimEnd('/'),
+                Type = "directory",
+                Children = new List<StorageContentItem>()
+            };
+
+            foreach (var file in files)
+            {
+                AddFileToStorageContent(rootItem, file, rootPath);
+            }
+
+            // Calculate sizes and backup statuses
+            CalculateDirectoryProperties(rootItem);
+
+            // Serialize the storageContent to JSON
+            var contentJson = JsonSerializer.Serialize(rootItem);
+
+            // Store or update the StorageContent in the database
+            var storageContent = await context.StorageContents.FindAsync(new object[] { storageId }, cancellationToken);
+            if (storageContent == null)
+            {
+                storageContent = new StorageContent
+                {
+                    RemoteScanId = storageId,
+                    ContentJson = contentJson,
+                    LastUpdated = DateTime.UtcNow
+                };
+                context.StorageContents.Add(storageContent);
+            }
+            else
+            {
+                storageContent.ContentJson = contentJson;
+                storageContent.LastUpdated = DateTime.UtcNow;
+                context.StorageContents.Update(storageContent);
+            }
+
+            await context.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Storage content generated and stored for storageId: {StorageId}", storageId);
+        }
+
+
+        private void AddFileToStorageContent(StorageContentItem rootItem, FileEntry file, string rootPath)
+        {
+            // Normalize the file path
+            var relativePath = file.FullPath.Substring(rootPath.Length).Trim('/');
+            var pathParts = relativePath.Split('/');
+            var currentNode = rootItem;
+
+            for (int i = 0; i < pathParts.Length; i++)
+            {
+                var part = pathParts[i];
+                var isFile = (i == pathParts.Length - 1);
+                var existingChild = currentNode.Children.FirstOrDefault(c => c.Name == part);
+
+                if (existingChild == null)
+                {
+                    var newItem = new StorageContentItem
+                    {
+                        Name = part,
+                        FullPath = Path.Combine(currentNode.FullPath, part).Replace("\\", "/"),
+                        Type = isFile ? "file" : "directory",
+                        Size = isFile ? file.Size : 0,
+                        BackupExists = isFile ? file.BackupExists : false,
+                        Children = new List<StorageContentItem>()
+                    };
+
+                    currentNode.Children.Add(newItem);
+                    currentNode = newItem;
+                }
+                else
+                {
+                    currentNode = existingChild;
+
+                    // If this is a file node, update its properties
+                    if (isFile && currentNode.Type == "file")
+                    {
+                        currentNode.Size = file.Size;
+                        currentNode.BackupExists = file.BackupExists;
+                    }
+                }
+            }
+        }
+
+        private void CalculateDirectoryProperties(StorageContentItem node)
+        {
+            if (node.Type == "file")
+            {
+                // For files, size and backup status are already set
+                return;
+            }
+
+            long totalSize = 0;
+            bool backupExists = true;
+
+            foreach (var child in node.Children)
+            {
+                CalculateDirectoryProperties(child);
+
+                totalSize += child.Size;
+
+                if (!child.BackupExists)
+                {
+                    backupExists = false;
+                }
+            }
+
+            node.Size = totalSize;
+            node.BackupExists = backupExists;
+        }
+
 
         private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, Dictionary<string, FileEntry> files, Guid storageId, CancellationToken cancellationToken)
         {

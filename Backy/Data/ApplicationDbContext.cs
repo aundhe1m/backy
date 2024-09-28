@@ -8,6 +8,7 @@ namespace Backy.Data
         public DbSet<RemoteScan> RemoteScans { get; set; }
         public DbSet<IndexSchedule> IndexSchedules { get; set; }
         public DbSet<FileEntry> Files { get; set; }
+        public DbSet<StorageContent> StorageContents { get; set; }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options)
