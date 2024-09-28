@@ -18,10 +18,11 @@ namespace Backy.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<FileEntry>()
-                .HasIndex(f => new { f.RemoteScanId, f.FullPath, f.IsDirectory })
+                .HasIndex(f => new { f.RemoteScanId, f.FullPath })
                 .IsUnique();
 
             base.OnModelCreating(modelBuilder);
         }
+
     }
 }

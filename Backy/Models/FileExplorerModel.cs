@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Backy.Models
 {
     public class FileExplorerModel
@@ -5,13 +7,23 @@ namespace Backy.Models
         public Guid StorageId { get; set; } // Changed from int to Guid
         public string CurrentPath { get; set; } = string.Empty;
         public List<FileEntry> Files { get; set; } = new List<FileEntry>();
-        public List<string> Directories { get; set; } = new List<string>();
+        public List<DirectoryDto> Directories { get; set; } = new List<DirectoryDto>();
+
+        // Added properties
+        public string navPath { get; set; } = string.Empty;
+        public string remotePath { get; set; } = string.Empty;
+        public DirectoryNode DirectoryTree { get; set; } = new DirectoryNode();
     }
 
     public class DirectoryNode
     {
+        [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("fullPath")]
         public string FullPath { get; set; } = string.Empty;
+
+        [JsonPropertyName("children")]
         public List<DirectoryNode> Children { get; set; } = new List<DirectoryNode>();
     }
 
@@ -23,9 +35,9 @@ namespace Backy.Models
         public string NavPath { get; set; } = string.Empty;
     }
 
-    public class DirectoryInfoDto
+    public class DirectoryDto
     {
+        public string Name { get; set; } = string.Empty;
         public string FullPath { get; set; } = string.Empty;
-        public string FileName { get; set; } = string.Empty;
     }
 }

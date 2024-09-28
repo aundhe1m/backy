@@ -239,7 +239,6 @@ namespace Backy.Pages
             return new JsonResult(new { success = false, message = "Storage not found." });
         }
 
-
         public JsonResult OnPostStartIndexing(Guid id)
         {
             _indexingQueue.EnqueueIndexing(id);
@@ -365,7 +364,7 @@ namespace Backy.Pages
             }
         }
 
-        public async Task<JsonResult> OnGetGetFileExplorerAsync(Guid storageId, string? path)
+        public async Task<JsonResult> OnGetGetFileExplorerAsync(Guid storageId, string? path, CancellationToken cancellationToken)
         {
             var storage = await _context.RemoteScans.FindAsync(storageId);
             if (storage == null)
@@ -374,50 +373,57 @@ namespace Backy.Pages
             }
 
             string currentPath = string.IsNullOrEmpty(path) ? storage.RemotePath : path;
-            string parentPath = System.IO.Path.GetDirectoryName(currentPath) ?? storage.RemotePath;
+            string parentPath = Path.GetDirectoryName(currentPath.Replace('\\', '/')) ?? storage.RemotePath;
 
             string currentPathWithSlash = currentPath.EndsWith("/") ? currentPath : currentPath + "/";
-            string pattern = currentPathWithSlash + "%";
-            string patternWithSubdirectory = currentPathWithSlash + "%/%";
 
-            // Fetch directories directly under the current path
-            var directories = await _context.Files
-                .Where(f => f.RemoteScanId == storageId
-                            && f.IsDirectory
-                            && !f.IsDeleted
-                            && f.FullPath != currentPath
-                            && EF.Functions.Like(f.FullPath, pattern)
-                            && !EF.Functions.Like(f.FullPath, patternWithSubdirectory))
-                .Select(f => new
-                {
-                    name = f.FileName,
-                    fullPath = f.FullPath
-                })
-                .ToListAsync();
+            // Initialize directory tree node
+            DirectoryNode directoryTree = new DirectoryNode
+            {
+                Name = "Root",
+                FullPath = currentPathWithSlash,
+                Children = new List<DirectoryNode>()
+            };
 
-            // Fetch files directly under the current path
-            var files = await _context.Files
-                .Where(f => f.RemoteScanId == storageId
-                            && !f.IsDirectory
-                            && !f.IsDeleted
-                            && EF.Functions.Like(f.FullPath, pattern)
-                            && !EF.Functions.Like(f.FullPath, patternWithSubdirectory))
-                .Select(f => new
-                {
-                    name = f.FileName,
-                    size = f.Size,
-                    fullPath = f.FullPath,
-                    backupExists = f.BackupExists
-                })
-                .ToListAsync();
+            try
+            {
+                using var client = CreateSftpClient(storage);
+                client.Connect();
+
+                // Traverse directories using SFTP
+                await TraverseRemoteDirectory(client, currentPathWithSlash, directoryTree, storageId, cancellationToken);
+
+                client.Disconnect();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error traversing directories for storage: {Name}", storage.Name);
+                return new JsonResult(new { success = false, message = "Error traversing directories." });
+            }
+
+            // Extract immediate subdirectories for the current path
+            var immediateDirectories = directoryTree.Children.Select(c => new DirectoryDto
+            {
+                Name = c.Name,
+                FullPath = c.FullPath
+            }).ToList();
 
             var data = new
             {
                 success = true,
-                directoryTree = BuildDirectoryTree(storageId, storage.RemotePath),
-                directories = directories,
-                files = files,
-                navPath = currentPath.Replace(storage.RemotePath, ""),
+                directoryTree = directoryTree,
+                directories = immediateDirectories, // Added directories field
+                files = await _context.Files
+                    .Where(f => f.RemoteScanId == storageId && !f.IsDeleted && f.FullPath.StartsWith(currentPathWithSlash))
+                    .Select(f => new
+                    {
+                        name = f.FileName,
+                        size = f.Size,
+                        fullPath = f.FullPath,
+                        backupExists = f.BackupExists
+                    })
+                    .ToListAsync(),
+                navPath = currentPath.Replace(storage.RemotePath, "").TrimStart('/'),
                 remotePath = storage.RemotePath,
                 currentPath = currentPath,
                 parentPath = parentPath
@@ -426,47 +432,80 @@ namespace Backy.Pages
             return new JsonResult(data);
         }
 
-        private DirectoryNode BuildDirectoryTree(Guid storageId, string path)
+
+        private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, DirectoryNode parentNode, Guid storageId, CancellationToken cancellationToken)
         {
-            // Get all directories for the storage
-            var directories = _context.Files
-                .Where(f => f.RemoteScanId == storageId && f.IsDirectory && !f.IsDeleted)
-                .Select(f => new DirectoryInfoDto { FullPath = f.FullPath, FileName = f.FileName })
-                .ToList();
+            var directories = client.ListDirectory(remotePath).Where(d => d.IsDirectory && d.Name != "." && d.Name != "..");
 
-            // Build a lookup for quick access
-            var lookup = directories.ToLookup(dir => System.IO.Path.GetDirectoryName(dir.FullPath));
-
-            // Create a root node
-            var rootNode = new DirectoryNode
+            foreach (var dir in directories)
             {
-                Name = System.IO.Path.GetFileName(path),
-                FullPath = path,
-                Children = new List<DirectoryNode>()
-            };
+                if (cancellationToken.IsCancellationRequested)
+                    break;
 
-            // Build the tree recursively
-            BuildDirectoryChildren(rootNode, lookup);
-
-            return rootNode;
-        }
-
-
-        private void BuildDirectoryChildren(DirectoryNode node, ILookup<string?, DirectoryInfoDto> lookup)
-        {
-            var children = lookup[node.FullPath];
-
-            foreach (var child in children)
-            {
-                var childNode = new DirectoryNode
+                var dirNode = new DirectoryNode
                 {
-                    Name = child.FileName,
-                    FullPath = child.FullPath,
+                    Name = dir.Name,
+                    FullPath = dir.FullName + "/",
                     Children = new List<DirectoryNode>()
                 };
 
-                BuildDirectoryChildren(childNode, lookup);
-                node.Children.Add(childNode);
+                // Check if the directory contains any files
+                bool hasFiles = await _context.Files.AnyAsync(f => f.RemoteScanId == storageId && f.FullPath.StartsWith(dir.FullName + "/") && !f.IsDeleted, cancellationToken);
+
+                if (hasFiles)
+                {
+                    parentNode.Children.Add(dirNode);
+                    // Recursively traverse subdirectories
+                    await TraverseRemoteDirectory(client, dir.FullName + "/", dirNode, storageId, cancellationToken);
+                }
+                // Else, skip adding the directory as it contains no files
+            }
+        }
+        private DirectoryNode BuildDirectoryTree(List<string> subDirectories, string currentPath)
+        {
+            var root = new DirectoryNode
+            {
+                Name = "Root",
+                FullPath = currentPath,
+                Children = new List<DirectoryNode>()
+            };
+
+            foreach (var dirPath in subDirectories)
+            {
+                var relativePath = dirPath.Substring(currentPath.Length);
+                var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                var currentNode = root;
+
+                foreach (var segment in segments)
+                {
+                    var existingChild = currentNode.Children.FirstOrDefault(c => c.Name.Equals(segment, StringComparison.OrdinalIgnoreCase));
+                    if (existingChild == null)
+                    {
+                        existingChild = new DirectoryNode
+                        {
+                            Name = segment,
+                            FullPath = currentNode.FullPath + segment + "/",
+                            Children = new List<DirectoryNode>()
+                        };
+                        currentNode.Children.Add(existingChild);
+                    }
+
+                    currentNode = existingChild;
+                }
+            }
+
+            // Sort the directory tree alphabetically
+            SortDirectoryTree(root);
+
+            return root;
+        }
+
+        private void SortDirectoryTree(DirectoryNode node)
+        {
+            node.Children = node.Children.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            foreach (var child in node.Children)
+            {
+                SortDirectoryTree(child);
             }
         }
 
@@ -484,22 +523,32 @@ namespace Backy.Pages
                 .Where(f => f.RemoteScanId == storageId && f.FileName.Contains(query) && !f.IsDeleted)
                 .Select(f => new
                 {
+                    type = "File",
                     name = f.FileName,
                     fullPath = f.FullPath,
-                    type = f.IsDirectory ? "Directory" : "File",
                     navPath = f.FullPath.Replace(storage.RemotePath, "")
                 })
                 .ToListAsync();
 
-            return new JsonResult(new { success = true, results = files });
-        }
+            // Search for directories matching the query
+            var directories = await _context.Files
+                .Where(f => f.RemoteScanId == storageId
+                            && !f.IsDeleted
+                            && f.FullPath.Contains("/" + query + "/")) // Simple pattern matching
+                .Select(f => new
+                {
+                    type = "Directory",
+                    name = System.IO.Path.GetFileName(f.FullPath.TrimEnd('/')),
+                    fullPath = f.FullPath.TrimEnd('/'),
+                    navPath = f.FullPath.Replace(storage.RemotePath, "")
+                })
+                .Distinct()
+                .ToListAsync();
 
+            // Combine files and directories
+            var results = files.Concat(directories).ToList();
 
-        public class DirectoryNode
-        {
-            public string Name { get; set; } = "";
-            public string FullPath { get; set; } = "";
-            public List<DirectoryNode> Children { get; set; } = new List<DirectoryNode>();
+            return new JsonResult(new { success = true, results = results });
         }
 
 

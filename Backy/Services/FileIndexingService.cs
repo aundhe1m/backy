@@ -125,7 +125,6 @@ namespace Backy.Services
                 return;
             }
 
-            // Prevent multiple indexing operations on the same storage
             if (storage.IsIndexing)
             {
                 _logger.LogInformation("Storage {Id} is already being indexed.", storageId);
@@ -222,7 +221,7 @@ namespace Backy.Services
 
                 var fullPath = item.FullName;
 
-                if (item.IsDirectory)
+                if (item.IsRegularFile)
                 {
                     if (!files.ContainsKey(fullPath))
                     {
@@ -231,27 +230,14 @@ namespace Backy.Services
                             RemoteScanId = storageId,
                             FileName = item.Name,
                             FullPath = fullPath,
-                            IsDirectory = true,
-                            LastModified = item.LastWriteTime
-                        };
-                    }
-
-                    await TraverseRemoteDirectory(client, fullPath, files, storageId, cancellationToken);
-                }
-                else if (item.IsRegularFile)
-                {
-                    if (!files.ContainsKey(fullPath))
-                    {
-                        files[fullPath] = new FileEntry
-                        {
-                            RemoteScanId = storageId,
-                            FileName = item.Name,
-                            FullPath = fullPath,
-                            IsDirectory = false,
                             Size = item.Attributes.Size,
                             LastModified = item.LastWriteTime
                         };
                     }
+                }
+                else if (item.IsDirectory)
+                {
+                    await TraverseRemoteDirectory(client, fullPath, files, storageId, cancellationToken);
                 }
 
                 if (cancellationToken.IsCancellationRequested)

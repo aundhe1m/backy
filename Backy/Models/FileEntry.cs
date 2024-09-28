@@ -35,6 +35,5 @@ namespace Backy.Models
         public DateTime? BackupDate { get; set; }
 
         public bool IsDeleted { get; set; } = false;
-        public bool IsDirectory { get; internal set; }
     }
 }
