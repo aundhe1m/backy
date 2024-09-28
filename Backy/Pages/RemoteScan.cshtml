@@ -7,15 +7,15 @@
 <h1>@ViewData["Title"]</h1>
 
 <!-- Add New Storage Source Button -->
-<button class="btn btn-success" onclick="openAddModal()">Add New Storage Source</button>
+<button class="btn btn-success mb-3" onclick="openAddModal()">Add New Storage Source</button>
 
 <!-- Storage Source Cards -->
 <div class="row">
     @foreach (var source in Model.StorageSources)
     {
-        <div class="col-12">
+            <div class="col-12">
             @await Html.PartialAsync("_StorageSourceCard", source)
-        </div>
+            </div>
     }
 </div>
 
@@ -34,17 +34,17 @@
                 <div class="modal-body">
                     @if (!ModelState.IsValid)
                     {
-                        <div class="alert alert-danger">
-                            <ul>
+                            <div class="alert alert-danger">
+                                <ul>
                                 @foreach (var modelState in ModelState.Values)
                                 {
                                     foreach (var error in modelState.Errors)
                                     {
-                                        <li>@error.ErrorMessage</li>
+                                                    <li>@error.ErrorMessage</li>
                                     }
                                 }
-                            </ul>
-                        </div>
+                                </ul>
+                            </div>
                     }
 
                     <input type="hidden" name="RemoteScan.Id" id="storageId" />
@@ -131,7 +131,7 @@
             </div>
             <div class="modal-body" style="overflow-y: auto; max-height: 80vh;">
                 <div id="fileExplorerContent">
-                    <!-- File explorer content will be rendered here -->
+                    <!-- File explorer content will be rendered here by JavaScript -->
                 </div>
             </div>
         </div>
@@ -184,110 +184,111 @@
 </div>
 
 @section Scripts {
-    <script>
-        // Scripts for Add/Edit Modal
-        function openAddModal() {
-            clearModalFields();
-            $('#storageModalLabel').text('Add New Storage Source');
-            $('#modalSubmitButton').text('Add Storage');
-            $('#storageForm').attr('action', '?handler=Add');
-            $('#storageModal').modal('show');
-        }
-
-        function openEditModal(id) {
-            clearModalFields();
-            $.ajax({
-                url: '?handler=GetStorage',
-                type: 'GET',
-                data: { id: id },
-                success: function (data) {
-                    if (data.success === false) {
-                        alert('Storage not found.');
-                        return;
-                    }
-
-                    $('#storageModalLabel').text('Edit Storage Source');
-                    $('#modalSubmitButton').text('Save Changes');
-                    $('#storageForm').attr('action', '?handler=Edit');
-                    $('#storageId').val(data.id);
-                    $('#storageName').val(data.name);
-                    $('#storageHost').val(data.host);
-                    $('#storagePort').val(data.port);
-                    $('#storageUsername').val(data.username);
-                    $('#authMethod').val(data.authenticationMethod);
-                    $('#storageRemotePath').val(data.remotePath);
-                    toggleAuthFields();
-                    if (data.authenticationMethod === 'Password') {
-                        if (data.passwordSet) {
-                            $('#storagePassword').val('********'); // Indicate password is set
-                        } else {
-                            $('#storagePassword').val('');
-                        }
-                        $('#storageSSHKey').val('');
-                    } else if (data.authenticationMethod === 'SSH Key') {
-                        $('#storagePassword').val('');
-                        if (data.sshKeySet) {
-                            $('#storageSSHKey').val('********'); // Indicate SSH key is set
-                        } else {
-                            $('#storageSSHKey').val('');
-                        }
-                    }
-                    $('#storageModal').modal('show');
-                },
-                error: function () {
-                    alert('Error fetching storage details.');
-                }
-            });
-        }
-
-        function closeModal() {
-            $('#storageModal').modal('hide');
-        }
-
-        function clearModalFields() {
-            $('#storageForm')[0].reset();
-            $('#storagePassword').val('');
-            $('#storageSSHKey').val('');
-            $('.alert-danger').remove();
-            toggleAuthFields();
-        }
-
-        function toggleAuthFields() {
-            var method = $('#authMethod').val();
-            if (method === 'Password') {
-                $('#passwordField').show();
-                $('#sshKeyField').hide();
-                $('#storagePassword').prop('required', true);
-                $('#storageSSHKey').prop('required', false);
-            } else if (method === 'SSH Key') {
-                $('#passwordField').hide();
-                $('#sshKeyField').show();
-                $('#storagePassword').prop('required', false);
-                $('#storageSSHKey').prop('required', true);
-            } else {
-                $('#passwordField').hide();
-                $('#sshKeyField').hide();
-                $('#storagePassword').prop('required', false);
-                $('#storageSSHKey').prop('required', false);
-            }
-        }
-
-        // Ensure the correct fields are shown/hidden on page load
-        $(document).ready(function () {
-            toggleAuthFields();
-
-            // Open the modal if there are ModelState errors
-            if ($('.alert-danger').length > 0) {
+        <script>
+            // Scripts for Add/Edit Modal
+            function openAddModal() {
+                clearModalFields();
+                $('#storageModalLabel').text('Add New Storage Source');
+                $('#modalSubmitButton').text('Add Storage');
+                $('#storageForm').attr('action', '?handler=Add');
                 $('#storageModal').modal('show');
             }
 
-            // Attach the toggle function to the AuthenticationMethod dropdown
-            $('#authMethod').change(toggleAuthFields);
-        });
-    </script>
+            function openEditModal(id) {
+                clearModalFields();
+                $.ajax({
+                    url: '?handler=GetStorage',
+                    type: 'GET',
+                    data: { id: id },
+                    success: function (data) {
+                        if (data.success === false) {
+                            alert('Storage not found.');
+                            return;
+                        }
+
+                        $('#storageModalLabel').text('Edit Storage Source');
+                        $('#modalSubmitButton').text('Save Changes');
+                        $('#storageForm').attr('action', '?handler=Edit');
+                        $('#storageId').val(data.id);
+                        $('#storageName').val(data.name);
+                        $('#storageHost').val(data.host);
+                        $('#storagePort').val(data.port);
+                        $('#storageUsername').val(data.username);
+                        $('#authMethod').val(data.authenticationMethod);
+                        $('#storageRemotePath').val(data.remotePath);
+                        toggleAuthFields();
+                        if (data.authenticationMethod === 'Password') {
+                            if (data.passwordSet) {
+                                $('#storagePassword').val('********'); // Indicate password is set
+                            } else {
+                                $('#storagePassword').val('');
+                            }
+                            $('#storageSSHKey').val('');
+                        } else if (data.authenticationMethod === 'SSH Key') {
+                            $('#storagePassword').val('');
+                            if (data.sshKeySet) {
+                                $('#storageSSHKey').val('********'); // Indicate SSH key is set
+                            } else {
+                                $('#storageSSHKey').val('');
+                            }
+                        }
+                        $('#storageModal').modal('show');
+                    },
+                    error: function () {
+                        alert('Error fetching storage details.');
+                    }
+                });
+            }
+
+            function closeModal() {
+                $('#storageModal').modal('hide');
+            }
+
+            function clearModalFields() {
+                $('#storageForm')[0].reset();
+                $('#storagePassword').val('');
+                $('#storageSSHKey').val('');
+                $('.alert-danger').remove();
+                toggleAuthFields();
+            }
+
+            function toggleAuthFields() {
+                var method = $('#authMethod').val();
+                if (method === 'Password') {
+                    $('#passwordField').show();
+                    $('#sshKeyField').hide();
+                    $('#storagePassword').prop('required', true);
+                    $('#storageSSHKey').prop('required', false);
+                } else if (method === 'SSH Key') {
+                    $('#passwordField').hide();
+                    $('#sshKeyField').show();
+                    $('#storagePassword').prop('required', false);
+                    $('#storageSSHKey').prop('required', true);
+                } else {
+                    $('#passwordField').hide();
+                    $('#sshKeyField').hide();
+                    $('#storagePassword').prop('required', false);
+                    $('#storageSSHKey').prop('required', false);
+                }
+            }
+
+            // Ensure the correct fields are shown/hidden on page load
+            $(document).ready(function () {
+                toggleAuthFields();
+
+                // Open the modal if there are ModelState errors
+                if ($('.alert-danger').length > 0) {
+                    $('#storageModal').modal('show');
+                }
+
+                // Attach the toggle function to the AuthenticationMethod dropdown
+                $('#authMethod').change(toggleAuthFields);
+            });
+        </script>
 }
 
 <script src="/js/RemoteScan.js"></script>
 <script src="/js/Toast.js"></script>
 <link rel="stylesheet" href="/css/Drive.css">
 <link rel="stylesheet" href="/css/FileExplorer.css">
+<link rel="stylesheet" href="/css/Index.css">
