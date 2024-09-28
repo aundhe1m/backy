@@ -32,6 +32,7 @@ function fetchFileExplorerData(storageId) {
         success: function (data) {
             if (data.success) {
                 storageContentCache = data.storageContent;
+                setParentReferences(storageContentCache); // Set parent references
                 currentNode = storageContentCache;
                 renderFileExplorer();
             } else {
@@ -42,6 +43,16 @@ function fetchFileExplorerData(storageId) {
             alert('Error loading file explorer data.');
         }
     });
+}
+
+// Function to set parent references for all nodes
+function setParentReferences(node, parent = null) {
+    node.parent = parent;
+    if (node.children) {
+        node.children.forEach(child => {
+            setParentReferences(child, node);
+        });
+    }
 }
 
 // Function to render File Explorer
@@ -62,7 +73,6 @@ function renderFileExplorer(highlightFile = '') {
             const sortedChildren = storageContentCache.children.slice().sort((a, b) => a.name.localeCompare(b.name));
             sortedChildren.forEach(childNode => {
                 if (childNode.type === 'directory') {
-                    childNode.parent = storageContentCache; // Set parent reference
                     const childLi = buildDirectoryTree(childNode);
                     dirNav.append(childLi);
                 }
@@ -132,7 +142,6 @@ function buildDirectoryTree(node) {
         const sortedChildren = node.children.slice().sort((a, b) => a.name.localeCompare(b.name));
         sortedChildren.forEach(childNode => {
             if (childNode.type === 'directory') {
-                childNode.parent = node; // Set parent reference
                 const childLi = buildDirectoryTree(childNode);
                 childUl.append(childLi);
             }
@@ -223,6 +232,7 @@ function buildBreadcrumb() {
     return breadcrumb;
 }
 
+// Function to build the file table
 function buildFileTable(highlightFile) {
     const fileTable = $('<table class="table table-striped"></table>');
     const tableHeader = $(`
@@ -279,7 +289,6 @@ function buildFileTable(highlightFile) {
                 const dirIcon = $('<img src="/icons/folder.svg" class="directory-table-icon">');
                 const link = $('<a href="javascript:void(0);"></a>').append(dirIcon).append(' ' + item.name);
                 link.click(function () {
-                    item.node.parent = currentNode; // Set parent reference
                     currentNode = item.node;
                     renderFileExplorer();
                 });
@@ -368,10 +377,29 @@ function updateSortIcons(fileTable) {
 // Search functionality
 $('#searchInput').keyup(function () {
     const query = $(this).val();
-    if (query.length >= 3) {
+    if (query.length >= 1) {
         searchFiles(query);
     } else {
         $('#searchSuggestions').hide();
+    }
+});
+
+// Handle Enter key press in search input
+$('#searchInput').on('keypress', function (e) {
+    if (e.which === 13) { // Enter key pressed
+        e.preventDefault(); // Prevent default form submission
+        const query = $(this).val();
+        if (query.length >= 1) {
+            searchFiles(query, true); // Auto-navigate to first result
+        }
+    }
+});
+
+// Handle search button click
+$('#searchButton').click(function () {
+    const query = $('#searchInput').val();
+    if (query.length >= 1) {
+        searchFiles(query, true); // Auto-navigate to first result
     }
 });
 
@@ -383,7 +411,7 @@ $(document).click(function (event) {
 });
 
 // Function to search files and directories from the cached data
-function searchFiles(query) {
+function searchFiles(query, autoNavigate = false) {
     if (!storageContentCache) {
         return;
     }
@@ -392,7 +420,11 @@ function searchFiles(query) {
     const maxResults = 10;
     searchInNode(storageContentCache, query.toLowerCase(), results, maxResults);
 
-    renderSearchSuggestions(results);
+    if (autoNavigate && results.length > 0) {
+        navigateToSearchResult(results[0]);
+    } else {
+        renderSearchSuggestions(results);
+    }
 }
 
 // Recursive function to search within the node
@@ -461,21 +493,3 @@ function navigateToSearchResult(result) {
     }
 }
 
-// Handle Enter key press in search input
-$('#searchInput').on('keypress', function (e) {
-    if (e.which === 13) { // Enter key pressed
-        e.preventDefault(); // Prevent default form submission
-        const query = $(this).val();
-        if (query.length >= 3) {
-            searchFiles(query);
-        }
-    }
-});
-
-// Handle search button click
-$('#searchButton').click(function () {
-    const query = $('#searchInput').val();
-    if (query.length >= 3) {
-        searchFiles(query);
-    }
-});
