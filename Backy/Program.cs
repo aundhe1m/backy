@@ -2,7 +2,7 @@ using Backy.Data;
 using Backy.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using MySql.EntityFrameworkCore.Extensions;
+using Npgsql.EntityFrameworkCore.PostgreSQL;
 
 namespace Backy;
 
@@ -18,7 +18,7 @@ public class Program
         // Configure MySQL Database Context
         var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseMySQL(connectionString));
+            options.UseNpgsql(connectionString));
 
         // Add Data Protection Services
         builder.Services.AddDataProtection()

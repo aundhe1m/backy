@@ -1,11 +1,9 @@
 services:
   db:
-    image: mysql:8
-    restart: always
+    image: postgres
     environment:
-      MYSQL_ROOT_PASSWORD: prettysecurerootpassword
-      MYSQL_DATABASE: backy-db
-      MYSQL_USER: backy-user
-      MYSQL_PASSWORD: prettysecurepassword
+      POSTGRES_DB: backy-db
+      POSTGRES_USER: backy-user
+      POSTGRES_PASSWORD: prettysecurepassword
     ports:
-      - 3306:3306
+      - 5432:5432

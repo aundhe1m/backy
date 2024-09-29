@@ -9,6 +9,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace Backy.Services
 {
@@ -37,7 +39,7 @@ namespace Backy.Services
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            var now = DateTime.UtcNow;
+            var now = DateTimeOffset.UtcNow;
             int nowDayOfWeek = (int)now.DayOfWeek;
             int nowMinutes = now.Hour * 60 + now.Minute;
 
@@ -59,7 +61,7 @@ namespace Backy.Services
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                // Check for scheduled indexing every minute
+                // Check for scheduled indexing
                 await CheckScheduledIndexingAsync(stoppingToken);
 
                 _logger.LogInformation("Waiting for indexing signals or periodic interval.");
@@ -155,19 +157,44 @@ namespace Backy.Services
                 foreach (var file in files.Values)
                 {
                     var existingFile = await context.Files
-                        .FirstOrDefaultAsync(f => f.RemoteScanId == storage.Id && f.FullPath == file.FullPath, cancellationToken);
+                        .Where(f => f.RemoteScanId == storage.Id && f.FullPath == file.FullPath && !f.IsDeleted)
+                        .FirstOrDefaultAsync(cancellationToken);
+
                     if (existingFile == null)
                     {
+                        // No active file entry exists; add new
                         _logger.LogInformation("Adding new file: {FullPath}", file.FullPath);
                         context.Files.Add(file);
                     }
                     else
                     {
-                        _logger.LogInformation("Updating existing file: {FullPath}", file.FullPath);
-                        existingFile.Size = file.Size;
-                        existingFile.LastModified = file.LastModified;
-                        existingFile.IsDeleted = false;
-                        context.Files.Update(existingFile);
+                        if (existingFile.Size == file.Size)
+                        {
+                            // File size unchanged; no action needed
+                            _logger.LogInformation("File unchanged: {FullPath}", file.FullPath);
+                            continue;
+                        }
+                        else
+                        {
+                            // File size changed; flag existing as deleted and add new entry
+                            _logger.LogInformation("File updated: {FullPath}", file.FullPath);
+                            existingFile.IsDeleted = true;
+                            context.Files.Update(existingFile);
+
+                            // Add new FileEntry with updated details
+                            var updatedFile = new FileEntry
+                            {
+                                RemoteScanId = file.RemoteScanId,
+                                FileName = file.FileName,
+                                FullPath = file.FullPath,
+                                Size = file.Size,
+                                BackupExists = file.BackupExists,
+                                BackupPoolGroup = file.BackupPoolGroup,
+                                BackupDriveSerials = file.BackupDriveSerials,
+                                IsDeleted = false
+                            };
+                            context.Files.Add(updatedFile);
+                        }
                     }
 
                     try
@@ -183,7 +210,7 @@ namespace Backy.Services
 
                 // Mark files that are no longer present as deleted
                 var existingFiles = await context.Files
-                    .Where(f => f.RemoteScanId == storage.Id)
+                    .Where(f => f.RemoteScanId == storage.Id && !f.IsDeleted)
                     .ToListAsync(cancellationToken);
                 foreach (var existingFile in existingFiles)
                 {
@@ -262,14 +289,14 @@ namespace Backy.Services
                 {
                     RemoteScanId = storageId,
                     ContentJson = contentJson,
-                    LastUpdated = DateTime.UtcNow
+                    LastUpdated = DateTimeOffset.UtcNow
                 };
                 context.StorageContents.Add(storageContent);
             }
             else
             {
                 storageContent.ContentJson = contentJson;
-                storageContent.LastUpdated = DateTime.UtcNow;
+                storageContent.LastUpdated = DateTimeOffset.UtcNow;
                 context.StorageContents.Update(storageContent);
             }
 
@@ -277,10 +304,15 @@ namespace Backy.Services
             _logger.LogInformation("Storage content generated and stored for storageId: {StorageId}", storageId);
         }
 
-
         private void AddFileToStorageContent(StorageContentItem rootItem, FileEntry file, string rootPath)
         {
             // Normalize the file path
+            if (!file.FullPath.StartsWith(rootPath))
+            {
+                _logger.LogWarning("File path {FullPath} does not start with root path {RootPath}", file.FullPath, rootPath);
+                return;
+            }
+
             var relativePath = file.FullPath.Substring(rootPath.Length).Trim('/');
             var pathParts = relativePath.Split('/');
             var currentNode = rootItem;
@@ -296,7 +328,7 @@ namespace Backy.Services
                     var newItem = new StorageContentItem
                     {
                         Name = part,
-                        FullPath = Path.Combine(currentNode.FullPath, part).Replace("\\", "/"),
+                        FullPath = string.IsNullOrEmpty(currentNode.FullPath) ? "/" + part : $"{currentNode.FullPath}/{part}",
                         Type = isFile ? "file" : "directory",
                         Size = isFile ? file.Size : 0,
                         BackupExists = isFile ? file.BackupExists : false,
@@ -347,7 +379,6 @@ namespace Backy.Services
             node.BackupExists = backupExists;
         }
 
-
         private async Task TraverseRemoteDirectory(SftpClient client, string remotePath, Dictionary<string, FileEntry> files, Guid storageId, CancellationToken cancellationToken)
         {
             var items = client.ListDirectory(remotePath);
@@ -368,7 +399,6 @@ namespace Backy.Services
                             FileName = item.Name,
                             FullPath = fullPath,
                             Size = item.Attributes.Size,
-                            LastModified = item.LastWriteTime
                         };
                     }
                 }

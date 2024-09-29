@@ -598,7 +598,7 @@ namespace Backy.Pages
             public bool IsEnabled { get; set; }
             public bool IsIndexing { get; set; }
             public string Status { get; set; } = string.Empty;
-            public DateTime? LastChecked { get; set; }
+            public DateTimeOffset? LastChecked { get; set; }
             public long TotalSize { get; set; }
             public long TotalBackupSize { get; set; }
             public int TotalFiles { get; set; }

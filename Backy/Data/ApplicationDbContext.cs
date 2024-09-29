@@ -20,10 +20,10 @@ namespace Backy.Data
         {
             modelBuilder.Entity<FileEntry>()
                 .HasIndex(f => new { f.RemoteScanId, f.FullPath })
-                .IsUnique();
+                .IsUnique()
+                .HasFilter("\"IsDeleted\" = false");
 
             base.OnModelCreating(modelBuilder);
         }
-
     }
 }

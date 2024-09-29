@@ -23,17 +23,11 @@ namespace Backy.Models
 
         public long Size { get; set; }
 
-        public DateTime LastModified { get; set; }
-
-        public string Checksum { get; set; } = string.Empty;
-
         public bool BackupExists { get; set; } = false;
 
         public string BackupPoolGroup { get; set; } = string.Empty;
 
         public string BackupDriveSerials { get; set; } = string.Empty;
-
-        public DateTime? BackupDate { get; set; }
 
         public bool IsDeleted { get; set; } = false;
     }

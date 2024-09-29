@@ -72,7 +72,7 @@ namespace Backy.Services
             }
 
             storage.Status = isOnline ? "Online" : "Offline";
-            storage.LastChecked = DateTime.UtcNow;
+            storage.LastChecked = DateTimeOffset.UtcNow;
 
             context.RemoteScans.Update(storage);
             await context.SaveChangesAsync();

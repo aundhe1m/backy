@@ -30,7 +30,7 @@ namespace Backy.Models
 
         public bool IsEnabled { get; set; } = true;
 
-        public DateTime? LastChecked { get; set; }
+        public DateTimeOffset? LastChecked { get; set; }
 
         public string Status { get; set; } = "Offline"; // Online/Offline
 
