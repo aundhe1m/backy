@@ -169,3 +169,124 @@
 .list-group-item a {
     white-space: nowrap;
 }
+
+
+.rotating {
+    animation: rotating 2s linear infinite;
+}
+
+@keyframes rotating {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Additional styles for schedule modal */
+.btn-transparent-warning {
+    background-color: rgba(255, 0, 0, 0.185);
+    border: none;
+    color: inherit;
+}
+
+.btn-transparent-warning:hover {
+    background-color: rgba(255, 0, 0, 0.5);
+}
+
+button:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.btn-transparent {
+    background-color: rgba(0, 0, 0, 0.05);
+    border: none;
+    color: inherit;
+}
+
+.btn-transparent-warning {
+    background-color: rgba(255, 0, 0, 0.185);
+    border: none;
+    color: inherit;
+}
+
+.btn-transparent-warning:hover {
+    background-color: rgba(255, 0, 0, 0.5);
+}
+
+.btn-transparent:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Spinner Overlay */
+.spinner-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1050;
+    /* Ensure it appears above other elements */
+    background: rgba(255, 255, 255, 0.7);
+    padding: 20px;
+    border-radius: 8px;
+}
+
+/* File Explorer Content */
+.file-explorer-content {
+    position: relative;
+    height: 100%;
+}
+
+/* File Table Container with Scroll */
+.file-table-container {
+    max-height: 60vh;
+    /* Adjust as needed */
+    overflow-y: auto;
+    position: relative;
+}
+
+/* Sticky Table Header */
+.file-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: #f8f9fa;
+    /* Bootstrap's light background */
+    z-index: 1;
+}
+
+/* Additional styling for better appearance */
+.file-table th.sortable {
+    cursor: pointer;
+}
+
+.file-table th.sortable:hover {
+    background-color: #e9ecef;
+}
+
+/* Ensure the table takes full width */
+.file-table {
+    width: 100%;
+}
+
+/* Highlighted File */
+.highlighted-file {
+    background-color: rgba(255, 255, 0, 0.5);
+}
+
+/* Ensuring the spinner is centered */
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* Make the spinner overlay cover the entire modal body */
+.spinner-overlay {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

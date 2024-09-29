@@ -11,13 +11,14 @@ namespace Backy.Models
         public Guid RemoteScanId { get; set; }
 
         [ForeignKey("RemoteScanId")]
-        public RemoteScan? RemoteScan { get; set; } // Removed default initialization
+        public RemoteScan? RemoteScan { get; set; }
 
         [Required]
-        [Column(TypeName = "TEXT")] // Use appropriate type for your database
+        [Column(TypeName = "TEXT")]
         public string FileName { get; set; } = string.Empty;
 
         [Required]
+        [Column(TypeName = "VARCHAR(512)")]
         public string FullPath { get; set; } = string.Empty;
 
         public long Size { get; set; }
@@ -30,7 +31,7 @@ namespace Backy.Models
 
         public string BackupPoolGroup { get; set; } = string.Empty;
 
-        public string BackupDriveSerials { get; set; } = string.Empty; // JSON array or serialized list
+        public string BackupDriveSerials { get; set; } = string.Empty;
 
         public DateTime? BackupDate { get; set; }
 

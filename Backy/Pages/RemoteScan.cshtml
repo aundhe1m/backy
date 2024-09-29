@@ -116,8 +116,8 @@
                     <input type="text" class="form-control" placeholder="Search..." id="searchInput">
                     <!-- Search button with icon -->
                     <div class="input-group-append">
-                        <button class="btn btn-outline-secondary" type="button"
-                            onclick="searchFiles($('#searchInput').val())">
+                        <button class="btn btn-outline-secondary" type="button" id="searchButton"
+                            onclick="searchFiles($('#searchInput').val(), true)">
                             <img src="/icons/search.svg" alt="Search" class="search-icon">
                         </button>
                     </div>
@@ -129,14 +129,21 @@
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <div class="modal-body" style="overflow-y: auto; max-height: 80vh;">
-                <div id="fileExplorerContent">
+            <div class="modal-body" style="position: relative; overflow: hidden; max-height: 80vh;">
+                <!-- Loading Spinner -->
+                <div id="fileExplorerSpinner" class="spinner-overlay" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only"></span>
+                    </div>
+                </div>
+                <div id="fileExplorerContent" class="file-explorer-content">
                     <!-- File explorer content will be rendered here by JavaScript -->
                 </div>
             </div>
         </div>
     </div>
 </div>
+
 
 <!-- Index Schedule Modal -->
 <div class="modal fade" id="scheduleModal" tabindex="-1" role="dialog" aria-labelledby="scheduleModalLabel"
@@ -196,6 +203,6 @@
 <script src="/js/_Schedule.js"></script>
 <script src="/js/RemoteScan.js"></script>
 
-<link rel="stylesheet" href="/css/Drive.css">
+@* <link rel="stylesheet" href="/css/Drive.css"> *@
 <link rel="stylesheet" href="/css/FileExplorer.css">
 <link rel="stylesheet" href="/css/Index.css">

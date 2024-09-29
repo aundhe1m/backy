@@ -1,4 +1,10 @@
-// File Explorer functionality
+// File: Backy/wwwroot/js/_FileExplorer.js
+
+/**
+ * File Explorer functionality
+ */
+
+// Variables to manage state
 let storageId = null;
 let expandedPaths = new Set();
 let storageContentCache = null; // Cache for storage content
@@ -8,22 +14,32 @@ let currentNode = null; // Current node in the file explorer
 let sortColumn = 'name';
 let sortOrder = 'asc';
 
-// Function to open File Explorer modal
+/**
+ * Opens the File Explorer modal for the selected storage.
+ * @param {string} selectedStorageId - The ID of the selected storage.
+ */
 function openFileExplorer(selectedStorageId) {
     storageId = selectedStorageId;
+    showLoadingSpinner(); // Show spinner when loading starts
     fetchFileExplorerData(storageId);
     $('#fileExplorerModal').modal('show');
 }
 
-// Function to close File Explorer modal
+/**
+ * Closes the File Explorer modal and resets state variables.
+ */
 function closeFileExplorer() {
     $('#fileExplorerModal').modal('hide');
     expandedPaths.clear();
     storageContentCache = null;
     currentNode = null;
+    hideLoadingSpinner(); // Ensure spinner is hidden
 }
 
-// Function to fetch File Explorer data
+/**
+ * Fetches File Explorer data from the server.
+ * @param {string} storageId - The ID of the storage to fetch data for.
+ */
 function fetchFileExplorerData(storageId) {
     $.ajax({
         url: '/RemoteScan?handler=FileExplorer',
@@ -38,14 +54,20 @@ function fetchFileExplorerData(storageId) {
             } else {
                 alert('Error: ' + data.message);
             }
+            hideLoadingSpinner(); // Hide spinner after data is loaded
         },
         error: function () {
             alert('Error loading file explorer data.');
+            hideLoadingSpinner(); // Hide spinner on error
         }
     });
 }
 
-// Function to set parent references for all nodes
+/**
+ * Recursively sets parent references for all nodes in the storage content.
+ * @param {Object} node - The current node.
+ * @param {Object|null} parent - The parent node.
+ */
 function setParentReferences(node, parent = null) {
     node.parent = parent;
     if (node.children) {
@@ -55,7 +77,10 @@ function setParentReferences(node, parent = null) {
     }
 }
 
-// Function to render File Explorer
+/**
+ * Renders the File Explorer UI, including the directory tree and file table.
+ * @param {string} [highlightFile=''] - The file name to highlight.
+ */
 function renderFileExplorer(highlightFile = '') {
     try {
         const contentDiv = $('#fileExplorerContent');
@@ -88,8 +113,8 @@ function renderFileExplorer(highlightFile = '') {
         const breadcrumb = buildBreadcrumb();
         rightCol.append(breadcrumb);
 
-        // Files table container
-        const fileTableContainer = $('<div id="fileTableContainer"></div>');
+        // Files table container with its own scrollbar
+        const fileTableContainer = $('<div id="fileTableContainer" class="file-table-container"></div>');
         rightCol.append(fileTableContainer);
         fileTableContainer.append(buildFileTable(highlightFile));
 
@@ -99,10 +124,15 @@ function renderFileExplorer(highlightFile = '') {
     } catch (error) {
         console.error('Error rendering File Explorer:', error);
         alert('An error occurred while rendering the File Explorer. Please try again.');
+        hideLoadingSpinner(); // Hide spinner on error
     }
 }
 
-// Function to build the directory tree
+/**
+ * Builds the directory tree recursively.
+ * @param {Object} node - The current directory node.
+ * @returns {jQuery} - The list item representing the directory.
+ */
 function buildDirectoryTree(node) {
     const li = $('<li class="list-group-item"></li>');
     const fullPath = node.fullPath;
@@ -179,7 +209,10 @@ function buildDirectoryTree(node) {
     return li;
 }
 
-// Function to build the breadcrumb
+/**
+ * Builds the breadcrumb navigation based on the current node.
+ * @returns {jQuery} - The breadcrumb navigation element.
+ */
 function buildBreadcrumb() {
     const breadcrumb = $('<nav aria-label="breadcrumb"></nav>');
     const breadcrumbList = $('<ol class="breadcrumb align-items-center"></ol>');
@@ -232,15 +265,19 @@ function buildBreadcrumb() {
     return breadcrumb;
 }
 
-// Function to build the file table
+/**
+ * Builds the file table with sortable columns.
+ * @param {string} highlightFile - The file name to highlight.
+ * @returns {jQuery} - The file table element.
+ */
 function buildFileTable(highlightFile) {
-    const fileTable = $('<table class="table table-striped"></table>');
+    const fileTable = $('<table class="table table-striped file-table"></table>');
     const tableHeader = $(`
         <thead>
             <tr>
-                <th id="sort-name">Name <img src="/icons/caret-up-fill.svg" class="sort-icon"></th>
-                <th id="sort-size">Size</th>
-                <th id="sort-backup">Backup</th>
+                <th id="sort-name" class="sortable">Name <img src="/icons/caret-up-fill.svg" class="sort-icon"></th>
+                <th id="sort-size" class="sortable">Size</th>
+                <th id="sort-backup" class="sortable">Backup</th>
             </tr>
         </thead>
     `);
@@ -346,11 +383,19 @@ function buildFileTable(highlightFile) {
     return fileTable;
 }
 
+/**
+ * Updates the file table by rebuilding it.
+ * @param {string} highlightFile - The file name to highlight.
+ */
 function updateFileTable(highlightFile) {
     const fileTableContainer = $('#fileTableContainer');
     fileTableContainer.empty().append(buildFileTable(highlightFile));
 }
 
+/**
+ * Toggles the sorting order for a given column.
+ * @param {string} column - The column to sort by.
+ */
 function toggleSort(column) {
     if (sortColumn === column) {
         sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
@@ -360,6 +405,10 @@ function toggleSort(column) {
     }
 }
 
+/**
+ * Updates the sort icons in the table headers to reflect the current sorting state.
+ * @param {jQuery} fileTable - The file table element.
+ */
 function updateSortIcons(fileTable) {
     fileTable.find('th img.sort-icon').remove();
 
@@ -372,6 +421,121 @@ function updateSortIcons(fileTable) {
     } else if (sortColumn === 'backup') {
         fileTable.find('#sort-backup').append(' ').append(sortIcon);
     }
+}
+
+/**
+ * Searches files and directories based on the query.
+ * @param {string} query - The search query.
+ * @param {boolean} [autoNavigate=false] - Whether to auto-navigate to the first result.
+ */
+function searchFiles(query, autoNavigate = false) {
+    if (!storageContentCache) {
+        return;
+    }
+
+    const results = [];
+    const maxResults = 10;
+    searchInNode(storageContentCache, query.toLowerCase(), results, maxResults);
+
+    if (autoNavigate && results.length > 0) {
+        navigateToSearchResult(results[0]);
+    } else {
+        renderSearchSuggestions(results);
+    }
+}
+
+/**
+ * Recursively searches within the node for matching files or directories.
+ * @param {Object} node - The current node.
+ * @param {string} query - The search query in lowercase.
+ * @param {Array} results - The array to store search results.
+ * @param {number} maxResults - The maximum number of results to collect.
+ */
+function searchInNode(node, query, results, maxResults) {
+    if (results.length >= maxResults) {
+        return;
+    }
+
+    if (node.name.toLowerCase().includes(query)) {
+        results.push({
+            node: node,
+            type: node.type.charAt(0).toUpperCase() + node.type.slice(1),
+            name: node.name,
+            fullPath: node.fullPath
+        });
+    }
+
+    if (node.children && results.length < maxResults) {
+        for (let child of node.children) {
+            searchInNode(child, query, results, maxResults);
+            if (results.length >= maxResults) {
+                break;
+            }
+        }
+    }
+}
+
+/**
+ * Renders search suggestions in the dropdown.
+ * @param {Array} results - The search results to display.
+ */
+function renderSearchSuggestions(results) {
+    const suggestionsDiv = $('#searchSuggestions');
+    suggestionsDiv.empty();
+
+    if (results.length === 0) {
+        suggestionsDiv.hide();
+        return;
+    }
+
+    results.forEach(function (result) {
+        const item = $('<a class="dropdown-item" href="javascript:void(0);"></a>');
+        let icon;
+        if (result.type === "Directory") {
+            icon = '<img src="/icons/folder.svg" class="directory-table-icon">';
+        } else {
+            icon = '<img src="/icons/file-earmark.svg" class="file-table-icon">';
+        }
+        const path = '<small class="text-muted"> [' + result.fullPath.replace(storageContentCache.fullPath, '') + ']</small>';
+        item.html(icon + ' ' + result.name + ' ' + path);
+        item.click(function () {
+            navigateToSearchResult(result);
+            suggestionsDiv.hide();
+        });
+        suggestionsDiv.append(item);
+    });
+
+    suggestionsDiv.show();
+}
+
+/**
+ * Navigates to the selected search result.
+ * @param {Object} result - The search result to navigate to.
+ */
+function navigateToSearchResult(result) {
+    $('#searchInput').val('');
+    $('#searchSuggestions').hide();
+    if (result.type === 'Directory') {
+        currentNode = result.node;
+        renderFileExplorer();
+    } else if (result.type === 'File') {
+        currentNode = result.node.parent;
+        renderFileExplorer(result.name);
+    }
+}
+
+/**
+ * Shows the loading spinner overlay.
+ */
+function showLoadingSpinner() {
+    $('#fileExplorerSpinner').show();
+}
+
+/**
+ * Hides the loading spinner overlay.
+ */
+function hideLoadingSpinner() {
+    $('#fileExplorerSpinner').hide();
 }
 
 // Search functionality
@@ -409,87 +573,3 @@ $(document).click(function (event) {
         $('#searchSuggestions').hide();
     }
 });
-
-// Function to search files and directories from the cached data
-function searchFiles(query, autoNavigate = false) {
-    if (!storageContentCache) {
-        return;
-    }
-
-    const results = [];
-    const maxResults = 10;
-    searchInNode(storageContentCache, query.toLowerCase(), results, maxResults);
-
-    if (autoNavigate && results.length > 0) {
-        navigateToSearchResult(results[0]);
-    } else {
-        renderSearchSuggestions(results);
-    }
-}
-
-// Recursive function to search within the node
-function searchInNode(node, query, results, maxResults) {
-    if (results.length >= maxResults) {
-        return;
-    }
-
-    if (node.name.toLowerCase().includes(query)) {
-        results.push({
-            node: node,
-            type: node.type.charAt(0).toUpperCase() + node.type.slice(1),
-            name: node.name,
-            fullPath: node.fullPath
-        });
-    }
-
-    if (node.children && results.length < maxResults) {
-        for (let child of node.children) {
-            searchInNode(child, query, results, maxResults);
-            if (results.length >= maxResults) {
-                break;
-            }
-        }
-    }
-}
-
-function renderSearchSuggestions(results) {
-    const suggestionsDiv = $('#searchSuggestions');
-    suggestionsDiv.empty();
-
-    if (results.length === 0) {
-        suggestionsDiv.hide();
-        return;
-    }
-
-    results.forEach(function (result) {
-        const item = $('<a class="dropdown-item" href="javascript:void(0);"></a>');
-        let icon;
-        if (result.type === "Directory") {
-            icon = '<img src="/icons/folder.svg" class="directory-table-icon">';
-        } else {
-            icon = '<img src="/icons/file-earmark.svg" class="file-table-icon">';
-        }
-        const path = '<small class="text-muted"> [' + result.fullPath.replace(storageContentCache.fullPath, '') + ']</small>';
-        item.html(icon + ' ' + result.name + ' ' + path);
-        item.click(function () {
-            navigateToSearchResult(result);
-            suggestionsDiv.hide();
-        });
-        suggestionsDiv.append(item);
-    });
-
-    suggestionsDiv.show();
-}
-
-function navigateToSearchResult(result) {
-    $('#searchInput').val('');
-    $('#searchSuggestions').hide();
-    if (result.type === 'Directory') {
-        currentNode = result.node;
-        renderFileExplorer();
-    } else if (result.type === 'File') {
-        currentNode = result.node.parent;
-        renderFileExplorer(result.name);
-    }
-}
-
