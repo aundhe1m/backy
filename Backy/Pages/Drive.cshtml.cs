@@ -71,7 +71,7 @@ namespace Backy.Pages
                 }
 
                 // Set PoolEnabled based on whether all drives are connected
-                pool.PoolEnabled = allConnected;
+                pool.AllDrivesConnected = allConnected;
 
                 if (pool.PoolEnabled && !string.IsNullOrEmpty(pool.MountPath))
                 {
@@ -80,13 +80,6 @@ namespace Backy.Pages
                     pool.Used = used;
                     pool.Available = available;
                     pool.UsePercent = usePercent;
-                }
-                else
-                {
-                    pool.Size = 0;
-                    pool.Used = 0;
-                    pool.Available = 0;
-                    pool.UsePercent = "0%";
                 }
             }
 
@@ -521,54 +514,101 @@ namespace Backy.Pages
         {
             var processes = new List<ProcessInfo>();
             var lines = lsofOutput.Split('\n');
-            bool headerProcessed = false;
-            foreach (var line in lines)
+            if (lines.Length < 2) return processes; // No processes found
+
+            // The first line is the header
+            var headers = Regex.Split(lines[0].Trim(), @"\s+");
+            for (int i = 1; i < lines.Length; i++)
             {
+                var line = lines[i];
                 if (string.IsNullOrWhiteSpace(line)) continue;
-
-                if (!headerProcessed)
-                {
-                    // Skip header line
-                    headerProcessed = true;
-                    continue;
-                }
-
                 var columns = Regex.Split(line.Trim(), @"\s+");
-                if (columns.Length >= 9)
+                var process = new ProcessInfo();
+                for (int j = 0; j < headers.Length && j < columns.Length; j++)
                 {
-                    processes.Add(new ProcessInfo
+                    switch (headers[j])
                     {
-                        Command = columns[0],
-                        PID = columns[1],
-                        User = columns[2],
-                        FD = columns[3],
-                        Type = columns[4],
-                        Device = columns[5],
-                        SizeOff = columns[6],
-                        Node = columns[7],
-                        Name = columns[8]
-                    });
+                        case "COMMAND":
+                            process.Command = columns[j];
+                            break;
+                        case "PID":
+                            process.PID = int.Parse(columns[j]);
+                            break;
+                        case "USER":
+                            process.User = columns[j];
+                            break;
+                        case "FD":
+                            process.FD = columns[j];
+                            break;
+                        case "TYPE":
+                            process.Type = columns[j];
+                            break;
+                        case "DEVICE":
+                            process.Device = columns[j];
+                            break;
+                        case "SIZE/OFF":
+                            process.SizeOff = columns[j];
+                            break;
+                        case "NODE":
+                            process.Node = columns[j];
+                            break;
+                        case "NAME":
+                            process.Name = columns[j];
+                            break;
+                    }
                 }
+                processes.Add(process);
             }
             return processes;
         }
 
-        public IActionResult OnPostKillProcesses(int poolGroupId, List<string> pids)
+        public IActionResult OnPostKillProcesses([FromBody] KillProcessesRequest request)
         {
-            var commandOutputs = new List<string>();
-            foreach (var pid in pids)
+            var poolGroup = _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefault(pg => pg.PoolGroupId == request.PoolGroupId);
+            if (poolGroup == null)
             {
-                var killCommand = $"kill -9 {pid}";
+                return BadRequest(new { success = false, message = "Pool group not found." });
+            }
+
+            var commandOutputs = new List<string>();
+
+            // Kill the processes
+            foreach (var pid in request.Pids)
+            {
+                string killCommand = $"kill -9 {pid}";
                 var killResult = ExecuteShellCommand(killCommand, commandOutputs);
                 if (!killResult.success)
                 {
-                    return BadRequest(new { success = false, message = $"Failed to kill process {pid}", outputs = commandOutputs });
+                    return BadRequest(new { success = false, message = $"Failed to kill process {pid}.", outputs = commandOutputs });
                 }
             }
 
-            // Retry unmounting
-            return OnPostUnmountPool(poolGroupId);
+            // Retry unmount and mdadm --stop
+            string unmountCommand = $"umount /mnt/backy/md{request.PoolGroupId}";
+            var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
+            if (!unmountResult.success)
+            {
+                return BadRequest(new { success = false, message = unmountResult.message, outputs = commandOutputs });
+            }
+
+            string stopCommand = $"mdadm --stop /dev/md{request.PoolGroupId}";
+            var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
+            if (!stopResult.success)
+            {
+                return BadRequest(new { success = false, message = stopResult.message, outputs = commandOutputs });
+            }
+
+            foreach (var Drive in poolGroup.Drives)
+            {
+                Drive.IsMounted = false;
+            }
+
+            poolGroup.PoolEnabled = false;
+            _context.SaveChanges();
+
+            return new JsonResult(new { success = true, message = "Pool unmounted successfully.", outputs = commandOutputs });
         }
+
 
         // Implement OnPostMountPool to assemble mdadm and mount
         public IActionResult OnPostMountPool(int poolGroupId)
@@ -601,6 +641,7 @@ namespace Backy.Pages
                 Drive.IsMounted = true;
             }
 
+            poolGroup.PoolEnabled = true;
             _context.SaveChanges();
 
             return new JsonResult(new { success = true, message = "Pool mounted successfully.", outputs = commandOutputs });
@@ -627,44 +668,85 @@ namespace Backy.Pages
         {
             try
             {
-                var command = $"df -PB1 {mountPoint} | awk 'BEGIN {{printf(\"{{\\\"discarray\\\":[\")}} " +
-                              $"{{if($1==\\\"Filesystem\\\") next; if(a) printf(\",\"); " +
-                              $"printf(\"{{\\\"mount\\\":\\\"%s\\\",\\\"size\\\":\\\"%s\\\",\\\"used\\\":\\\"%s\\\",\\\"avail\\\":\\\"%s\\\",\\\"use%\\\":\\\"%s\\\"}}\", $6, $2, $3, $4, $5); a++;}} " +
-                              $"END {{print(\"]}}\")}}'";
-
+                // Execute the df command
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
-                        FileName = "bash",
-                        Arguments = $"-c \"{command}\"",
+                        FileName = "df",
+                        Arguments = $"-PB1 {mountPoint}",
                         RedirectStandardOutput = true,
+                        RedirectStandardError = true, // Capture stderr for error handling
                         UseShellExecute = false,
                         CreateNoWindow = true
                     }
                 };
                 process.Start();
-                string jsonOutput = process.StandardOutput.ReadToEnd();
+
+                string output = process.StandardOutput.ReadToEnd();
+                string errorOutput = process.StandardError.ReadToEnd();
                 process.WaitForExit();
 
-                _logger.LogDebug($"df output: {jsonOutput}");
-
-                var dfResult = JsonSerializer.Deserialize<DiskArrayResult>(jsonOutput);
-                if (dfResult?.Discarray != null && dfResult.Discarray.Any())
+                // Log the command outputs for debugging
+                _logger.LogDebug($"df output: {output}");
+                if (!string.IsNullOrEmpty(errorOutput))
                 {
-                    var disc = dfResult.Discarray.First();
-                    return (
-                        Size: long.Parse(disc.Size),
-                        Used: long.Parse(disc.Used),
-                        Available: long.Parse(disc.Avail),
-                        UsePercent: disc.UsePercent
-                    );
+                    _logger.LogError($"df error output: {errorOutput}");
+                    throw new Exception($"df error: {errorOutput}");
                 }
-                else
+
+                // Split the output into lines
+                var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                if (lines.Length < 2)
                 {
                     _logger.LogWarning($"No mount information found for {mountPoint}.");
                     return (0, 0, 0, "0%");
                 }
+
+                // The first line is the header; the second line contains the data
+                var dataLine = lines[1];
+                var parts = Regex.Split(dataLine.Trim(), @"\s+");
+                if (parts.Length < 6)
+                {
+                    _logger.LogWarning($"Unexpected df output format for {mountPoint}.");
+                    return (0, 0, 0, "0%");
+                }
+
+                // Extract the necessary fields
+                // parts[1] = Size, parts[2] = Used, parts[3] = Available, parts[4] = Use%, parts[5] = Mounted on
+                var sizeStr = parts[1];
+                var usedStr = parts[2];
+                var availStr = parts[3];
+                var usePercent = parts[4];
+                var mountedOn = parts[5];
+
+                // Convert string values to long
+                if (!long.TryParse(sizeStr, out long size))
+                {
+                    _logger.LogWarning($"Failed to parse size: {sizeStr}");
+                    size = 0;
+                }
+
+                if (!long.TryParse(usedStr, out long used))
+                {
+                    _logger.LogWarning($"Failed to parse used: {usedStr}");
+                    used = 0;
+                }
+
+                if (!long.TryParse(availStr, out long avail))
+                {
+                    _logger.LogWarning($"Failed to parse available: {availStr}");
+                    avail = 0;
+                }
+
+                // Optionally, validate the mount point
+                if (!mountedOn.Equals(mountPoint, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning($"Mount point mismatch: expected {mountPoint}, got {mountedOn}");
+                    // Decide how to handle this scenario
+                }
+
+                return (Size: size, Used: used, Available: avail, UsePercent: usePercent);
             }
             catch (Exception ex)
             {
@@ -679,6 +761,12 @@ namespace Backy.Pages
     {
         [JsonPropertyName("discarray")]
         public List<DiskInfo> Discarray { get; set; } = new List<DiskInfo>();
+    }
+
+    public class KillProcessesRequest
+    {
+        public int PoolGroupId { get; set; }
+        public List<int> Pids { get; set; } = new List<int>();
     }
 
     public class DiskInfo
@@ -714,7 +802,7 @@ namespace Backy.Pages
     public class ProcessInfo
     {
         public string? Command { get; set; }
-        public string? PID { get; set; }
+        public int PID { get; set; }
         public string? User { get; set; }
         public string? FD { get; set; }
         public string? Type { get; set; }

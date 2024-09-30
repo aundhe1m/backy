@@ -56,3 +56,42 @@
         </div>
     </div>
 </div>
+
+<!-- Process List Modal -->
+<div class="modal fade" id="processListModal-@Model.PoolGroupId" tabindex="-1"
+    aria-labelledby="processListModalLabel-@Model.PoolGroupId" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="processListModalLabel-@Model.PoolGroupId">Processes Using the Mount Point
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>The following processes are preventing the unmount operation:</p>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>Command</th>
+                            <th>User</th>
+                            <th>FD</th>
+                            <th>Type</th>
+                            <th>Node</th>
+                            <th>Name</th>
+                        </tr>
+                    </thead>
+                    <tbody id="processListTableBody-@Model.PoolGroupId">
+                        <!-- Processes will be populated here dynamically -->
+                    </tbody>
+                </table>
+                <p>Do you want to kill these processes and retry unmounting?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" id="killProcessesButton-@Model.PoolGroupId">Kill
+                    Processes</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>

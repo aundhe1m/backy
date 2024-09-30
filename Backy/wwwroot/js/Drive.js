@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function resetSelectedDrives() {
         // Reset icons back to 'plus-square.svg'
         selectedDrives.forEach(function (drive) {
-            const selectButtonImg = document.querySelector(`.new-drive-card[data-drive-id="${drive.driveSerial}"] .select-drive-button img`);
+            const selectButtonImg = document.querySelector(`.new-drive-card[data-drive-serial="${drive.driveSerial}"] .select-drive-button img`);
             if (selectButtonImg) {
                 selectButtonImg.src = '/icons/plus-square.svg';
             }
@@ -329,9 +329,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     alert(`Pool unmounted successfully.`);
                     location.reload();
-                } else if (data.message === "Target is busy" && data.processes) {
-                    // Display modal with processes
-                    showKillProcessesModal(poolGroupId, data.processes);
+                } else if (data.message === "target is busy") {
+                    // Display modal with process list
+                    showProcessModal(poolGroupId, data.processes);
                 } else {
                     alert(`Failed to unmount pool: ${data.message}`);
                 }
@@ -342,93 +342,42 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    function showKillProcessesModal(poolGroupId, processes) {
-        // Create modal HTML
-        let modalHtml = `
-        <div class="modal fade" id="killProcessesModal" tabindex="-1" aria-labelledby="killProcessesModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Processes Using the Mount Point</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p>The following processes are using the mount point. Do you want to kill them?</p>
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Command</th>
-                                    <th>PID</th>
-                                    <th>User</th>
-                                    <th>FD</th>
-                                    <th>Type</th>
-                                    <th>Device</th>
-                                    <th>Size/Off</th>
-                                    <th>Node</th>
-                                    <th>Name</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-        `;
+    function showProcessModal(poolGroupId, processes) {
+        const modal = new bootstrap.Modal(document.getElementById(`processListModal-${poolGroupId}`));
+        const tableBody = document.getElementById(`processListTableBody-${poolGroupId}`);
+        tableBody.innerHTML = ''; // Clear existing rows
 
         processes.forEach(process => {
-            modalHtml += `
-                <tr>
-                    <td>${process.Command}</td>
-                    <td>${process.PID}</td>
-                    <td>${process.User}</td>
-                    <td>${process.FD}</td>
-                    <td>${process.Type}</td>
-                    <td>${process.Device}</td>
-                    <td>${process.SizeOff}</td>
-                    <td>${process.Node}</td>
-                    <td>${process.Name}</td>
-                </tr>
-            `;
+            const row = `<tr>
+                <td>${process.PID}</td>
+                <td>${process.Command}</td>
+                <td>${process.User}</td>
+                <td>${process.FD}</td>
+                <td>${process.Type}</td>
+                <td>${process.Node}</td>
+                <td>${process.Name}</td>
+            </tr>`;
+            tableBody.insertAdjacentHTML('beforeend', row);
         });
 
-        modalHtml += `
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-danger" id="killProcessesButton">Kill Processes</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        `;
+        document.getElementById(`killProcessesButton-${poolGroupId}`).onclick = function () {
+            killProcesses(poolGroupId, processes);
+            modal.hide();
+        };
 
-        // Append modal to body
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-        // Show modal
-        const killProcessesModal = new bootstrap.Modal(document.getElementById('killProcessesModal'));
-        killProcessesModal.show();
-
-        // Handle "Kill Processes" button click
-        document.getElementById('killProcessesButton').addEventListener('click', function () {
-            const pids = processes.map(p => p.PID);
-            killProcesses(poolGroupId, pids);
-            killProcessesModal.hide();
-            document.getElementById('killProcessesModal').remove();
-        });
-
-        // Clean up modal after it's hidden
-        document.getElementById('killProcessesModal').addEventListener('hidden.bs.modal', function () {
-            document.getElementById('killProcessesModal').remove();
-        });
+        modal.show();
     }
 
-    function killProcesses(poolGroupId, pids) {
-        fetch(`/Drive?handler=KillProcesses&poolGroupId=${poolGroupId}`, {
+    // Function to kill processes
+    function killProcesses(poolGroupId, processes) {
+        const pids = processes.map(p => p.PID);
+        fetch(`/Drive?handler=KillProcesses`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({ pids: pids })
+            body: JSON.stringify({ poolGroupId: poolGroupId, pids: pids })
         })
             .then(response => response.json())
             .then(data => {
@@ -444,7 +393,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 alert(`Error killing processes: ${error}`);
             });
     }
-
 
     function mountPool(poolGroupId) {
         fetch(`/Drive?handler=MountPool&poolGroupId=${poolGroupId}`, {
