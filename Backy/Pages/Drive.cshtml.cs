@@ -513,7 +513,7 @@ namespace Backy.Pages
         private List<ProcessInfo> ParseLsofOutput(string lsofOutput)
         {
             var processes = new List<ProcessInfo>();
-            var lines = lsofOutput.Split('\n');
+            var lines = lsofOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
             if (lines.Length < 2) return processes; // No processes found
 
             // The first line is the header
@@ -523,38 +523,47 @@ namespace Backy.Pages
                 var line = lines[i];
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 var columns = Regex.Split(line.Trim(), @"\s+");
+                if (columns.Length < headers.Length)
+                {
+                    _logger.LogWarning($"Line {i + 1} has fewer columns than headers. Skipping line.");
+                    continue; // Skip lines that don't have enough columns
+                }
+
                 var process = new ProcessInfo();
                 for (int j = 0; j < headers.Length && j < columns.Length; j++)
                 {
-                    switch (headers[j])
+                    try
                     {
-                        case "COMMAND":
-                            process.Command = columns[j];
-                            break;
-                        case "PID":
-                            process.PID = int.Parse(columns[j]);
-                            break;
-                        case "USER":
-                            process.User = columns[j];
-                            break;
-                        case "FD":
-                            process.FD = columns[j];
-                            break;
-                        case "TYPE":
-                            process.Type = columns[j];
-                            break;
-                        case "DEVICE":
-                            process.Device = columns[j];
-                            break;
-                        case "SIZE/OFF":
-                            process.SizeOff = columns[j];
-                            break;
-                        case "NODE":
-                            process.Node = columns[j];
-                            break;
-                        case "NAME":
-                            process.Name = columns[j];
-                            break;
+                        switch (headers[j].ToUpper())
+                        {
+                            case "COMMAND":
+                                process.Command = columns[j];
+                                break;
+                            case "PID":
+                                if (int.TryParse(columns[j], out int pid))
+                                {
+                                    process.PID = pid;
+                                }
+                                else
+                                {
+                                    _logger.LogWarning($"Invalid PID value '{columns[j]}' at line {i + 1}.");
+                                    process.PID = 0;
+                                }
+                                break;
+                            case "USER":
+                                process.User = columns[j];
+                                break;
+                            case "NAME":
+                                process.Name = columns[j];
+                                break;
+                            default:
+                                // Ignore unhandled headers (FD, TYPE, DEVICE, SIZE/OFF, NODE)
+                                break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error parsing column {j + 1} ('{headers[j]}') at line {i + 1}: {ex.Message}");
                     }
                 }
                 processes.Add(process);
@@ -564,7 +573,26 @@ namespace Backy.Pages
 
         public IActionResult OnPostKillProcesses([FromBody] KillProcessesRequest request)
         {
-            var poolGroup = _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefault(pg => pg.PoolGroupId == request.PoolGroupId);
+            if (request == null)
+            {
+                return BadRequest(new { success = false, message = "Invalid request data." });
+            }
+
+            if (request.PoolGroupId <= 0)
+            {
+                return BadRequest(new { success = false, message = "Invalid Pool Group ID." });
+            }
+
+            if (request.Pids == null || !request.Pids.Any())
+            {
+                return BadRequest(new { success = false, message = "No process IDs provided." });
+            }
+
+            int poolGroupId = request.PoolGroupId;
+
+            var poolGroup = _context.PoolGroups
+                                     .Include(pg => pg.Drives)
+                                     .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
             if (poolGroup == null)
             {
                 return BadRequest(new { success = false, message = "Pool group not found." });
@@ -584,23 +612,23 @@ namespace Backy.Pages
             }
 
             // Retry unmount and mdadm --stop
-            string unmountCommand = $"umount /mnt/backy/md{request.PoolGroupId}";
+            string unmountCommand = $"umount /mnt/backy/md{poolGroupId}";
             var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
             if (!unmountResult.success)
             {
                 return BadRequest(new { success = false, message = unmountResult.message, outputs = commandOutputs });
             }
 
-            string stopCommand = $"mdadm --stop /dev/md{request.PoolGroupId}";
+            string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
             var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
             if (!stopResult.success)
             {
                 return BadRequest(new { success = false, message = stopResult.message, outputs = commandOutputs });
             }
 
-            foreach (var Drive in poolGroup.Drives)
+            foreach (var drive in poolGroup.Drives)
             {
-                Drive.IsMounted = false;
+                drive.IsMounted = false;
             }
 
             poolGroup.PoolEnabled = false;
@@ -608,7 +636,6 @@ namespace Backy.Pages
 
             return new JsonResult(new { success = true, message = "Pool unmounted successfully.", outputs = commandOutputs });
         }
-
 
         // Implement OnPostMountPool to assemble mdadm and mount
         public IActionResult OnPostMountPool(int poolGroupId)
@@ -765,7 +792,10 @@ namespace Backy.Pages
 
     public class KillProcessesRequest
     {
+        [JsonPropertyName("poolGroupId")]
         public int PoolGroupId { get; set; }
+
+        [JsonPropertyName("pids")]
         public List<int> Pids { get; set; } = new List<int>();
     }
 
@@ -801,14 +831,16 @@ namespace Backy.Pages
 
     public class ProcessInfo
     {
+        [JsonPropertyName("command")]
         public string? Command { get; set; }
+
+        [JsonPropertyName("pid")]
         public int PID { get; set; }
+
+        [JsonPropertyName("user")]
         public string? User { get; set; }
-        public string? FD { get; set; }
-        public string? Type { get; set; }
-        public string? Device { get; set; }
-        public string? SizeOff { get; set; }
-        public string? Node { get; set; }
+
+        [JsonPropertyName("name")]
         public string? Name { get; set; }
     }
 

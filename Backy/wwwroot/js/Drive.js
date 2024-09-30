@@ -351,11 +351,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td>${process.pid}</td>
                 <td>${process.command}</td>
                 <td>${process.user}</td>
-                <td>${process.fd}</td>
-                <td>${process.type}</td>
-                <td>${process.device}</td>
-                <td>${process.sizeOff}</td>
-                <td>${process.node}</td>
                 <td>${process.name}</td>
             </tr>`;
             tableBody.insertAdjacentHTML('beforeend', row);
@@ -371,7 +366,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Function to kill processes
     function killProcesses(poolGroupId, processes) {
-        const pids = processes.map(p => p.PID);
+        const pids = processes.map(p => p.pid); // Changed 'PID' to 'pid'
         fetch(`/Drive?handler=KillProcesses`, {
             method: 'POST',
             headers: {
@@ -380,7 +375,12 @@ document.addEventListener('DOMContentLoaded', function () {
             },
             body: JSON.stringify({ poolGroupId: poolGroupId, pids: pids })
         })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(json => { throw json; });
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
                     alert(`Processes killed and pool unmounted successfully.`);
@@ -391,9 +391,10 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .catch(error => {
                 console.error('Error killing processes:', error);
-                alert(`Error killing processes: ${error}`);
+                alert(`Error killing processes: ${error.message || 'Unknown error.'}`);
             });
     }
+
 
     function mountPool(poolGroupId) {
         fetch(`/Drive?handler=MountPool&poolGroupId=${poolGroupId}`, {
