@@ -1,4 +1,4 @@
-@model Backy.Pages.DriveMetaData
+@model Backy.Models.Drive
 
 @{
     string headerBackgroundColor;
@@ -24,137 +24,36 @@
     <div class="card-header d-flex justify-content-between align-items-center"
         style="background-color:@headerBackgroundColor; color:black;">
         <div class="d-flex align-items-center">
-            <!-- Expand/Collapse button -->
-            <button class="btn btn-link p-0 me-2 chevron-button" type="button" data-bs-toggle="collapse"
-                data-bs-target="#driveDetails-@Model.UUID" aria-expanded="false"
-                aria-controls="driveDetails-@Model.UUID">
-                <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon" style="height: 24px;">
-            </button>
+            <!-- Drive Icon -->
             <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
             <span>@(string.IsNullOrEmpty(Model.Label) ? "Unnamed Drive" : Model.Label)</span>
         </div>
-        <div>
-            <!-- Progress Bar -->
-            <div>
-                <span>@String.Format("{0:F2} GB", Model.UsedSpace / 1024.0 / 1024.0 / 1024.0)</span> /
-                <span>@String.Format("{0:F2} GB", Model.PartitionSize / 1024.0 / 1024.0 / 1024.0)</span>
-            </div>
-            <div class="progress progress-with-border" style="height: 4px">
-                <div class="progress-bar" role="progressbar" style="width: @usedPercentage%"
-                    aria-valuenow="@usedPercentage" aria-valuemin="0" aria-valuemax="100"></div>
-            </div>
-        </div>
-        <!-- Split Button -->
-        <div class="btn-group">
-            <!-- Left Button -->
-            @if (Model.IsMounted)
-            {
-                <button type="button" class="btn btn-transparent eject-drive-button" data-partition-name="@Model.UUID"
-                    data-bs-toggle="tooltip" title="Unmount Drive">
-                    <img src="/icons/eject.svg" alt="Eject" style="height: 24px;">
-                </button>
-            }
-            else if (Model.IsConnected && !Model.IsMounted)
-            {
-                <button type="button" class="btn btn-transparent mount-drive-button"
-                    data-partition-name="@Model.Partitions.FirstOrDefault()?.Name" data-bs-toggle="tooltip"
-                    title="Mount Drive">
-                    <img src="/icons/play.svg" alt="Mount" style="height: 24px;">
-                </button>
-            }
-            else
-            {
-                <button type="button" class="btn btn-transparent" disabled>
-                    <img src="/icons/stop-fill.svg" alt="Disconnected" style="height: 24px;">
-                </button>
-            }
-            <!-- Dropdown Button -->
-            <span data-bs-toggle="tooltip" title="Options" alt="Options">
-                <button type="button" class="btn btn-transparent" data-bs-toggle="dropdown" aria-expanded="false">
-                    <img src="/icons/gear.svg" title="Options" alt="Options" style="height: 24px;">
-                </button>
-                <ul class="dropdown-menu">
-                    <li>
-                        <button class="dropdown-item" data-bs-toggle="modal"
-                            data-bs-target="#renameModal-@Model.UUID">Rename</button>
-                    </li>
-                    <li>
-                        <form method="post" asp-page-handler="RemoveDrive" asp-route-uuid="@Model.UUID">
-                            <button type="submit" class="dropdown-item">Remove</button>
-                        </form>
-                    </li>
-                </ul>
-            </span>
-        </div>
     </div>
 
-    <!-- Collapsible Details -->
-    <div class="collapse" id="driveDetails-@Model.UUID">
-        <div class="card-body">
-            <!-- Drive Details Table -->
-            <div class="table-responsive">
-                <table class="table table-striped">
-                    <tbody>
-                        <tr>
-                            <th>State</th>
-                            <td>@isConnected</td>
-                        </tr>
-                        <tr>
-                            <th>Vendor</th>
-                            <td>@Model.Vendor</td>
-                        </tr>
-                        <tr>
-                            <th>Model</th>
-                            <td>@Model.Model</td>
-                        </tr>
-                        <tr>
-                            <th>Serial</th>
-                            <td>@Model.Serial</td>
-                        </tr>
-                        @foreach (var partition in Model.Partitions)
-                        {
-                            <tr>
-                                <th>Mountpoint</th>
-                                <td>@partition.MountPoint</td>
-                            </tr>
-                            <tr>
-                                <th>Partition UUID</th>
-                                <td>@partition.UUID</td>
-                            </tr>
-                            <tr>
-                                <th>Filesystem</th>
-                                <td>@partition.Fstype</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal for renaming drive label -->
-    <div class="modal fade" id="renameModal-@Model.UUID" tabindex="-1" aria-labelledby="renameModalLabel"
-        aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form method="post" asp-page-handler="RenameDriveLabel" asp-route-uuid="@Model.UUID">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="renameModalLabel">Rename Drive Label</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="driveLabelInput-@Model.UUID" class="form-label">New Label</label>
-                            <input type="text" class="form-control" id="driveLabelInput-@Model.UUID" name="newLabel"
-                                placeholder="Enter new label" value="@Model.Label" />
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="submit" class="btn btn-primary">Save changes</button>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    </div>
-                </form>
-            </div>
+    <!-- Drive Details -->
+    <div class="card-body">
+        <!-- Drive Details Table -->
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <tbody>
+                    <tr>
+                        <th>State</th>
+                        <td>@isConnected</td>
+                    </tr>
+                    <tr>
+                        <th>Vendor</th>
+                        <td>@Model.Vendor</td>
+                    </tr>
+                    <tr>
+                        <th>Model</th>
+                        <td>@Model.Model</td>
+                    </tr>
+                    <tr>
+                        <th>Serial</th>
+                        <td>@Model.Serial</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

@@ -20,6 +20,7 @@ public class Program
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(connectionString));
 
+
         // Add Data Protection Services
         builder.Services.AddDataProtection()
             .PersistKeysToFileSystem(new DirectoryInfo("/mnt/backy/backy-keys/")); // Ensure this directory exists and is accessible

@@ -1,0 +1,39 @@
+@model Backy.Models.ProtectedDrive
+
+<div class="card drive-card protected-drive-card mb-3" data-drive-serial="@Model.Serial"
+    data-search-text="@Model.Name @Model.Label @Model.Vendor @Model.Model @Model.Serial">
+    <!-- Card Header -->
+    <div class="card-header d-flex justify-content-between align-items-center" style="background-color: #ffeeba;">
+        <div class="d-flex align-items-center">
+            <img src="/icons/shield-lock.svg" alt="Protected Drive Icon" style="height: 24px; margin-right: 8px;" />
+            <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
+        </div>
+        <!-- Unprotect Button -->
+        <button type="button" class="btn btn-transparent unprotect-drive-button" data-drive-serial="@Model.Serial"
+            data-bs-toggle="tooltip" title="Remove Protection">
+            <img src="/icons/shield-slash.svg" alt="Unprotect Drive" style="height: 24px;">
+        </button>
+    </div>
+    <!-- Drive Details -->
+    <div class="card-body">
+        <!-- Drive Details Table -->
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <tbody>
+                    <tr>
+                        <th>Vendor</th>
+                        <td>@Model.Vendor</td>
+                    </tr>
+                    <tr>
+                        <th>Model</th>
+                        <td>@Model.Model</td>
+                    </tr>
+                    <tr>
+                        <th>Serial</th>
+                        <td>@Model.Serial</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

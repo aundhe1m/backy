@@ -20,9 +20,20 @@
     <img src="/icons/info-circle.svg" alt="Info Icon" style="height: 24px; margin-right: 8px;" />
     <div>New drives detected</div>
 </div>
-    @foreach (var drive in Model.NewDrives)
+    @foreach (var Drive in Model.NewDrives)
     {
-        @await Html.PartialAsync("_NewDriveCard", drive)
+        @await Html.PartialAsync("_NewDriveCard", Drive)
+    }
+    <hr />
+}
+
+<!-- Protected drives section -->
+@if (Model.ProtectedDrives.Any())
+{
+    <h3>Protected Drives</h3>
+    @foreach (var Drive in Model.ProtectedDrives)
+    {
+        @await Html.PartialAsync("_ProtectedDriveCard", Drive)
     }
     <hr />
 }
@@ -41,33 +52,58 @@
                         <h5 class="mb-0">@group.GroupLabel</h5>
                     </div>
                     <div class="btn-group">
-                        <!-- Rename Button with Tooltip -->
-                        <span data-bs-toggle="tooltip" title="Rename Pool" alt="Rename Pool">
-                            <button type="button" class="btn btn-transparent" data-bs-toggle="modal"
-                                data-bs-target="#renamePoolModal-@group.PoolGroupId" title="Rename">
-                                <img src="/icons/pencil-square.svg" alt="Rename" style="height: 24px;">
+                        <!-- Eject/Mount Button -->
+                        @if (group.PoolEnabled)
+                        {
+                            <button type="button" class="btn btn-transparent eject-pool-button"
+                                data-pool-group-id="@group.PoolGroupId" data-bs-toggle="tooltip" title="Unmount Pool">
+                                <img src="/icons/eject.svg" alt="Unmount Pool" style="height: 24px;">
                             </button>
-                        </span>
-                        <!-- Remove Button with Tooltip -->
-                        <span data-bs-toggle="tooltip" title="Remove Pool" alt="Remove Pool">
-                            <button type="button" class="btn btn-transparent-warning" data-bs-toggle="modal"
-                                data-bs-target="#removePoolModal-@group.PoolGroupId" title="Remove">
-                                <img src="/icons/trash.svg" alt="Remove" style="height: 24px;">
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-transparent mount-pool-button"
+                                data-pool-group-id="@group.PoolGroupId" data-bs-toggle="tooltip" title="Mount Pool">
+                                <img src="/icons/play.svg" alt="Mount Pool" style="height: 24px;">
                             </button>
+                        }
+                        <!-- Inspect Button -->
+                        <button type="button" class="btn btn-transparent inspect-pool-button"
+                            data-pool-group-id="@group.PoolGroupId" data-bs-toggle="tooltip" title="Inspect Pool">
+                            <img src="/icons/eye.svg" alt="Inspect Pool" style="height: 24px;">
+                        </button>
+                        <!-- Options Dropdown -->
+                        <span data-bs-toggle="tooltip" title="Options" alt="Options">
+                            <button type="button" class="btn btn-transparent" data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                                <img src="/icons/gear.svg" alt="Options" style="height: 24px;">
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <button class="dropdown-item" data-bs-toggle="modal"
+                                        data-bs-target="#renamePoolModal-@group.PoolGroupId">Rename</button>
+                                </li>
+                                <li>
+                                    <form method="post" asp-page-handler="RemovePoolGroup"
+                                        asp-route-poolGroupId="@group.PoolGroupId">
+                                        <button type="submit" class="dropdown-item">Remove</button>
+                                    </form>
+                                </li>
+                            </ul>
                         </span>
                     </div>
                 </div>
                 <!-- Pool Drives -->
                 <div class="card-body">
-                    @foreach (var drive in group.Drives)
+                    @foreach (var Drive in group.Drives)
                     {
-                        @await Html.PartialAsync("_PoolGroupDriveCard", drive)
+                        @await Html.PartialAsync("_PoolGroupDriveCard", Drive)
                     }
                 </div>
             </div>
         </div>
 
-        <!-- Modals for Rename and Remove -->
+        <!-- Modals for Rename -->
         <!-- Rename Pool Modal -->
         <div class="modal fade" id="renamePoolModal-@group.PoolGroupId" tabindex="-1" aria-labelledby="renamePoolModalLabel"
             aria-hidden="true">
@@ -88,29 +124,6 @@
                         </div>
                         <div class="modal-footer">
                             <button type="submit" class="btn btn-primary">Save Changes</button>
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Remove Pool Modal -->
-        <div class="modal fade" id="removePoolModal-@group.PoolGroupId" tabindex="-1" aria-labelledby="removePoolModalLabel"
-            aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <form method="post" asp-page-handler="RemovePoolGroup" asp-route-poolGroupId="@group.PoolGroupId">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="removePoolModalLabel">Remove Pool Group</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <p>Are you sure you want to remove the pool group "<strong>@group.GroupLabel</strong>"?
-                                This action cannot be undone.</p>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="submit" class="btn btn-danger">Remove</button>
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         </div>
                     </form>
@@ -192,5 +205,4 @@
 </div>
 
 <script src="/js/Drive.js"></script>
-<script src="/js/Toast.js"></script>
 <link rel="stylesheet" href="/css/Drive.css">

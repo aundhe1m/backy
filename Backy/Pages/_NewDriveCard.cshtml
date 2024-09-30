@@ -1,6 +1,6 @@
-@model Backy.Pages.DriveMetaData
+@model Backy.Models.Drive
 
-<div class="card drive-card new-drive-card mb-3" data-drive-name="@Model.Name" data-vendor="@Model.Vendor"
+<div class="card drive-card new-drive-card mb-3" data-drive-serial="@Model.Serial" data-vendor="@Model.Vendor"
     data-model="@Model.Model" data-serial="@Model.Serial"
     data-search-text="@Model.Name @Model.Label @Model.Vendor @Model.Model @Model.Serial">
     <!-- Card Header -->
@@ -8,8 +8,7 @@
         <div class="d-flex align-items-center">
             <!-- Expand/Collapse button -->
             <button class="btn btn-link p-0 me-2 chevron-button" type="button" data-bs-toggle="collapse"
-                data-bs-target="#driveDetails-@Model.Name" aria-expanded="false"
-                aria-controls="driveDetails-@Model.Name">
+                data-bs-target="#driveDetails-@Model.Id" aria-expanded="false" aria-controls="driveDetails-@Model.Id">
                 <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon" style="height: 24px;">
             </button>
             <!-- Drive Name -->
@@ -18,33 +17,27 @@
         </div>
         <!-- Drive Size -->
         <div>
-            <!-- Progress Bar -->
+            <!-- Display drive size -->
             <div>
                 <span>@String.Format("{0:F2} GB", Model.PartitionSize / 1024.0 / 1024.0 / 1024.0)</span>
             </div>
         </div>
-        <!-- Split Button -->
+        <!-- Action Buttons -->
         <div class="btn-group">
-            <!-- Left Button -->
+            <!-- Protect Button -->
+            <button type="button" class="btn btn-transparent protect-drive-button" data-drive-serial="@Model.Serial"
+                data-bs-toggle="tooltip" title="Protect Drive">
+                <img src="/icons/shield-lock.svg" alt="Protect Drive" style="height: 24px;">
+            </button>
+            <!-- Select Button -->
             <button type="button" class="btn btn-transparent select-drive-button" data-bs-toggle="tooltip"
                 title="Select Drive">
                 <img src="/icons/plus-square.svg" alt="Select Drive" style="height: 24px;">
             </button>
-            <!-- Dropdown Button -->
-            <span data-bs-toggle="tooltip" title="Options" alt="Options">
-                <button type="button" class="btn btn-transparent" data-bs-toggle="dropdown" aria-expanded="false">
-                    <img src="/icons/gear.svg" alt="Toggle Actions" style="height: 24px;">
-                </button>
-                <ul class="dropdown-menu">
-                    <li>
-                        <button class="dropdown-item wipe-drive-button">Wipe Drive</button>
-                    </li>
-                </ul>
-            </span>
         </div>
     </div>
     <!-- Collapsible Details -->
-    <div class="collapse" id="driveDetails-@Model.Name">
+    <div class="collapse" id="driveDetails-@Model.Id">
         <div class="card-body">
             <!-- Drive Details Table -->
             <div class="table-responsive">

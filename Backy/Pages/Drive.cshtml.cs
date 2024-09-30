@@ -1,13 +1,12 @@
-using Microsoft.AspNetCore.Mvc.RazorPages;
-using System.Text.Json;
-using System.IO;
-using System.Diagnostics;
-using System.Text.Json.Serialization;
+using Backy.Data;
+using Backy.Models;
 using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
+using System.Diagnostics;
 using System.Linq;
-using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Backy.Pages
 {
@@ -15,109 +14,59 @@ namespace Backy.Pages
     public class DriveModel : PageModel
     {
         private readonly ILogger<DriveModel> _logger;
-        private static string mountDirectory = "/mnt/backy";
-        private static string persistentFilePath = Path.Combine(mountDirectory, "drives.json");
+        private readonly ApplicationDbContext _context;
 
-        public List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>(); // For pool groups
-        public List<DriveMetaData> NewDrives { get; set; } = new List<DriveMetaData>(); // For newly connected drives
+        public List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>();
+        public List<Drive> NewDrives { get; set; } = new List<Drive>();
+        public List<ProtectedDrive> ProtectedDrives { get; set; } = new List<ProtectedDrive>();
 
-        public DriveModel(ILogger<DriveModel> logger)
+        public DriveModel(ILogger<DriveModel> logger, ApplicationDbContext context)
         {
             _logger = logger;
+            _context = context;
         }
 
-        /// <summary>
-        /// Handles GET requests and organizes drives into pools and new drives.
-        /// </summary>
         public void OnGet()
         {
             _logger.LogDebug("Starting OnGet...");
 
-            // Load persistent data
-            var persistentData = LoadPersistentData();
-            _logger.LogDebug($"Loaded Persistent Data: {JsonSerializer.Serialize(persistentData)}");
-
-            // Organize drives into PoolGroups and NewDrives
-            OrganizeDrives(persistentData);
-
-            // Save the updated data back to persistent storage
-            SavePersistentData(persistentData);
+            OrganizeDrives();
 
             _logger.LogDebug("OnGet completed.");
         }
 
-        /// <summary>
-        /// Loads persistent data from the JSON file.
-        /// </summary>
-        private PersistentData LoadPersistentData()
-        {
-            try
-            {
-                if (System.IO.File.Exists(persistentFilePath))
-                {
-                    _logger.LogDebug($"Loading persistent data from {persistentFilePath}");
-                    var json = System.IO.File.ReadAllText(persistentFilePath);
-                    return JsonSerializer.Deserialize<PersistentData>(json) ?? new PersistentData();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error loading persistent data: {ex.Message}");
-            }
-
-            return new PersistentData(); // Return empty PersistentData if loading fails
-        }
-
-        /// <summary>
-        /// Saves persistent data to the JSON file.
-        /// </summary>
-        private void SavePersistentData(PersistentData data)
-        {
-            try
-            {
-                _logger.LogDebug("Saving Persistent Data...");
-                var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-                System.IO.File.WriteAllText(persistentFilePath, json);
-                _logger.LogDebug($"Data saved: {json}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error saving persistent data: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Organizes drives into pool groups and new drives.
-        /// </summary>
-        private void OrganizeDrives(PersistentData persistentData)
+        private void OrganizeDrives()
         {
             _logger.LogDebug("Organizing drives...");
 
             var activeDrives = UpdateActiveDrives();
-            PoolGroups = persistentData.Pools;
+            PoolGroups = _context.PoolGroups.Include(pg => pg.Drives).ThenInclude(d => d.Partitions).ToList();
+            ProtectedDrives = _context.ProtectedDrives.ToList();
 
             // Update connected status and properties for drives in pools
             foreach (var pool in PoolGroups)
             {
                 bool allConnected = true;
-                foreach (var drive in pool.Drives)
+                foreach (var Drive in pool.Drives)
                 {
                     // Find matching active drive
-                    var activeDrive = activeDrives.FirstOrDefault(d => d.UUID == drive.UUID);
+                    var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == Drive.Serial);
                     if (activeDrive != null)
                     {
                         // Update properties
-                        drive.IsConnected = true;
-                        drive.UsedSpace = activeDrive.UsedSpace;
-                        drive.PartitionSize = activeDrive.PartitionSize;
-                        drive.Serial = activeDrive.Serial;
-                        drive.Vendor = activeDrive.Vendor;
-                        drive.Model = activeDrive.Model;
-                        drive.IsMounted = activeDrive.IsMounted;
+                        Drive.IsConnected = true;
+                        Drive.UsedSpace = activeDrive.UsedSpace;
+                        Drive.PartitionSize = activeDrive.PartitionSize;
+                        Drive.Name = activeDrive.Name;
+                        Drive.Vendor = activeDrive.Vendor;
+                        Drive.Model = activeDrive.Model;
+                        Drive.IsMounted = activeDrive.IsMounted;
+                        Drive.IdLink = activeDrive.IdLink;
+                        Drive.Partitions = activeDrive.Partitions;
                     }
                     else
                     {
-                        drive.IsConnected = false;
+                        Drive.IsConnected = false;
                         allConnected = false;
                     }
                 }
@@ -126,51 +75,17 @@ namespace Backy.Pages
                 pool.PoolEnabled = allConnected;
             }
 
-            // NewDrives: drives that are active but not in any pool
-            var pooledDriveUUIDs = PoolGroups.SelectMany(p => p.Drives).Select(d => d.UUID).ToHashSet();
-            NewDrives = activeDrives.Where(d => !pooledDriveUUIDs.Contains(d.UUID)).ToList();
+            // NewDrives: drives that are active but not in any pool and not protected
+            var pooledDriveSerials = PoolGroups.SelectMany(p => p.Drives).Select(d => d.Serial).ToHashSet();
+            var protectedSerials = ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
+            NewDrives = activeDrives.Where(d => !pooledDriveSerials.Contains(d.Serial) && !protectedSerials.Contains(d.Serial)).ToList();
 
             _logger.LogDebug($"Drives organized. PoolGroups: {PoolGroups.Count}, NewDrives: {NewDrives.Count}");
         }
 
-        /// <summary>
-        /// Handles POST requests to rename a pool group.
-        /// </summary>
-        public IActionResult OnPostRenamePoolGroup(string poolGroupId, string newLabel)
+        private List<Drive> UpdateActiveDrives()
         {
-            var persistentData = LoadPersistentData();
-            var poolGroup = persistentData.Pools.FirstOrDefault(p => p.PoolGroupId == poolGroupId);
-            if (poolGroup != null)
-            {
-                poolGroup.GroupLabel = newLabel;
-                SavePersistentData(persistentData);
-                return new JsonResult(new { success = true, message = "Pool group renamed successfully." });
-            }
-            return BadRequest(new { success = false, message = "Pool group not found." });
-        }
-
-        /// <summary>
-        /// Handles POST requests to remove a pool group.
-        /// </summary>
-        public IActionResult OnPostRemovePoolGroup(string poolGroupId)
-        {
-            var persistentData = LoadPersistentData();
-            var poolGroup = persistentData.Pools.FirstOrDefault(p => p.PoolGroupId == poolGroupId);
-            if (poolGroup != null)
-            {
-                persistentData.Pools.Remove(poolGroup);
-                SavePersistentData(persistentData);
-                return new JsonResult(new { success = true, message = "Pool group removed successfully." });
-            }
-            return BadRequest(new { success = false, message = "Pool group not found." });
-        }
-
-        /// <summary>
-        /// Updates the list of active drives, including unpartitioned and unmounted drives.
-        /// </summary>
-        private List<DriveMetaData> UpdateActiveDrives()
-        {
-            var activeDrives = new List<DriveMetaData>();
+            var activeDrives = new List<Drive>();
             _logger.LogDebug("Updating active drives...");
 
             try
@@ -181,7 +96,7 @@ namespace Backy.Pages
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = "bash",
-                        Arguments = $"-c \"lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL,FSTYPE\"",
+                        Arguments = $"-c \"lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL,FSTYPE,PATH\"",
                         RedirectStandardOutput = true,
                         UseShellExecute = false,
                         CreateNoWindow = true
@@ -203,14 +118,15 @@ namespace Backy.Pages
 
                         if (device.Type == "disk")
                         {
-                            var driveData = new DriveMetaData
+                            var DriveData = new Drive
                             {
                                 Name = device.Name ?? "Unknown",
                                 Serial = device.Serial ?? "No Serial",
                                 Vendor = device.Vendor ?? "Unknown Vendor",
                                 Model = device.Model ?? "Unknown Model",
                                 IsConnected = true,
-                                Partitions = new List<PartitionInfoModel>()
+                                Partitions = new List<PartitionInfo>(),
+                                IdLink = device.Path ?? string.Empty
                             };
 
                             // If the disk has partitions
@@ -218,7 +134,7 @@ namespace Backy.Pages
                             {
                                 foreach (var partition in device.Children)
                                 {
-                                    var partitionData = new PartitionInfoModel
+                                    var partitionData = new PartitionInfo
                                     {
                                         Name = partition.Name ?? "Unknown",
                                         UUID = partition.Uuid ?? "No UUID",
@@ -231,27 +147,27 @@ namespace Backy.Pages
                                     if (!string.IsNullOrEmpty(partition.Mountpoint))
                                     {
                                         partitionData.UsedSpace = GetUsedSpace(partition.Mountpoint);
-                                        driveData.IsMounted = true;
+                                        DriveData.IsMounted = true;
                                     }
 
-                                    driveData.Partitions.Add(partitionData);
+                                    DriveData.Partitions.Add(partitionData);
                                 }
 
                                 // Sum up partition sizes and used spaces
-                                driveData.PartitionSize = driveData.Partitions.Sum(p => p.Size);
-                                driveData.UsedSpace = driveData.Partitions.Sum(p => p.UsedSpace);
+                                DriveData.PartitionSize = DriveData.Partitions.Sum(p => p.Size);
+                                DriveData.UsedSpace = DriveData.Partitions.Sum(p => p.UsedSpace);
                             }
                             else
                             {
                                 // No partitions, set size to disk size
-                                driveData.PartitionSize = device.Size ?? 0;
+                                DriveData.PartitionSize = device.Size ?? 0;
                             }
 
                             // Use disk UUID if available
-                            driveData.UUID = device.Uuid ?? driveData.Partitions.FirstOrDefault()?.UUID ?? "No UUID";
+                            DriveData.UUID = device.Uuid ?? DriveData.Partitions.FirstOrDefault()?.UUID ?? "No UUID";
 
-                            activeDrives.Add(driveData);
-                            _logger.LogDebug($"Active drive added: {JsonSerializer.Serialize(driveData)}");
+                            activeDrives.Add(DriveData);
+                            _logger.LogDebug($"Active Drive added: {JsonSerializer.Serialize(DriveData)}");
                         }
                     }
                 }
@@ -264,368 +180,157 @@ namespace Backy.Pages
             return activeDrives;
         }
 
-        /// <summary>
-        /// Handles POST requests to create a pool, including wiping, partitioning, formatting, and mounting drives.
-        /// </summary>
+        private long GetUsedSpace(string mountpoint)
+        {
+            try
+            {
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "bash",
+                        Arguments = $"-c \"df -B1 | grep {mountpoint} | awk '{{print $3}}'\"",
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+                process.Start();
+                string result = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit();
+
+                return long.TryParse(result, out long used) ? used : 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error getting used space for mountpoint {mountpoint}: {ex.Message}");
+                return 0;
+            }
+        }
+
+        // Handle POST request to protect a drive
+        public IActionResult OnPostProtectDrive(string serial)
+        {
+            var Drive = _context.ProtectedDrives.FirstOrDefault(d => d.Serial == serial);
+            if (Drive == null)
+            {
+                // Find the drive in the active drives list
+                var activeDrive = UpdateActiveDrives().FirstOrDefault(d => d.Serial == serial);
+                if (activeDrive == null)
+                {
+                    return BadRequest(new { success = false, message = "Drive not found." });
+                }
+
+                Drive = new ProtectedDrive
+                {
+                    Serial = serial,
+                    Vendor = activeDrive.Vendor,
+                    Model = activeDrive.Model,
+                    Name = activeDrive.Name,
+                    Label = activeDrive.Label
+                };
+                _context.ProtectedDrives.Add(Drive);
+                _context.SaveChanges();
+                return new JsonResult(new { success = true, message = "Drive protected successfully." });
+            }
+            return BadRequest(new { success = false, message = "Drive is already protected." });
+        }
+
+
+        // Handle POST request to unprotect a drive
+        public IActionResult OnPostUnprotectDrive(string serial)
+        {
+            var Drive = _context.ProtectedDrives.FirstOrDefault(d => d.Serial == serial);
+            if (Drive != null)
+            {
+                _context.ProtectedDrives.Remove(Drive);
+                _context.SaveChanges();
+                return new JsonResult(new { success = true, message = "Drive unprotected successfully." });
+            }
+            return BadRequest(new { success = false, message = "Drive not found in protected list." });
+        }
+
+        // Implement OnPostCreatePool to use mdadm with /dev/disk/by-id
+
         public async Task<IActionResult> OnPostCreatePool()
         {
             _logger.LogInformation($"OnPostCreatePool called.");
-            // Read the request body manually
             string requestBody = await new StreamReader(Request.Body).ReadToEndAsync();
             var request = JsonSerializer.Deserialize<CreatePoolRequest>(requestBody);
 
-            if (request == null || string.IsNullOrEmpty(request.PoolLabel) || request.DriveNames == null || !request.DriveNames.Any())
+            if (request == null || string.IsNullOrEmpty(request.PoolLabel) || request.DriveSerials == null || !request.DriveSerials.Any())
             {
                 return BadRequest(new { success = false, message = "Pool Label and at least one drive must be selected" });
             }
 
-            _logger.LogInformation($"Creating pool with label: {request.PoolLabel} and drives: {string.Join(",", request.DriveNames)}");
+            _logger.LogInformation($"Creating pool with label: {request.PoolLabel} and drives: {string.Join(",", request.DriveSerials)}");
 
-            var persistentData = LoadPersistentData();
+            var activeDrives = UpdateActiveDrives();
+            var Drives = activeDrives.Where(d => request.DriveSerials.Contains(d.Serial)).ToList();
+
+            if (!Drives.Any())
+            {
+                return BadRequest(new { success = false, message = "No active drives found matching the provided serials." });
+            }
+
+            // Safety check to prevent operating on protected drives
+            var protectedSerials = _context.ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
+            if (Drives.Any(d => protectedSerials.Contains(d.Serial)))
+            {
+                return BadRequest(new { success = false, message = "One or more selected drives are protected." });
+            }
+
             var newPoolGroup = new PoolGroup
             {
-                PoolGroupId = Guid.NewGuid().ToString(),
                 GroupLabel = request.PoolLabel,
-                Drives = new List<DriveMetaData>()
+                Drives = new List<Drive>()
             };
 
             var errorMessages = new List<string>();
             var commandOutputs = new List<string>();
-            int driveIndex = 1;
 
-            foreach (var driveName in request.DriveNames)
+            // Build mdadm command
+            string mdadmCommand = $"mdadm --create /dev/md{newPoolGroup.PoolGroupId} --level=1 --raid-devices={Drives.Count} ";
+            mdadmCommand += string.Join(" ", Drives.Select(d => d.IdLink));
+            mdadmCommand += " --run --force";
+
+            var mdadmResult = ExecuteShellCommand(mdadmCommand, commandOutputs);
+            if (!mdadmResult.success)
             {
-                // Unmount the drive before wiping
-                var unmountResult = UnmountDrive(driveName, commandOutputs);
-                if (!unmountResult.success)
-                {
-                    errorMessages.Add($"Failed to unmount drive {driveName}: {unmountResult.message}");
-                    _logger.LogError($"Failed to unmount drive {driveName}: {unmountResult.message}");
-                    continue;
-                }
-
-                // Wipe the drive
-                var wipeResult = WipeDrive(driveName, commandOutputs);
-                if (!wipeResult.success)
-                {
-                    errorMessages.Add($"Failed to wipe drive {driveName}: {wipeResult.message}");
-                    _logger.LogError($"Failed to wipe drive {driveName}: {wipeResult.message}");
-                    continue;
-                }
-
-                // Create partition
-                var (partitionName, createPartSuccess, createPartMessage) = CreatePartition(driveName, commandOutputs);
-                if (!createPartSuccess || string.IsNullOrEmpty(partitionName))
-                {
-                    errorMessages.Add($"Failed to create partition on drive {driveName}: {createPartMessage}");
-                    _logger.LogError($"Failed to create partition on drive {driveName}: {createPartMessage}");
-                    continue;
-                }
-
-                // Format partition
-                var (formatSuccess, formatMessage) = FormatPartition(partitionName, commandOutputs);
-                if (!formatSuccess)
-                {
-                    errorMessages.Add($"Failed to format partition {partitionName}: {formatMessage}");
-                    _logger.LogError($"Failed to format partition {partitionName}: {formatMessage}");
-                    continue;
-                }
-
-                // Mount partition
-                var uuid = GetPartitionUUID(partitionName);
-                var (mountSuccess, mountMessage) = MountPartition(partitionName, uuid, commandOutputs);
-                if (!mountSuccess)
-                {
-                    errorMessages.Add($"Failed to mount partition {partitionName}: {mountMessage}");
-                    _logger.LogError($"Failed to mount partition {partitionName}: {mountMessage}");
-                    continue;
-                }
-
-                // Create DriveMetaData
-                var driveData = new DriveMetaData
-                {
-                    UUID = uuid,
-                    Serial = "No Serial",
-                    Vendor = "Unknown Vendor",
-                    Model = "Unknown Model",
-                    PartitionSize = GetPartitionSize(partitionName),
-                    UsedSpace = GetUsedSpace($"/mnt/backy/{uuid}"),
-                    IsConnected = true,
-                    IsMounted = true,
-                    Label = $"{request.PoolLabel}-{driveIndex++}",
-                    Partitions = new List<PartitionInfoModel>
-                    {
-                        new PartitionInfoModel
-                        {
-                            Name = partitionName,
-                            UUID = uuid,
-                            MountPoint = $"/mnt/backy/{uuid}",
-                            Size = GetPartitionSize(partitionName),
-                            UsedSpace = GetUsedSpace($"/mnt/backy/{uuid}"),
-                            Fstype = "ext4"
-                        }
-                    }
-                };
-
-                newPoolGroup.Drives.Add(driveData);
-                _logger.LogInformation($"Drive {driveData.UUID} added to pool {request.PoolLabel}");
+                return BadRequest(new { success = false, message = mdadmResult.message, outputs = commandOutputs });
             }
 
-            if (errorMessages.Any())
+            // Format and mount the md device
+            string mkfsCommand = $"mkfs.ext4 -F /dev/md{newPoolGroup.PoolGroupId}";
+            var mkfsResult = ExecuteShellCommand(mkfsCommand, commandOutputs);
+            if (!mkfsResult.success)
             {
-                return BadRequest(new { success = false, message = string.Join("; ", errorMessages), outputs = commandOutputs });
+                return BadRequest(new { success = false, message = mkfsResult.message, outputs = commandOutputs });
             }
 
-            persistentData.Pools.Add(newPoolGroup);
-            SavePersistentData(persistentData);
+            // Mount the md device
+            string mountPath = $"/mnt/backy/md{newPoolGroup.PoolGroupId}";
+            string mountCommand = $"mkdir -p {mountPath} && mount /dev/md{newPoolGroup.PoolGroupId} {mountPath}";
+            var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
+            if (!mountResult.success)
+            {
+                return BadRequest(new { success = false, message = mountResult.message, outputs = commandOutputs });
+            }
+
+            // Update drives and pool group
+            foreach (var Drive in Drives)
+            {
+                Drive.PoolGroup = newPoolGroup;
+                Drive.IsMounted = true;
+                Drive.Label = request.PoolLabel;
+            }
+
+            _context.PoolGroups.Add(newPoolGroup);
+            _context.SaveChanges();
 
             return new JsonResult(new { success = true, message = $"Pool '{request.PoolLabel}' created successfully.", outputs = commandOutputs });
         }
 
-        /// <summary>
-        /// Wipes all partitions on a drive.
-        /// </summary>
-        private (bool success, string message) WipeDrive(string driveName, List<string> outputList)
-        {
-            Thread.Sleep(5000);
-            var command = $"wipefs -f -a /dev/{driveName}";
-            return ExecuteShellCommand(command, outputList);
-        }
-
-        /// <summary>
-        /// Creates a new partition on a drive and returns the partition name.
-        /// </summary>
-        private (string partitionName, bool success, string message) CreatePartition(string driveName, List<string> outputList)
-        {
-            Thread.Sleep(5000);
-            var command = $"parted /dev/{driveName} --script mklabel gpt mkpart primary ext4 0% 100%";
-            var result = ExecuteShellCommand(command, outputList);
-            if (result.success)
-            {
-                return ($"{driveName}1", true, result.message);
-            }
-            return (string.Empty, false, result.message);
-        }
-
-        /// <summary>
-        /// Formats a partition to ext4.
-        /// </summary>
-        private (bool success, string message) FormatPartition(string partitionName, List<string> outputList)
-        {
-            Thread.Sleep(5000);
-            var command = $"mkfs.ext4 -F /dev/{partitionName}";
-            return ExecuteShellCommand(command, outputList);
-        }
-
-        /// <summary>
-        /// Mounts a partition.
-        /// </summary>
-        private (bool success, string message) MountPartition(string partitionName, string uuid, List<string>? outputList = null)
-        {
-            outputList ??= new List<string>(); // Ensure outputList is not null
-            var mountPath = $"/mnt/backy/{uuid}";
-            var command = $"mkdir -p {mountPath} && mount /dev/{partitionName} {mountPath}";
-            return ExecuteShellCommand(command, outputList);
-        }
-
-        /// <summary>
-        /// Gets the UUID of a partition.
-        /// </summary>
-        private string GetPartitionUUID(string partitionName)
-        {
-            var command = $"blkid -s UUID -o value /dev/{partitionName}";
-            var result = ExecuteShellCommand(command);
-            return result.success ? result.message.Trim() : "No UUID";
-        }
-
-        /// <summary>
-        /// Gets the size of a partition.
-        /// </summary>
-        private long GetPartitionSize(string partitionName)
-        {
-            var command = $"blockdev --getsize64 /dev/{partitionName}";
-            var result = ExecuteShellCommand(command);
-            return result.success && long.TryParse(result.message.Trim(), out long size) ? size : 0;
-        }
-
-        // Handles POST requests to unmount a partition
-        public IActionResult OnPostUnmountUUID(string uuid)
-        {
-            var result = UnmountUUID(uuid);
-            if (result.success)
-            {
-                return new JsonResult(new { success = true, message = $"Path /mnt/backy/{uuid} unmounted successfully." });
-            }
-            else
-            {
-                return new JsonResult(new { success = false, message = result.message });
-            }
-        }
-
-        // Handles POST requests to remove a drive
-        public IActionResult OnPostRemoveDrive(string uuid)
-        {
-            var persistentData = LoadPersistentData();
-            var poolGroup = persistentData.Pools.FirstOrDefault(p => p.Drives.Any(d => d.UUID == uuid));
-            if (poolGroup != null)
-            {
-                var drive = poolGroup.Drives.FirstOrDefault(d => d.UUID == uuid);
-                if (drive != null)
-                {
-                    poolGroup.Drives.Remove(drive);
-                    SavePersistentData(persistentData);
-                    return new JsonResult(new { success = true, message = "Drive removed successfully." });
-                }
-            }
-            return BadRequest(new { success = false, message = "Drive not found." });
-        }
-
-        // Handles POST requests to rename a drive label
-        public IActionResult OnPostRenameDriveLabel(string uuid, string newLabel)
-        {
-            var persistentData = LoadPersistentData();
-            var drive = persistentData.Pools.SelectMany(p => p.Drives).FirstOrDefault(d => d.UUID == uuid);
-            if (drive != null)
-            {
-                drive.Label = newLabel;
-                SavePersistentData(persistentData);
-                return new JsonResult(new { success = true, message = "Drive label renamed successfully." });
-            }
-            return BadRequest(new { success = false, message = "Drive not found." });
-        }
-
-        /// <summary>
-        /// Unmounts a specific partition if it is currently mounted.
-        /// </summary>
-        /// <param name="partitionName">The name of the partition (e.g., "sdd1").</param>
-        /// <returns>A tuple indicating success status and a message.</returns>
-        private (bool success, string message) UnmountUUID(string uuid)
-        {
-            var unmountPath = $"/mnt/backy/{uuid}";
-            // Check if the mountpoint exists
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "bash",
-                    Arguments = $"-c \"mountpoint '{unmountPath}'\"",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            process.WaitForExit();
-
-            int exitCode = process.ExitCode;
-            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-
-            // Handle exit code 32: already unmounted
-            if (exitCode == 32)
-            {
-                return (true, $"{unmountPath} is already unmounted.");
-            }
-            // Handle exit code 0: mounted, proceed with unmount
-            else if (exitCode == 0)
-            {
-                var command = $"umount '{unmountPath}'";
-                return ExecuteShellCommand(command); // ExecuteShellCommand handles the unmount command and returns a result
-            }
-            // Handle other exit codes: error
-            else
-            {
-                return (false, $"Error: {output.Trim()}");
-            }
-        }
-
-        /// <summary>
-        /// Unmounts all partitions of a specific drive if they are currently mounted.
-        /// </summary>
-        /// <param name="driveName">The name of the drive (e.g., "sdd").</param>
-        /// <param name="outputList">A list to capture command outputs.</param>
-        /// <returns>A tuple indicating success status and a message.</returns>
-        private (bool success, string message) UnmountDrive(string driveName, List<string> outputList)
-        {
-            var unmountPath = $"/dev/{driveName}";
-            // Check if the mountpoint exists
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "bash",
-                    Arguments = $"-c \"mountpoint '{unmountPath}'\"",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            process.WaitForExit();
-
-            int exitCode = process.ExitCode;
-            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-
-            // Handle exit code 32: already unmounted
-            if (exitCode == 32)
-            {
-                return (true, $"{unmountPath} is already unmounted.");
-            }
-            // Handle exit code 0: mounted, proceed with unmount
-            else if (exitCode == 0)
-            {
-                var command = $"umount '{unmountPath}'";
-                return ExecuteShellCommand(command, outputList); // ExecuteShellCommand handles the unmount command and returns a result
-            }
-            // Handle other exit codes: error
-            else
-            {
-                return (false, $"Error: {output.Trim()}");
-            }
-
-        }
-
-        // Handles POST requests to wipe a drive
-        public IActionResult OnPostWipeDrive(string driveName)
-        {
-            var commandOutputs = new List<string>();
-            var result = WipeDrive(driveName, commandOutputs);
-            if (result.success)
-            {
-                return new JsonResult(new { success = true, message = $"Drive {driveName} wiped successfully." });
-            }
-            else
-            {
-                return new JsonResult(new { success = false, message = result.message });
-            }
-        }
-
-        // Handles POST requests to mount a partition
-        public IActionResult OnPostMountPartition(string partitionName)
-        {
-            var uuid = GetPartitionUUID(partitionName);
-            var commandOutputs = new List<string>(); // Initialize the output list
-            var result = MountPartition(partitionName, uuid, commandOutputs); // Pass the list
-            if (result.success)
-            {
-                return new JsonResult(new { success = true, message = $"Partition {partitionName} mounted successfully." });
-            }
-            else
-            {
-                return new JsonResult(new { success = false, message = result.message });
-            }
-        }
-
-        /// <summary>
-        /// Executes a shell command and returns success status and output message.
-        /// Treats "not mounted" messages as successful operations.
-        /// </summary>
-        /// <param name="command">The shell command to execute.</param>
-        /// <param name="outputList">Optional list to capture command outputs.</param>
-        /// <returns>A tuple indicating success status and a message.</returns>
         private (bool success, string message) ExecuteShellCommand(string command, List<string>? outputList = null)
         {
             outputList ??= new List<string>();
@@ -685,35 +390,90 @@ namespace Backy.Pages
             }
         }
 
-
-        /// <summary>
-        /// Gets the used space of a mounted partition.
-        /// </summary>
-        private long GetUsedSpace(string mountpoint)
+        // Implement OnPostUnmountPool to stop mdadm and unmount
+        public IActionResult OnPostUnmountPool(int poolGroupId)
         {
-            try
+            var poolGroup = _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+            if (poolGroup == null)
             {
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "bash",
-                        Arguments = $"-c \"df -B1 | grep {mountpoint} | awk '{{print $3}}'\"",
-                        RedirectStandardOutput = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-                process.Start();
-                string result = process.StandardOutput.ReadToEnd().Trim();
-                process.WaitForExit();
-
-                return long.TryParse(result, out long used) ? used : 0;
+                return BadRequest(new { success = false, message = "Pool group not found." });
             }
-            catch (Exception ex)
+
+            var commandOutputs = new List<string>();
+            string unmountCommand = $"umount /mnt/backy/md{poolGroupId}";
+            var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
+            if (!unmountResult.success)
             {
-                _logger.LogError($"Error getting used space for mountpoint {mountpoint}: {ex.Message}");
-                return 0;
+                return BadRequest(new { success = false, message = unmountResult.message, outputs = commandOutputs });
+            }
+
+            string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
+            var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
+            if (!stopResult.success)
+            {
+                return BadRequest(new { success = false, message = stopResult.message, outputs = commandOutputs });
+            }
+
+            foreach (var Drive in poolGroup.Drives)
+            {
+                Drive.IsMounted = false;
+            }
+
+            _context.SaveChanges();
+
+            return new JsonResult(new { success = true, message = "Pool unmounted successfully.", outputs = commandOutputs });
+        }
+
+        // Implement OnPostMountPool to assemble mdadm and mount
+        public IActionResult OnPostMountPool(int poolGroupId)
+        {
+            var poolGroup = _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+            if (poolGroup == null)
+            {
+                return BadRequest(new { success = false, message = "Pool group not found." });
+            }
+
+            var commandOutputs = new List<string>();
+            string assembleCommand = $"mdadm --assemble /dev/md{poolGroupId} ";
+            assembleCommand += string.Join(" ", poolGroup.Drives.Select(d => d.IdLink));
+            var assembleResult = ExecuteShellCommand(assembleCommand, commandOutputs);
+            if (!assembleResult.success)
+            {
+                return BadRequest(new { success = false, message = assembleResult.message, outputs = commandOutputs });
+            }
+
+            string mountPath = $"/mnt/backy/md{poolGroupId}";
+            string mountCommand = $"mkdir -p {mountPath} && mount /dev/md{poolGroupId} {mountPath}";
+            var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
+            if (!mountResult.success)
+            {
+                return BadRequest(new { success = false, message = mountResult.message, outputs = commandOutputs });
+            }
+
+            foreach (var Drive in poolGroup.Drives)
+            {
+                Drive.IsMounted = true;
+            }
+
+            _context.SaveChanges();
+
+            return new JsonResult(new { success = true, message = "Pool mounted successfully.", outputs = commandOutputs });
+        }
+
+        // Implement OnPostInspectPool to get mdadm --detail output
+        public IActionResult OnPostInspectPool(int poolGroupId)
+        {
+            string inspectCommand = $"mdadm --detail /dev/md{poolGroupId}";
+            var commandOutputs = new List<string>();
+            var inspectResult = ExecuteShellCommand(inspectCommand, commandOutputs);
+
+            if (inspectResult.success)
+            {
+                return new JsonResult(new { success = true, output = inspectResult.message });
+            }
+            else
+            {
+                return BadRequest(new { success = false, message = inspectResult.message });
             }
         }
     }
@@ -722,45 +482,7 @@ namespace Backy.Pages
     public class CreatePoolRequest
     {
         public required string PoolLabel { get; set; }
-        public required List<string> DriveNames { get; set; } // Changed from Uuids to DriveNames
-    }
-
-    public class PersistentData
-    {
-        public List<PoolGroup> Pools { get; set; } = new List<PoolGroup>();
-    }
-
-    public class PoolGroup
-    {
-        public required string PoolGroupId { get; set; }  // Unique identifier for the pool
-        public string GroupLabel { get; set; } = "Unnamed Group";
-        public bool PoolEnabled { get; set; } = false;
-        public List<DriveMetaData> Drives { get; set; } = new List<DriveMetaData>();
-    }
-
-    public class DriveMetaData
-    {
-        public string? Name { get; set; }
-        public string? Label { get; set; }
-        public string Serial { get; set; } = "No Serial";
-        public string UUID { get; set; } = "No UUID";
-        public string Vendor { get; set; } = "Unknown Vendor";
-        public string Model { get; set; } = "Unknown Model";
-        public long PartitionSize { get; set; } = 0;
-        public long UsedSpace { get; set; } = 0;
-        public bool IsConnected { get; set; } = false;
-        public bool IsMounted { get; set; } = false;
-        public List<PartitionInfoModel> Partitions { get; set; } = new List<PartitionInfoModel>();
-    }
-
-    public class PartitionInfoModel
-    {
-        public string Name { get; set; } = string.Empty;
-        public string UUID { get; set; } = "No UUID";
-        public string MountPoint { get; set; } = "Not Mounted";
-        public long Size { get; set; } = 0;
-        public long UsedSpace { get; set; } = 0;
-        public string Fstype { get; set; } = "Unknown";
+        public required List<string> DriveSerials { get; set; }
     }
 
     public class LsblkOutput
@@ -797,6 +519,9 @@ namespace Backy.Pages
 
         [JsonPropertyName("fstype")]
         public string? Fstype { get; set; }
+
+        [JsonPropertyName("path")]
+        public string? Path { get; set; }
 
         [JsonPropertyName("children")]
         public List<BlockDevice>? Children { get; set; }

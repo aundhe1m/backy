@@ -10,6 +10,10 @@ namespace Backy.Data
         public DbSet<FileEntry> Files { get; set; }
         public DbSet<StorageContent> StorageContents { get; set; }
 
+        public DbSet<PoolGroup> PoolGroups { get; set; }
+        public DbSet<Drive> Drives { get; set; }
+        public DbSet<ProtectedDrive> ProtectedDrives { get; set; }
+
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options)
         {
@@ -22,6 +26,18 @@ namespace Backy.Data
                 .HasIndex(f => new { f.RemoteScanId, f.FullPath })
                 .IsUnique()
                 .HasFilter("\"IsDeleted\" = false");
+
+            modelBuilder.Entity<PoolGroup>()
+                .HasMany(pg => pg.Drives)
+                .WithOne(d => d.PoolGroup)
+                .HasForeignKey(d => d.PoolGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Drive>()
+                .HasMany(d => d.Partitions)
+                .WithOne(p => p.Drive)
+                .HasForeignKey(p => p.DriveId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             base.OnModelCreating(modelBuilder);
         }

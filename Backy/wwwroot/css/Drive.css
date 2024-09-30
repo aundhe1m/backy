@@ -1,7 +1,4 @@
 /* General transparent button style */
-
-/* Specific styling for the "Remove" button */
-
 .btn-transparent {
     background-color: rgba(0, 0, 0, 0.05);
     border: none;
@@ -184,4 +181,9 @@ button:focus {
 
 .storage-card .table-responsive {
     margin-top: 1rem;
+}
+
+/* Additional styles for Protected Drives */
+.protected-drive-card .card-header {
+    background-color: #ffeeba;
 }
