@@ -13,8 +13,8 @@ namespace Backy.Models
         public string UUID { get; set; } = "No UUID";
         public string Vendor { get; set; } = "Unknown Vendor";
         public string Model { get; set; } = "Unknown Model";
+        public long Size { get; set; } = 0;
         public long PartitionSize { get; set; } = 0;
-        public long UsedSpace { get; set; } = 0;
         public bool IsConnected { get; set; } = false;
         public bool IsMounted { get; set; } = false;
         public string IdLink { get; set; } = string.Empty;

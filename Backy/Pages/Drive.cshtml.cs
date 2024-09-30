@@ -55,8 +55,6 @@ namespace Backy.Pages
                     {
                         // Update properties
                         Drive.IsConnected = true;
-                        Drive.UsedSpace = activeDrive.UsedSpace;
-                        Drive.PartitionSize = activeDrive.PartitionSize;
                         Drive.Name = activeDrive.Name;
                         Drive.Vendor = activeDrive.Vendor;
                         Drive.Model = activeDrive.Model;
@@ -73,6 +71,22 @@ namespace Backy.Pages
 
                 // Set PoolEnabled based on whether all drives are connected
                 pool.PoolEnabled = allConnected;
+
+                if (pool.PoolEnabled && !string.IsNullOrEmpty(pool.MountPath))
+                {
+                    var (size, used, available, usePercent) = GetMountPointSize(pool.MountPath);
+                    pool.Size = size;
+                    pool.Used = used;
+                    pool.Available = available;
+                    pool.UsePercent = usePercent;
+                }
+                else
+                {
+                    pool.Size = 0;
+                    pool.Used = 0;
+                    pool.Available = 0;
+                    pool.UsePercent = "0%";
+                }
             }
 
             // NewDrives: drives that are active but not in any pool and not protected
@@ -96,7 +110,7 @@ namespace Backy.Pages
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = "bash",
-                        Arguments = $"-c \"lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL,FSTYPE,PATH\"",
+                        Arguments = $"-c \"lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL,FSTYPE,PATH,ID-LINK\"",
                         RedirectStandardOutput = true,
                         UseShellExecute = false,
                         CreateNoWindow = true
@@ -126,7 +140,7 @@ namespace Backy.Pages
                                 Model = device.Model ?? "Unknown Model",
                                 IsConnected = true,
                                 Partitions = new List<PartitionInfo>(),
-                                IdLink = device.Path ?? string.Empty
+                                IdLink = !string.IsNullOrEmpty(device.IdLink) ? $"/dev/disk/by-id/{device.IdLink}" : device.Path ?? string.Empty
                             };
 
                             // If the disk has partitions
@@ -154,8 +168,10 @@ namespace Backy.Pages
                                 }
 
                                 // Sum up partition sizes and used spaces
-                                DriveData.PartitionSize = DriveData.Partitions.Sum(p => p.Size);
-                                DriveData.UsedSpace = DriveData.Partitions.Sum(p => p.UsedSpace);
+                                DriveData.Partitions.ForEach(p =>
+                                {
+                                    // No need to sum up PartitionSize and UsedSpace
+                                });
                             }
                             else
                             {
@@ -236,7 +252,6 @@ namespace Backy.Pages
             return BadRequest(new { success = false, message = "Drive is already protected." });
         }
 
-
         // Handle POST request to unprotect a drive
         public IActionResult OnPostUnprotectDrive(string serial)
         {
@@ -280,55 +295,104 @@ namespace Backy.Pages
                 return BadRequest(new { success = false, message = "One or more selected drives are protected." });
             }
 
-            var newPoolGroup = new PoolGroup
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
             {
-                GroupLabel = request.PoolLabel,
-                Drives = new List<Drive>()
-            };
+                // Save PoolGroup to get PoolGroupId
+                var newPoolGroup = new PoolGroup
+                {
+                    GroupLabel = request.PoolLabel,
+                    Drives = new List<Drive>()
+                };
+                _context.PoolGroups.Add(newPoolGroup);
+                await _context.SaveChangesAsync();
+                int poolGroupId = newPoolGroup.PoolGroupId;
 
-            var errorMessages = new List<string>();
-            var commandOutputs = new List<string>();
+                // Update drives and associate with PoolGroup
+                foreach (var Drive in Drives)
+                {
+                    var dbDrive = _context.Drives.FirstOrDefault(d => d.Serial == Drive.Serial);
+                    if (dbDrive == null)
+                    {
+                        dbDrive = new Drive
+                        {
+                            Serial = Drive.Serial,
+                            Vendor = Drive.Vendor,
+                            Model = Drive.Model,
+                            Name = Drive.Name,
+                            Label = request.PoolLabel,
+                            IsMounted = true,
+                            IsConnected = true,
+                            IdLink = Drive.IdLink,
+                            Partitions = Drive.Partitions,
+                            PoolGroup = newPoolGroup
+                        };
+                        _context.Drives.Add(dbDrive);
+                    }
+                    else
+                    {
+                        dbDrive.Label = request.PoolLabel;
+                        dbDrive.IsMounted = true;
+                        dbDrive.IsConnected = true;
+                        dbDrive.PoolGroup = newPoolGroup;
+                    }
+                    newPoolGroup.Drives.Add(dbDrive);
+                }
 
-            // Build mdadm command
-            string mdadmCommand = $"mdadm --create /dev/md{newPoolGroup.PoolGroupId} --level=1 --raid-devices={Drives.Count} ";
-            mdadmCommand += string.Join(" ", Drives.Select(d => d.IdLink));
-            mdadmCommand += " --run --force";
+                await _context.SaveChangesAsync();
 
-            var mdadmResult = ExecuteShellCommand(mdadmCommand, commandOutputs);
-            if (!mdadmResult.success)
-            {
-                return BadRequest(new { success = false, message = mdadmResult.message, outputs = commandOutputs });
+                var commandOutputs = new List<string>();
+
+                // Build mdadm command
+                string mdadmCommand = $"mdadm --create /dev/md{poolGroupId} --level=1 --raid-devices={Drives.Count} ";
+                mdadmCommand += string.Join(" ", Drives.Select(d => d.IdLink));
+                mdadmCommand += " --run --force";
+
+                var mdadmResult = ExecuteShellCommand(mdadmCommand, commandOutputs);
+                if (!mdadmResult.success)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { success = false, message = mdadmResult.message, outputs = commandOutputs });
+                }
+
+                // Format and mount the md device
+                string mkfsCommand = $"mkfs.ext4 -F /dev/md{poolGroupId}";
+                var mkfsResult = ExecuteShellCommand(mkfsCommand, commandOutputs);
+                if (!mkfsResult.success)
+                {
+                    ExecuteShellCommand($"mdadm --stop /dev/md{poolGroupId}", commandOutputs);
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { success = false, message = mkfsResult.message, outputs = commandOutputs });
+                }
+
+                // Mount the md device
+                string mountPath = $"/mnt/backy/md{poolGroupId}";
+                string mountCommand = $"mkdir -p {mountPath} && mount /dev/md{poolGroupId} {mountPath}";
+                var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
+                if (!mountResult.success)
+                {
+                    ExecuteShellCommand($"umount {mountPath}", commandOutputs);
+                    ExecuteShellCommand($"mdadm --stop /dev/md{poolGroupId}", commandOutputs);
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { success = false, message = mountResult.message, outputs = commandOutputs });
+                }
+
+                // Update MountPath
+                newPoolGroup.MountPath = mountPath;
+                await _context.SaveChangesAsync();
+
+                // Commit transaction
+                await transaction.CommitAsync();
+
+                return new JsonResult(new { success = true, message = $"Pool '{request.PoolLabel}' created successfully.", outputs = commandOutputs });
             }
-
-            // Format and mount the md device
-            string mkfsCommand = $"mkfs.ext4 -F /dev/md{newPoolGroup.PoolGroupId}";
-            var mkfsResult = ExecuteShellCommand(mkfsCommand, commandOutputs);
-            if (!mkfsResult.success)
+            catch (Exception ex)
             {
-                return BadRequest(new { success = false, message = mkfsResult.message, outputs = commandOutputs });
+                _logger.LogError($"Error creating pool: {ex.Message}");
+                await transaction.RollbackAsync();
+                return BadRequest(new { success = false, message = "An error occurred while creating the pool." });
             }
-
-            // Mount the md device
-            string mountPath = $"/mnt/backy/md{newPoolGroup.PoolGroupId}";
-            string mountCommand = $"mkdir -p {mountPath} && mount /dev/md{newPoolGroup.PoolGroupId} {mountPath}";
-            var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
-            if (!mountResult.success)
-            {
-                return BadRequest(new { success = false, message = mountResult.message, outputs = commandOutputs });
-            }
-
-            // Update drives and pool group
-            foreach (var Drive in Drives)
-            {
-                Drive.PoolGroup = newPoolGroup;
-                Drive.IsMounted = true;
-                Drive.Label = request.PoolLabel;
-            }
-
-            _context.PoolGroups.Add(newPoolGroup);
-            _context.SaveChanges();
-
-            return new JsonResult(new { success = true, message = $"Pool '{request.PoolLabel}' created successfully.", outputs = commandOutputs });
         }
 
         private (bool success, string message) ExecuteShellCommand(string command, List<string>? outputList = null)
@@ -476,9 +540,82 @@ namespace Backy.Pages
                 return BadRequest(new { success = false, message = inspectResult.message });
             }
         }
+
+        private (long Size, long Used, long Available, string UsePercent) GetMountPointSize(string mountPoint)
+        {
+            try
+            {
+                var command = $"df -PB1 {mountPoint} | awk 'BEGIN {{printf \"{{\\\"discarray\\\":[\"}}}} " +
+                              $"{{if($1==\"Filesystem\") next; if(a) printf \",\"; " +
+                              $"printf \"{{\\\"mount\\\":\\\"\"$6\"\\\",\\\"size\\\":\\\"\"$2\"\\\",\\\"used\\\":\\\"\"$3\"\\\",\\\"avail\\\":\\\"\"$4\"\\\",\\\"use%\\\":\\\"\"$5\"\\\"}}\"; a++}} " +
+                              $"END {{print \"]}}\"}}'";
+
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "bash",
+                        Arguments = $"-c \"{command}\"",
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+                process.Start();
+                string jsonOutput = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                _logger.LogDebug($"df output: {jsonOutput}");
+
+                var dfResult = JsonSerializer.Deserialize<DiskArrayResult>(jsonOutput);
+                if (dfResult?.Discarray != null && dfResult.Discarray.Any())
+                {
+                    var disc = dfResult.Discarray.First();
+                    return (
+                        Size: long.Parse(disc.Size),
+                        Used: long.Parse(disc.Used),
+                        Available: long.Parse(disc.Avail),
+                        UsePercent: disc.UsePercent
+                    );
+                }
+                else
+                {
+                    _logger.LogWarning($"No mount information found for {mountPoint}.");
+                    return (0, 0, 0, "0%");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error getting mount point size for {mountPoint}: {ex.Message}");
+                return (0, 0, 0, "0%");
+            }
+        }
+    }
+    // Models and DTOs
+    public class DiskArrayResult
+    {
+        [JsonPropertyName("discarray")]
+        public List<DiskInfo> Discarray { get; set; } = new List<DiskInfo>();
     }
 
-    // Models and DTOs
+    public class DiskInfo
+    {
+        [JsonPropertyName("mount")]
+        public string Mount { get; set; } = string.Empty;
+
+        [JsonPropertyName("size")]
+        public string Size { get; set; } = "0";
+
+        [JsonPropertyName("used")]
+        public string Used { get; set; } = "0";
+
+        [JsonPropertyName("avail")]
+        public string Avail { get; set; } = "0";
+
+        [JsonPropertyName("use%")]
+        public string UsePercent { get; set; } = "0%";
+    }
+
     public class CreatePoolRequest
     {
         public required string PoolLabel { get; set; }
@@ -522,6 +659,9 @@ namespace Backy.Pages
 
         [JsonPropertyName("path")]
         public string? Path { get; set; }
+
+        [JsonPropertyName("id-link")]
+        public string? IdLink { get; set; }
 
         [JsonPropertyName("children")]
         public List<BlockDevice>? Children { get; set; }

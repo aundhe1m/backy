@@ -51,6 +51,20 @@
                         <img src="/icons/hdd-rack.svg" alt="Pool Group Icon" style="height: 24px; margin-right: 8px;" />
                         <h5 class="mb-0">@group.GroupLabel</h5>
                     </div>
+                    <!-- Progress Bar -->
+                    <div>
+                        <span>@String.Format("{0:F2} GB", group.Used / 1024.0 / 1024.0 / 1024.0)</span> /
+                        <span>@String.Format("{0:F2} GB", group.Size / 1024.0 / 1024.0 / 1024.0)</span>
+                        @{
+                            // Directly use UsePercent
+                            var usedPercentage = group.UsePercent.TrimEnd('%');
+                        }
+                        <div class="progress progress-with-border" style="height: 4px">
+                            <div class="progress-bar" role="progressbar" style="width: @usedPercentage%"
+                                aria-valuenow="@usedPercentage" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                    <!-- Existing buttons -->
                     <div class="btn-group">
                         <!-- Eject/Mount Button -->
                         @if (group.PoolEnabled)
