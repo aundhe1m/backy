@@ -329,6 +329,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     alert(`Pool unmounted successfully.`);
                     location.reload();
+                } else if (data.message === "Target is busy" && data.processes) {
+                    // Display modal with processes
+                    showKillProcessesModal(poolGroupId, data.processes);
                 } else {
                     alert(`Failed to unmount pool: ${data.message}`);
                 }
@@ -338,6 +341,110 @@ document.addEventListener('DOMContentLoaded', function () {
                 alert(`Error unmounting pool: ${error}`);
             });
     }
+
+    function showKillProcessesModal(poolGroupId, processes) {
+        // Create modal HTML
+        let modalHtml = `
+        <div class="modal fade" id="killProcessesModal" tabindex="-1" aria-labelledby="killProcessesModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Processes Using the Mount Point</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>The following processes are using the mount point. Do you want to kill them?</p>
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Command</th>
+                                    <th>PID</th>
+                                    <th>User</th>
+                                    <th>FD</th>
+                                    <th>Type</th>
+                                    <th>Device</th>
+                                    <th>Size/Off</th>
+                                    <th>Node</th>
+                                    <th>Name</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+        `;
+
+        processes.forEach(process => {
+            modalHtml += `
+                <tr>
+                    <td>${process.Command}</td>
+                    <td>${process.PID}</td>
+                    <td>${process.User}</td>
+                    <td>${process.FD}</td>
+                    <td>${process.Type}</td>
+                    <td>${process.Device}</td>
+                    <td>${process.SizeOff}</td>
+                    <td>${process.Node}</td>
+                    <td>${process.Name}</td>
+                </tr>
+            `;
+        });
+
+        modalHtml += `
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="killProcessesButton">Kill Processes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+
+        // Append modal to body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Show modal
+        const killProcessesModal = new bootstrap.Modal(document.getElementById('killProcessesModal'));
+        killProcessesModal.show();
+
+        // Handle "Kill Processes" button click
+        document.getElementById('killProcessesButton').addEventListener('click', function () {
+            const pids = processes.map(p => p.PID);
+            killProcesses(poolGroupId, pids);
+            killProcessesModal.hide();
+            document.getElementById('killProcessesModal').remove();
+        });
+
+        // Clean up modal after it's hidden
+        document.getElementById('killProcessesModal').addEventListener('hidden.bs.modal', function () {
+            document.getElementById('killProcessesModal').remove();
+        });
+    }
+
+    function killProcesses(poolGroupId, pids) {
+        fetch(`/Drive?handler=KillProcesses&poolGroupId=${poolGroupId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ pids: pids })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Processes killed and pool unmounted successfully.`);
+                    location.reload();
+                } else {
+                    alert(`Failed to kill processes: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error killing processes:', error);
+                alert(`Error killing processes: ${error}`);
+            });
+    }
+
 
     function mountPool(poolGroupId) {
         fetch(`/Drive?handler=MountPool&poolGroupId=${poolGroupId}`, {

@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace Backy.Pages
 {
@@ -454,7 +455,7 @@ namespace Backy.Pages
             }
         }
 
-        // Implement OnPostUnmountPool to stop mdadm and unmount
+        // In Drive.cshtml.cs
         public IActionResult OnPostUnmountPool(int poolGroupId)
         {
             var poolGroup = _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
@@ -464,11 +465,36 @@ namespace Backy.Pages
             }
 
             var commandOutputs = new List<string>();
-            string unmountCommand = $"umount /mnt/backy/md{poolGroupId}";
+            string mountPoint = $"/mnt/backy/md{poolGroupId}";
+            string unmountCommand = $"umount {mountPoint}";
             var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
             if (!unmountResult.success)
             {
-                return BadRequest(new { success = false, message = unmountResult.message, outputs = commandOutputs });
+                if (unmountResult.message.Contains("target is busy"))
+                {
+                    // Run lsof to find processes using the mount point
+                    string lsofCommand = $"lsof +f -- {mountPoint}";
+                    var lsofResult = ExecuteShellCommand(lsofCommand, commandOutputs);
+                    if (lsofResult.success)
+                    {
+                        // Parse lsof output into a list of processes
+                        var processes = ParseLsofOutput(lsofResult.message);
+                        return new JsonResult(new
+                        {
+                            success = false,
+                            message = "Target is busy",
+                            processes = processes
+                        });
+                    }
+                    else
+                    {
+                        return BadRequest(new { success = false, message = "Failed to run lsof.", outputs = commandOutputs });
+                    }
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = unmountResult.message, outputs = commandOutputs });
+                }
             }
 
             string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
@@ -478,14 +504,70 @@ namespace Backy.Pages
                 return BadRequest(new { success = false, message = stopResult.message, outputs = commandOutputs });
             }
 
-            foreach (var Drive in poolGroup.Drives)
+            foreach (var drive in poolGroup.Drives)
             {
-                Drive.IsMounted = false;
+                drive.IsMounted = false;
             }
+
+            // Set PoolEnabled to false
+            poolGroup.PoolEnabled = false;
 
             _context.SaveChanges();
 
             return new JsonResult(new { success = true, message = "Pool unmounted successfully.", outputs = commandOutputs });
+        }
+
+        private List<ProcessInfo> ParseLsofOutput(string lsofOutput)
+        {
+            var processes = new List<ProcessInfo>();
+            var lines = lsofOutput.Split('\n');
+            bool headerProcessed = false;
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                if (!headerProcessed)
+                {
+                    // Skip header line
+                    headerProcessed = true;
+                    continue;
+                }
+
+                var columns = Regex.Split(line.Trim(), @"\s+");
+                if (columns.Length >= 9)
+                {
+                    processes.Add(new ProcessInfo
+                    {
+                        Command = columns[0],
+                        PID = columns[1],
+                        User = columns[2],
+                        FD = columns[3],
+                        Type = columns[4],
+                        Device = columns[5],
+                        SizeOff = columns[6],
+                        Node = columns[7],
+                        Name = columns[8]
+                    });
+                }
+            }
+            return processes;
+        }
+
+        public IActionResult OnPostKillProcesses(int poolGroupId, List<string> pids)
+        {
+            var commandOutputs = new List<string>();
+            foreach (var pid in pids)
+            {
+                var killCommand = $"kill -9 {pid}";
+                var killResult = ExecuteShellCommand(killCommand, commandOutputs);
+                if (!killResult.success)
+                {
+                    return BadRequest(new { success = false, message = $"Failed to kill process {pid}", outputs = commandOutputs });
+                }
+            }
+
+            // Retry unmounting
+            return OnPostUnmountPool(poolGroupId);
         }
 
         // Implement OnPostMountPool to assemble mdadm and mount
@@ -545,10 +627,10 @@ namespace Backy.Pages
         {
             try
             {
-                var command = $"df -PB1 {mountPoint} | awk 'BEGIN {{printf \"{{\\\"discarray\\\":[\"}}}} " +
-                              $"{{if($1==\"Filesystem\") next; if(a) printf \",\"; " +
-                              $"printf \"{{\\\"mount\\\":\\\"\"$6\"\\\",\\\"size\\\":\\\"\"$2\"\\\",\\\"used\\\":\\\"\"$3\"\\\",\\\"avail\\\":\\\"\"$4\"\\\",\\\"use%\\\":\\\"\"$5\"\\\"}}\"; a++}} " +
-                              $"END {{print \"]}}\"}}'";
+                var command = $"df -PB1 {mountPoint} | awk 'BEGIN {{printf(\"{{\\\"discarray\\\":[\")}} " +
+                              $"{{if($1==\\\"Filesystem\\\") next; if(a) printf(\",\"); " +
+                              $"printf(\"{{\\\"mount\\\":\\\"%s\\\",\\\"size\\\":\\\"%s\\\",\\\"used\\\":\\\"%s\\\",\\\"avail\\\":\\\"%s\\\",\\\"use%\\\":\\\"%s\\\"}}\", $6, $2, $3, $4, $5); a++;}} " +
+                              $"END {{print(\"]}}\")}}'";
 
                 var process = new Process
                 {
@@ -590,6 +672,7 @@ namespace Backy.Pages
                 return (0, 0, 0, "0%");
             }
         }
+
     }
     // Models and DTOs
     public class DiskArrayResult
@@ -626,6 +709,19 @@ namespace Backy.Pages
     {
         [JsonPropertyName("blockdevices")]
         public List<BlockDevice>? Blockdevices { get; set; }
+    }
+
+    public class ProcessInfo
+    {
+        public string? Command { get; set; }
+        public string? PID { get; set; }
+        public string? User { get; set; }
+        public string? FD { get; set; }
+        public string? Type { get; set; }
+        public string? Device { get; set; }
+        public string? SizeOff { get; set; }
+        public string? Node { get; set; }
+        public string? Name { get; set; }
     }
 
     public class BlockDevice
