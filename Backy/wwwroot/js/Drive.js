@@ -329,8 +329,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     alert(`Pool unmounted successfully.`);
                     location.reload();
-                } else if (data.message === "target is busy") {
-                    // Display modal with process list
+                } else if (data.processes && data.processes.length > 0) {
                     showProcessModal(poolGroupId, data.processes);
                 } else {
                     alert(`Failed to unmount pool: ${data.message}`);
@@ -343,24 +342,26 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function showProcessModal(poolGroupId, processes) {
-        const modal = new bootstrap.Modal(document.getElementById(`processListModal-${poolGroupId}`));
-        const tableBody = document.getElementById(`processListTableBody-${poolGroupId}`);
+        const modal = new bootstrap.Modal(document.getElementById('processListModal'));
+        const tableBody = document.getElementById('processListTableBody');
         tableBody.innerHTML = ''; // Clear existing rows
 
         processes.forEach(process => {
             const row = `<tr>
-                <td>${process.PID}</td>
-                <td>${process.Command}</td>
-                <td>${process.User}</td>
-                <td>${process.FD}</td>
-                <td>${process.Type}</td>
-                <td>${process.Node}</td>
-                <td>${process.Name}</td>
+                <td>${process.pid}</td>
+                <td>${process.command}</td>
+                <td>${process.user}</td>
+                <td>${process.fd}</td>
+                <td>${process.type}</td>
+                <td>${process.device}</td>
+                <td>${process.sizeOff}</td>
+                <td>${process.node}</td>
+                <td>${process.name}</td>
             </tr>`;
             tableBody.insertAdjacentHTML('beforeend', row);
         });
 
-        document.getElementById(`killProcessesButton-${poolGroupId}`).onclick = function () {
+        document.getElementById('killProcessesButton').onclick = function () {
             killProcesses(poolGroupId, processes);
             modal.hide();
         };

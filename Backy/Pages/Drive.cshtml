@@ -218,5 +218,41 @@
     </div>
 </div>
 
+<!-- Process List Modal -->
+<div class="modal fade" id="processListModal" tabindex="-1" aria-labelledby="processListModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="processListModalLabel">Processes Using the Mount Point</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>The following processes are preventing the unmount operation:</p>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>Command</th>
+                            <th>User</th>
+                            <th>FD</th>
+                            <th>Type</th>
+                            <th>Node</th>
+                            <th>Name</th>
+                        </tr>
+                    </thead>
+                    <tbody id="processListTableBody">
+                        <!-- Processes will be populated here dynamically -->
+                    </tbody>
+                </table>
+                <p>Do you want to kill these processes and retry unmounting?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" id="killProcessesButton">Kill Processes</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="/js/Drive.js"></script>
 <link rel="stylesheet" href="/css/Drive.css">
