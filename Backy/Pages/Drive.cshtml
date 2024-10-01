@@ -118,25 +118,57 @@
         </div>
 
         <!-- Rename Pool Modal -->
-        <div class="modal fade" id="renamePoolModal-@group.PoolGroupId" tabindex="-1" aria-labelledby="renamePoolModalLabel"
-            aria-hidden="true">
-            <div class="modal-dialog">
+        <div class="modal fade" id="renamePoolModal-@group.PoolGroupId" tabindex="-1"
+            aria-labelledby="renamePoolModalLabel-@group.PoolGroupId" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
                 <div class="modal-content">
-                    <form method="post" asp-page-handler="RenamePoolGroup" asp-route-poolGroupId="@group.PoolGroupId">
+                    <form class="rename-pool-form" data-pool-group-id="@group.PoolGroupId">
                         <div class="modal-header">
-                            <h5 class="modal-title" id="renamePoolModalLabel">Rename Pool Group</h5>
+                            <h5 class="modal-title" id="renamePoolModalLabel-@group.PoolGroupId">Rename Backup Pool</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
+                            <!-- Pool Label -->
                             <div class="mb-3">
-                                <label for="newPoolGroupLabel-@group.PoolGroupId" class="form-label">New
-                                    Label</label>
+                                <label for="newPoolGroupLabel-@group.PoolGroupId" class="form-label">New Pool Label</label>
                                 <input type="text" class="form-control" id="newPoolGroupLabel-@group.PoolGroupId"
-                                    name="newLabel" value="@group.GroupLabel" required />
+                                    name="newPoolLabel" value="@group.GroupLabel" required />
+                            </div>
+                            <!-- Drives Table -->
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Vendor</th>
+                                            <th>Model</th>
+                                            <th>Serial</th>
+                                            <th>Current Label</th>
+                                            <th>New Label</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @for (int i = 0; i < group.Drives.Count; i++)
+                                        {
+                                            var drive = group.Drives[i];
+                                            <tr>
+                                                <td>@(i + 1)</td>
+                                                <td>@drive.Vendor</td>
+                                                <td>@drive.Model</td>
+                                                <td>@drive.Serial</td>
+                                                <td>@(string.IsNullOrEmpty(drive.Label) ? "No Label" : drive.Label)</td>
+                                                <td>
+                                                    <input type="text" class="form-control drive-new-label-input"
+                                                        data-drive-id="@drive.Id" placeholder="Optional" value="@drive.Label" />
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                         <div class="modal-footer">
-                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                            <button type="submit" class="btn btn-primary">Rename Pool</button>
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         </div>
                     </form>

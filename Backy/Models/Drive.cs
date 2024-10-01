@@ -45,12 +45,30 @@ namespace Backy.Models
         public List<DiskInfo> Discarray { get; set; } = new List<DiskInfo>();
     }
 
+    public class DriveDto
+    {
+        public int Id { get; set; }
+        public required string Serial { get; set; }
+        public required string Label { get; set; }
+    }
+
     public class CreatePoolRequest
     {
         public required string PoolLabel { get; set; }
+
         public required List<string> DriveSerials { get; set; }
+
         public Dictionary<string, string> DriveLabels { get; set; } =
             new Dictionary<string, string>();
+    }
+
+    public class RenamePoolResponse
+    {
+        public bool Success { get; set; }
+        public required string Message { get; set; }
+        public required string NewPoolLabel { get; set; }
+        public Dictionary<int, string> UpdatedDriveLabels { get; set; } =
+            new Dictionary<int, string>();
     }
 
     public class KillProcessesRequest

@@ -190,6 +190,20 @@ button:focus {
 
 .drive-label-input::placeholder {
     color: #6c757d;
-    /* Gray color for placeholder */
     font-style: italic;
+}
+
+.drive-new-label-input::placeholder {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Spinner styles specific to forms */
+.rename-pool-form .spinner-border {
+    margin-left: 10px;
+}
+
+/* Adjust the width of new label input fields */
+.drive-new-label-input {
+    max-width: 200px;
 }

@@ -4,150 +4,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Handle New Drive Cards
     const newDriveCards = document.querySelectorAll('.new-drive-card');
+    const renamePoolForms = document.querySelectorAll('.rename-pool-form');
 
-    newDriveCards.forEach(card => {
-        const selectButton = card.querySelector('.select-drive-button');
-        const protectButton = card.querySelector('.protect-drive-button');
-        const driveSerial = card.getAttribute('data-drive-serial');
-        const driveData = {
-            driveSerial: driveSerial,
-            vendor: card.getAttribute('data-vendor'),
-            model: card.getAttribute('data-model'),
-            serial: card.getAttribute('data-serial')
-        };
-
-        // Handle select drive button click
-        selectButton.addEventListener('click', function () {
-            toggleDriveSelection(driveData);
-        });
-
-        // Handle protect drive button click
-        protectButton.addEventListener('click', function () {
-            protectDrive(driveData.serial);
-        });
-    });
+    // Handle Eject/Mount/Inspect actions for Pools
+    const ejectPoolButtons = document.querySelectorAll('.eject-pool-button');
+    const mountPoolButtons = document.querySelectorAll('.mount-pool-button');
+    const inspectPoolButtons = document.querySelectorAll('.inspect-pool-button');
 
     // Handle Protected Drive Cards
     const protectedDriveCards = document.querySelectorAll('.protected-drive-card');
-
-    protectedDriveCards.forEach(card => {
-        const unprotectButton = card.querySelector('.unprotect-drive-button');
-        const serial = card.getAttribute('data-drive-serial');
-
-        // Handle unprotect drive button click
-        unprotectButton.addEventListener('click', function () {
-            unprotectDrive(serial);
-        });
-    });
-
-    // Function to toggle drive selection
-    function toggleDriveSelection(driveData) {
-        const existingDriveIndex = selectedDrives.findIndex(d => d.driveSerial === driveData.driveSerial);
-        const driveCard = document.querySelector(`.new-drive-card[data-drive-serial="${driveData.driveSerial}"]`);
-        const selectButtonImg = driveCard.querySelector('.select-drive-button img');
-
-        if (existingDriveIndex !== -1) {
-            // Drive is already selected; deselect it
-            selectedDrives.splice(existingDriveIndex, 1);
-
-            // Reset the icon to 'plus-square.svg'
-            if (selectButtonImg) {
-                selectButtonImg.src = '/icons/plus-square.svg';
-            }
-
-            // Show a toast indicating deselection
-            showToast(`Drive deselected.`, true);
-        } else {
-            // Drive is not selected; select it
-            selectedDrives.push(driveData);
-
-            // Change the icon to 'plus-square-fill.svg' to indicate selection
-            if (selectButtonImg) {
-                selectButtonImg.src = '/icons/plus-square-fill.svg';
-            }
-
-            // Show the 'driveToast' only if it's not already visible
-            const toastElement = document.getElementById('driveToast');
-            if (!toastElement.classList.contains('show')) {
-                const toast = new bootstrap.Toast(toastElement);
-                toast.show();
-            }
-        }
-
-        // Update the selected drives table
-        populateSelectedDrivesTable();
-    }
-
-    // Function to populate the table in the Create Pool modal
-    function populateSelectedDrivesTable() {
-        const selectedDrivesTable = document.getElementById('selectedDrivesTable').querySelector('tbody');
-        selectedDrivesTable.innerHTML = ''; // Clear existing rows
-
-        if (selectedDrives.length > 0) {
-            selectedDrives.forEach((drive, index) => {
-                const row = `<tr>
-                                <td>${index + 1}</td>
-                                <td>
-                                    <input type="text" class="form-control drive-label-input" data-drive-serial="${drive.driveSerial}"
-                                        placeholder="Optional">
-                                </td>
-                                <td>${drive.vendor}</td>
-                                <td>${drive.model}</td>
-                                <td>${drive.serial}</td>
-                                
-                             </tr>`;
-                selectedDrivesTable.insertAdjacentHTML('beforeend', row);
-            });
-        } else {
-            const emptyRow = `<tr><td colspan="6" class="text-center">No drives selected</td></tr>`;
-            selectedDrivesTable.insertAdjacentHTML('beforeend', emptyRow);
-        }
-    }
-
-    // Function to protect a drive
-    function protectDrive(serial) {
-        fetch(`/Drive?handler=ProtectDrive&serial=${serial}`, {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Use flag-based reload
-                    showToast(`Drive protected successfully.`, true, true);
-                } else {
-                    // Use showToast with error
-                    showToast(`Failed to protect drive: ${data.message}`, false);
-                }
-            })
-            .catch(error => {
-                showToast(`Error protecting drive: ${error}`, false);
-            });
-    }
-
-    // Function to unprotect a drive
-    function unprotectDrive(serial) {
-        fetch(`/Drive?handler=UnprotectDrive&serial=${serial}`, {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Use flag-based reload
-                    showToast(`Drive unprotected successfully.`, true, true);
-                } else {
-                    showToast(`Failed to unprotect drive: ${data.message}`, false);
-                }
-            })
-            .catch(error => {
-                showToast(`Error unprotecting drive: ${error}`, false);
-            });
-    }
 
     // Handle Create Pool button in toast
     document.getElementById('createPoolToastButton').addEventListener('click', function () {
@@ -166,17 +31,6 @@ document.addEventListener('DOMContentLoaded', function () {
         toast.hide();
     });
 
-    // Function to reset selected drives and icons
-    function resetSelectedDrives() {
-        // Reset icons back to 'plus-square.svg'
-        selectedDrives.forEach(function (drive) {
-            const selectButtonImg = document.querySelector(`.new-drive-card[data-drive-serial="${drive.driveSerial}"] .select-drive-button img`);
-            if (selectButtonImg) {
-                selectButtonImg.src = '/icons/plus-square.svg';
-            }
-        });
-        selectedDrives = [];
-    }
 
     // Handle Create Pool form submission
     document.getElementById('createPoolForm').addEventListener('submit', function (e) {
@@ -235,35 +89,259 @@ document.addEventListener('DOMContentLoaded', function () {
                 return response.json();
             })
             .then(data => {
-                // Hide spinner
                 hideSpinner();
-
-                // Display command outputs
                 displayCommandOutputs(data.outputs);
-
-                // Update modal footer
                 updateModalFooter('success');
 
-                // Handle 'Continue' button click with flag-based reload
                 document.getElementById('continueButton').addEventListener('click', function () {
                     showToast(`Pool created successfully.`, true, true);
                 });
             })
             .catch(error => {
-                // Hide spinner
                 hideSpinner();
-
-                console.error("Error creating pool:", error);
-                // Display error outputs
                 displayCommandOutputs(error.outputs || [], true);
-
-                // Update modal footer
                 updateModalFooter('error');
-
-                // Show error toast
                 showToast(`Error creating pool: ${error.message || 'Unknown error.'}`, false);
             });
     });
+
+    // Handle Rename Pool
+    renamePoolForms.forEach(form => {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const poolGroupId = form.getAttribute('data-pool-group-id');
+            const newPoolLabelInput = form.querySelector(`input[name="newPoolLabel"]`);
+            const newPoolLabel = newPoolLabelInput.value.trim();
+
+            if (!newPoolLabel) {
+                showToast("Pool label cannot be empty.", false);
+                return;
+            }
+
+            // Collect new drive labels
+            const driveLabelInputs = form.querySelectorAll('.drive-new-label-input');
+            const driveLabels = {};
+            driveLabelInputs.forEach(input => {
+                const driveId = parseInt(input.getAttribute('data-drive-id'));
+                const label = input.value.trim();
+                driveLabels[driveId] = label; // Empty string indicates no change
+            });
+
+            const postData = new URLSearchParams({
+                'PoolGroupId': poolGroupId,
+                'NewPoolLabel': newPoolLabel,
+                'DriveLabels': JSON.stringify(driveLabels)
+            });
+
+            // Disable form elements to prevent multiple submissions
+            form.querySelectorAll('input, button').forEach(el => el.disabled = true);
+
+            // Show spinner
+            showSpinner(form);
+
+            // Send AJAX request to backend
+            fetch('/Drive?handler=RenamePoolGroup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: postData.toString()
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(json => { throw json; });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    hideSpinner(form);
+
+                    if (data.success) {
+                        showToast(data.message, true, true);
+                    } else {
+                        showToast(data.message, false);
+                        // Re-enable form elements
+                        form.querySelectorAll('input, button').forEach(el => el.disabled = false);
+                    }
+                })
+                .catch(error => {
+                    hideSpinner(form);
+                    showToast(error.message || "An error occurred while renaming the pool.", false);
+                    // Re-enable form elements
+                    form.querySelectorAll('input, button').forEach(el => el.disabled = false);
+                });
+        });
+    });
+
+    ejectPoolButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const poolGroupId = button.getAttribute('data-pool-group-id');
+            unmountPool(poolGroupId);
+        });
+    });
+
+    mountPoolButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const poolGroupId = button.getAttribute('data-pool-group-id');
+            mountPool(poolGroupId);
+        });
+    });
+
+    inspectPoolButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const poolGroupId = button.getAttribute('data-pool-group-id');
+            inspectPool(poolGroupId);
+        });
+    });
+
+    newDriveCards.forEach(card => {
+        const selectButton = card.querySelector('.select-drive-button');
+        const protectButton = card.querySelector('.protect-drive-button');
+        const driveSerial = card.getAttribute('data-drive-serial');
+        const driveData = {
+            driveSerial: driveSerial,
+            vendor: card.getAttribute('data-vendor'),
+            model: card.getAttribute('data-model'),
+            serial: card.getAttribute('data-serial')
+        };
+
+        // Handle select drive button click
+        selectButton.addEventListener('click', function () {
+            toggleDriveSelection(driveData);
+        });
+
+        // Handle protect drive button click
+        protectButton.addEventListener('click', function () {
+            protectDrive(driveData.serial);
+        });
+    });
+
+    protectedDriveCards.forEach(card => {
+        const unprotectButton = card.querySelector('.unprotect-drive-button');
+        const serial = card.getAttribute('data-drive-serial');
+
+        // Handle unprotect drive button click
+        unprotectButton.addEventListener('click', function () {
+            unprotectDrive(serial);
+        });
+    });
+
+    // Function to toggle drive selection
+    function toggleDriveSelection(driveData) {
+        const existingDriveIndex = selectedDrives.findIndex(d => d.driveSerial === driveData.driveSerial);
+        const driveCard = document.querySelector(`.new-drive-card[data-drive-serial="${driveData.driveSerial}"]`);
+        const selectButtonImg = driveCard.querySelector('.select-drive-button img');
+
+        if (existingDriveIndex !== -1) {
+            // Drive is already selected; deselect it
+            selectedDrives.splice(existingDriveIndex, 1);
+
+            // Reset the icon to 'plus-square.svg'
+            if (selectButtonImg) {
+                selectButtonImg.src = '/icons/plus-square.svg';
+            }
+
+            // Show a toast indicating deselection
+            showToast(`Drive deselected.`, true);
+        } else {
+            // Drive is not selected; select it
+            selectedDrives.push(driveData);
+
+            // Change the icon to 'plus-square-fill.svg' to indicate selection
+            if (selectButtonImg) {
+                selectButtonImg.src = '/icons/plus-square-fill.svg';
+            }
+
+            // Show the 'driveToast' only if it's not already visible
+            const toastElement = document.getElementById('driveToast');
+            if (!toastElement.classList.contains('show')) {
+                const toast = new bootstrap.Toast(toastElement);
+                toast.show();
+            }
+        }
+        populateSelectedDrivesTable();
+    }
+
+    // Function to populate the table in the Create Pool modal
+    function populateSelectedDrivesTable() {
+        const selectedDrivesTable = document.getElementById('selectedDrivesTable').querySelector('tbody');
+        selectedDrivesTable.innerHTML = ''; // Clear existing rows
+
+        if (selectedDrives.length > 0) {
+            selectedDrives.forEach((drive, index) => {
+                const row = `<tr>
+                                <td>${index + 1}</td>
+                                <td>
+                                    <input type="text" class="form-control drive-label-input" data-drive-serial="${drive.driveSerial}"
+                                        placeholder="Optional">
+                                </td>
+                                <td>${drive.vendor}</td>
+                                <td>${drive.model}</td>
+                                <td>${drive.serial}</td>
+                                
+                             </tr>`;
+                selectedDrivesTable.insertAdjacentHTML('beforeend', row);
+            });
+        } else {
+            const emptyRow = `<tr><td colspan="6" class="text-center">No drives selected</td></tr>`;
+            selectedDrivesTable.insertAdjacentHTML('beforeend', emptyRow);
+        }
+    }
+
+    // Function to protect a drive
+    function protectDrive(serial) {
+        fetch(`/Drive?handler=ProtectDrive&serial=${serial}`, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`Drive protected successfully.`, true, true);
+                } else {
+                    showToast(`Failed to protect drive: ${data.message}`, false);
+                }
+            })
+            .catch(error => {
+                showToast(`Error protecting drive: ${error}`, false);
+            });
+    }
+
+    // Function to unprotect a drive
+    function unprotectDrive(serial) {
+        fetch(`/Drive?handler=UnprotectDrive&serial=${serial}`, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`Drive unprotected successfully.`, true, true);
+                } else {
+                    showToast(`Failed to unprotect drive: ${data.message}`, false);
+                }
+            })
+            .catch(error => {
+                showToast(`Error unprotecting drive: ${error}`, false);
+            });
+    }
+
+    // Function to reset selected drives and icons
+    function resetSelectedDrives() {
+        selectedDrives.forEach(function (drive) {
+            const selectButtonImg = document.querySelector(`.new-drive-card[data-drive-serial="${drive.driveSerial}"] .select-drive-button img`);
+            if (selectButtonImg) {
+                selectButtonImg.src = '/icons/plus-square.svg';
+            }
+        });
+        selectedDrives = [];
+    }
 
     function showSpinner() {
         const spinner = document.createElement('div');
@@ -308,32 +386,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // Handle Eject/Mount/Inspect actions for Pools
-    const ejectPoolButtons = document.querySelectorAll('.eject-pool-button');
-    const mountPoolButtons = document.querySelectorAll('.mount-pool-button');
-    const inspectPoolButtons = document.querySelectorAll('.inspect-pool-button');
-
-    ejectPoolButtons.forEach(button => {
-        button.addEventListener('click', function () {
-            const poolGroupId = button.getAttribute('data-pool-group-id');
-            unmountPool(poolGroupId);
-        });
-    });
-
-    mountPoolButtons.forEach(button => {
-        button.addEventListener('click', function () {
-            const poolGroupId = button.getAttribute('data-pool-group-id');
-            mountPool(poolGroupId);
-        });
-    });
-
-    inspectPoolButtons.forEach(button => {
-        button.addEventListener('click', function () {
-            const poolGroupId = button.getAttribute('data-pool-group-id');
-            inspectPool(poolGroupId);
-        });
-    });
-
     // Functions to handle pool actions
     function unmountPool(poolGroupId) {
         fetch(`/Drive?handler=UnmountPool&poolGroupId=${poolGroupId}`, {
@@ -345,7 +397,6 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Use flag-based reload
                     showToast(`Pool unmounted successfully.`, true, true);
                 } else if (data.processes && data.processes.length > 0) {
                     showProcessModal(poolGroupId, data.processes);
@@ -365,11 +416,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         processes.forEach(process => {
             const row = `<tr>
-                <td>${process.pid}</td>
-                <td>${process.command}</td>
-                <td>${process.user}</td>
-                <td>${process.name}</td>
-            </tr>`;
+            <td>${process.pid}</td>
+            <td>${process.command}</td>
+            <td>${process.user}</td>
+            <td>${process.name}</td>
+        </tr>`;
             tableBody.insertAdjacentHTML('beforeend', row);
         });
 
@@ -383,7 +434,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Function to kill processes
     function killProcesses(poolGroupId, processes) {
-        const pids = processes.map(p => p.pid); // Changed 'PID' to 'pid'
+        const pids = processes.map(p => p.pid);
         fetch(`/Drive?handler=KillProcesses`, {
             method: 'POST',
             headers: {
@@ -400,7 +451,6 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(data => {
                 if (data.success) {
-                    // Use flag-based reload
                     showToast(`Processes killed and pool unmounted successfully.`, true, true);
                 } else {
                     showToast(`Failed to kill processes: ${data.message}`, false);
@@ -421,7 +471,6 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Use flag-based reload
                     showToast(`Pool mounted successfully.`, true, true);
                 } else {
                     showToast(`Failed to mount pool: ${data.message}`, false);
@@ -442,7 +491,6 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Display the output in a modal
                     showInspectModal(data.output);
                 } else {
                     showToast(`Failed to inspect pool: ${data.message}`, false);

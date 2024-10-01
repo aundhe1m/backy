@@ -500,6 +500,131 @@ namespace Backy.Pages
             }
         }
 
+        // New handler for renaming pools
+        public async Task<IActionResult> OnPostRenamePoolGroupAsync()
+        {
+            try
+            {
+                // Read form data
+                var form = Request.Form;
+
+                if (!form.ContainsKey("PoolGroupId") || !form.ContainsKey("NewPoolLabel"))
+                {
+                    return BadRequest(
+                        new { success = false, message = "Missing required fields." }
+                    );
+                }
+
+                // Safely parse PoolGroupId
+                if (!int.TryParse(form["PoolGroupId"], out int poolGroupId))
+                {
+                    return BadRequest(
+                        new { success = false, message = "Invalid Pool Group ID format." }
+                    );
+                }
+
+                string newPoolLabel = form["NewPoolLabel"].ToString().Trim();
+
+                if (string.IsNullOrWhiteSpace(newPoolLabel))
+                {
+                    return BadRequest(
+                        new { success = false, message = "Pool label cannot be empty." }
+                    );
+                }
+
+                // Deserialize DriveLabels JSON string
+                string driveLabelsJson = form.ContainsKey("DriveLabels")
+                    ? form["DriveLabels"].ToString()
+                    : "{}";
+                Dictionary<int, string> driveLabels;
+                try
+                {
+                    driveLabels =
+                        JsonSerializer.Deserialize<Dictionary<int, string>>(driveLabelsJson)
+                        ?? new Dictionary<int, string>();
+                }
+                catch (JsonException)
+                {
+                    return BadRequest(
+                        new { success = false, message = "Invalid DriveLabels JSON format." }
+                    );
+                }
+
+                // Retrieve the PoolGroup with its Drives
+                var poolGroup = await _context
+                    .PoolGroups.Include(pg => pg.Drives)
+                    .FirstOrDefaultAsync(pg => pg.PoolGroupId == poolGroupId);
+
+                if (poolGroup == null)
+                {
+                    return BadRequest(new { success = false, message = "Pool group not found." });
+                }
+
+                // Begin transaction
+                using var transaction = await _context.Database.BeginTransactionAsync();
+
+                try
+                {
+                    // Update pool label
+                    poolGroup.GroupLabel = newPoolLabel;
+
+                    // Update drive labels
+                    foreach (var drive in poolGroup.Drives)
+                    {
+                        if (driveLabels.TryGetValue(drive.Id, out string newLabel))
+                        {
+                            // Only update if a new label is provided; otherwise, retain existing
+                            if (!string.IsNullOrWhiteSpace(newLabel))
+                            {
+                                drive.Label = newLabel.Trim();
+                            }
+                        }
+                    }
+
+                    await _context.SaveChangesAsync();
+
+                    // Commit transaction
+                    await transaction.CommitAsync();
+
+                    // Prepare the response DTO
+                    var response = new RenamePoolResponse
+                    {
+                        Success = true,
+                        Message = "Pool and drive labels updated successfully.",
+                        NewPoolLabel = poolGroup.GroupLabel,
+                        UpdatedDriveLabels = poolGroup
+                            .Drives.Where(d => driveLabels.ContainsKey(d.Id))
+                            .ToDictionary(d => d.Id, d => d.Label),
+                    };
+
+                    return new JsonResult(response);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error renaming pool: {ex.Message}");
+                    await transaction.RollbackAsync();
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = "An error occurred while renaming the pool.",
+                        }
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error processing rename pool request: {ex.Message}");
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = "An error occurred while processing the request.",
+                    }
+                );
+            }
+        }
+
         private (bool success, string message) ExecuteShellCommand(
             string command,
             List<string>? outputList = null
