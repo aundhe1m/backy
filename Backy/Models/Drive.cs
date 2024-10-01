@@ -45,6 +45,14 @@ namespace Backy.Models
         public List<DiskInfo> Discarray { get; set; } = new List<DiskInfo>();
     }
 
+    public class CreatePoolRequest
+    {
+        public required string PoolLabel { get; set; }
+        public required List<string> DriveSerials { get; set; }
+        public Dictionary<string, string> DriveLabels { get; set; } =
+            new Dictionary<string, string>();
+    }
+
     public class KillProcessesRequest
     {
         [JsonPropertyName("poolGroupId")]
@@ -70,12 +78,6 @@ namespace Backy.Models
 
         [JsonPropertyName("use%")]
         public string UsePercent { get; set; } = "0%";
-    }
-
-    public class CreatePoolRequest
-    {
-        public required string PoolLabel { get; set; }
-        public required List<string> DriveSerials { get; set; }
     }
 
     public class LsblkOutput

@@ -87,15 +87,19 @@ document.addEventListener('DOMContentLoaded', function () {
             selectedDrives.forEach((drive, index) => {
                 const row = `<tr>
                                 <td>${index + 1}</td>
-                                <td>${drive.driveSerial}</td>
+                                <td>
+                                    <input type="text" class="form-control drive-label-input" data-drive-serial="${drive.driveSerial}"
+                                        placeholder="Optional">
+                                </td>
                                 <td>${drive.vendor}</td>
                                 <td>${drive.model}</td>
                                 <td>${drive.serial}</td>
+                                
                              </tr>`;
                 selectedDrivesTable.insertAdjacentHTML('beforeend', row);
             });
         } else {
-            const emptyRow = `<tr><td colspan="5" class="text-center">No drives selected</td></tr>`;
+            const emptyRow = `<tr><td colspan="6" class="text-center">No drives selected</td></tr>`;
             selectedDrivesTable.insertAdjacentHTML('beforeend', emptyRow);
         }
     }
@@ -178,7 +182,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('createPoolForm').addEventListener('submit', function (e) {
         e.preventDefault();
 
-        const poolLabel = document.getElementById('poolLabelInput').value;
+        const poolLabel = document.getElementById('poolLabelInput').value.trim();
         if (!poolLabel) {
             showToast("Please provide a pool label.", false);
             return;
@@ -189,11 +193,23 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        // Collect drive labels
+        const driveLabelsInputs = document.querySelectorAll('.drive-label-input');
+        const driveLabels = {};
+        selectedDrives.forEach((drive, index) => {
+            const input = Array.from(driveLabelsInputs).find(input => input.getAttribute('data-drive-serial') === drive.driveSerial);
+            if (input) {
+                const label = input.value.trim();
+                driveLabels[drive.driveSerial] = label;
+            }
+        });
+
         const driveSerials = selectedDrives.map(drive => drive.driveSerial);
 
         const postData = {
             PoolLabel: poolLabel,
-            DriveSerials: driveSerials
+            DriveSerials: driveSerials,
+            DriveLabels: driveLabels
         };
 
         // Disable form elements

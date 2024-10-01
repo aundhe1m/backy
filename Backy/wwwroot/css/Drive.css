@@ -187,3 +187,9 @@ button:focus {
 .protected-drive-card .card-header {
     background-color: #ffeeba;
 }
+
+.drive-label-input::placeholder {
+    color: #6c757d;
+    /* Gray color for placeholder */
+    font-style: italic;
+}

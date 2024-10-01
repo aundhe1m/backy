@@ -290,8 +290,6 @@ namespace Backy.Pages
             );
         }
 
-        // Implement OnPostCreatePool to use mdadm with /dev/disk/by-id
-
         public async Task<IActionResult> OnPostCreatePool()
         {
             _logger.LogInformation($"OnPostCreatePool called.");
@@ -355,10 +353,39 @@ namespace Backy.Pages
                 await _context.SaveChangesAsync();
                 int poolGroupId = newPoolGroup.PoolGroupId;
 
+                // Initialize a counter for default labels
+                int defaultLabelCounter = 1;
+
                 // Update drives and associate with PoolGroup
                 foreach (var Drive in Drives)
                 {
                     var dbDrive = _context.Drives.FirstOrDefault(d => d.Serial == Drive.Serial);
+                    string assignedLabel;
+
+                    // Check if a label was provided for this drive
+                    if (
+                        request.DriveLabels != null
+                        && request.DriveLabels.TryGetValue(Drive.Serial, out string providedLabel)
+                    )
+                    {
+                        if (!string.IsNullOrWhiteSpace(providedLabel))
+                        {
+                            assignedLabel = providedLabel.Trim();
+                        }
+                        else
+                        {
+                            // Assign default label if provided label is empty
+                            assignedLabel = $"{request.PoolLabel}-{defaultLabelCounter}";
+                            defaultLabelCounter++;
+                        }
+                    }
+                    else
+                    {
+                        // Assign default label if no label is provided
+                        assignedLabel = $"{request.PoolLabel}-{defaultLabelCounter}";
+                        defaultLabelCounter++;
+                    }
+
                     if (dbDrive == null)
                     {
                         dbDrive = new Drive
@@ -367,7 +394,7 @@ namespace Backy.Pages
                             Vendor = Drive.Vendor,
                             Model = Drive.Model,
                             Name = Drive.Name,
-                            Label = request.PoolLabel,
+                            Label = assignedLabel,
                             IsMounted = true,
                             IsConnected = true,
                             IdLink = Drive.IdLink,
@@ -378,7 +405,7 @@ namespace Backy.Pages
                     }
                     else
                     {
-                        dbDrive.Label = request.PoolLabel;
+                        dbDrive.Label = assignedLabel;
                         dbDrive.IsMounted = true;
                         dbDrive.IsConnected = true;
                         dbDrive.PoolGroup = newPoolGroup;
