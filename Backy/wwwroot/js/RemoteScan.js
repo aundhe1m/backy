@@ -4,6 +4,14 @@ document.addEventListener('DOMContentLoaded', function () {
     tooltipTriggerList.map(function (tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
+
+    // Handle displaying toast after page reload based on sessionStorage flag
+    const toastData = sessionStorage.getItem('toastMessage');
+    if (toastData) {
+        const { message, isSuccess } = JSON.parse(toastData);
+        showToast(message, isSuccess);
+        sessionStorage.removeItem('toastMessage');
+    }
 });
 
 // Function to toggle enable/disable
@@ -24,7 +32,6 @@ function toggleEnable(id) {
             }
         })
         .catch(error => {
-            console.error('There was a problem with the fetch operation:', error);
             showToast(`An error occurred while updating the storage status: ${error}`, false);
         });
 }
@@ -48,13 +55,24 @@ function startIndexing(id) {
         }
     })
         .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast(`Indexing started successfully.`, true);
+            } else {
+                showToast(`Failed to start indexing: ${data.message}`, false);
+                // Re-enable the button and remove rotating class
+                if (startIndexingButton && startIndexingIcon) {
+                    startIndexingButton.disabled = false;
+                    startIndexingIcon.classList.remove('rotating');
+                }
+            }
+        })
         .catch(error => {
-            console.error('There was a problem with the fetch operation:', error);
+            showToast(`Error starting indexing: ${error}`, false);
             // Re-enable the button and remove rotating class
             if (startIndexingButton && startIndexingIcon) {
                 startIndexingButton.disabled = false;
                 startIndexingIcon.classList.remove('rotating');
-                showToast(`Indexing failed: ${error}`, false);
             }
         });
 }
@@ -117,7 +135,9 @@ function updateStorageSources() {
                 });
             }
         })
-        .catch(error => console.error('Error updating storage sources:', error));
+        .catch(error => {
+            showToast(`Error updating storage sources: ${error}`, false);
+        });
 }
 
 // Scripts for Add/Edit Modal
@@ -137,7 +157,7 @@ function openEditModal(id) {
         data: { id: id },
         success: function (data) {
             if (data.success === false) {
-                alert('Storage not found.');
+                showToast('Storage not found.', false);
                 return;
             }
 
@@ -170,7 +190,7 @@ function openEditModal(id) {
             $('#storageModal').modal('show');
         },
         error: function () {
-            alert('Error fetching storage details.');
+            showToast('Error fetching storage details.', false);
         }
     });
 }
@@ -219,6 +239,3 @@ $(document).ready(function () {
     // Attach the toggle function to the AuthenticationMethod dropdown
     $('#authMethod').change(toggleAuthFields);
 });
-
-
-

@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 selectButtonImg.src = '/icons/plus-square.svg';
             }
 
-            // Optionally, show a toast indicating deselection
+            // Show a toast indicating deselection
             showToast(`Drive deselected.`, true);
         } else {
             // Drive is not selected; select it
@@ -111,15 +111,15 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(`Drive protected successfully.`);
-                    location.reload();
+                    // Use flag-based reload
+                    showToast(`Drive protected successfully.`, true, true);
                 } else {
-                    alert(`Failed to protect drive: ${data.message}`);
+                    // Use showToast with error
+                    showToast(`Failed to protect drive: ${data.message}`, false);
                 }
             })
             .catch(error => {
-                console.error('Error protecting drive:', error);
-                alert(`Error protecting drive: ${error}`);
+                showToast(`Error protecting drive: ${error}`, false);
             });
     }
 
@@ -134,15 +134,14 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(`Drive unprotected successfully.`);
-                    location.reload();
+                    // Use flag-based reload
+                    showToast(`Drive unprotected successfully.`, true, true);
                 } else {
-                    alert(`Failed to unprotect drive: ${data.message}`);
+                    showToast(`Failed to unprotect drive: ${data.message}`, false);
                 }
             })
             .catch(error => {
-                console.error('Error unprotecting drive:', error);
-                alert(`Error unprotecting drive: ${error}`);
+                showToast(`Error unprotecting drive: ${error}`, false);
             });
     }
 
@@ -181,12 +180,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const poolLabel = document.getElementById('poolLabelInput').value;
         if (!poolLabel) {
-            alert("Please provide a pool label.");
+            showToast("Please provide a pool label.", false);
             return;
         }
 
         if (selectedDrives.length === 0) {
-            alert("No drives selected.");
+            showToast("No drives selected.", false);
             return;
         }
 
@@ -229,9 +228,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Update modal footer
                 updateModalFooter('success');
 
-                // Handle 'Continue' button click
+                // Handle 'Continue' button click with flag-based reload
                 document.getElementById('continueButton').addEventListener('click', function () {
-                    location.reload();
+                    showToast(`Pool created successfully.`, true, true);
                 });
             })
             .catch(error => {
@@ -244,6 +243,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // Update modal footer
                 updateModalFooter('error');
+
+                // Show error toast
+                showToast(`Error creating pool: ${error.message || 'Unknown error.'}`, false);
             });
     });
 
@@ -327,17 +329,16 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(`Pool unmounted successfully.`);
-                    location.reload();
+                    // Use flag-based reload
+                    showToast(`Pool unmounted successfully.`, true, true);
                 } else if (data.processes && data.processes.length > 0) {
                     showProcessModal(poolGroupId, data.processes);
                 } else {
-                    alert(`Failed to unmount pool: ${data.message}`);
+                    showToast(`Failed to unmount pool: ${data.message}`, false);
                 }
             })
             .catch(error => {
-                console.error('Error unmounting pool:', error);
-                alert(`Error unmounting pool: ${error}`);
+                showToast(`Error unmounting pool: ${error}`, false);
             });
     }
 
@@ -383,18 +384,16 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(data => {
                 if (data.success) {
-                    alert(`Processes killed and pool unmounted successfully.`);
-                    location.reload();
+                    // Use flag-based reload
+                    showToast(`Processes killed and pool unmounted successfully.`, true, true);
                 } else {
-                    alert(`Failed to kill processes: ${data.message}`);
+                    showToast(`Failed to kill processes: ${data.message}`, false);
                 }
             })
             .catch(error => {
-                console.error('Error killing processes:', error);
-                alert(`Error killing processes: ${error.message || 'Unknown error.'}`);
+                showToast(`Error killing processes: ${error.message || 'Unknown error.'}`, false);
             });
     }
-
 
     function mountPool(poolGroupId) {
         fetch(`/Drive?handler=MountPool&poolGroupId=${poolGroupId}`, {
@@ -406,15 +405,14 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(`Pool mounted successfully.`);
-                    location.reload();
+                    // Use flag-based reload
+                    showToast(`Pool mounted successfully.`, true, true);
                 } else {
-                    alert(`Failed to mount pool: ${data.message}`);
+                    showToast(`Failed to mount pool: ${data.message}`, false);
                 }
             })
             .catch(error => {
-                console.error('Error mounting pool:', error);
-                alert(`Error mounting pool: ${error}`);
+                showToast(`Error mounting pool: ${error}`, false);
             });
     }
 
@@ -431,12 +429,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     // Display the output in a modal
                     showInspectModal(data.output);
                 } else {
-                    alert(`Failed to inspect pool: ${data.message}`);
+                    showToast(`Failed to inspect pool: ${data.message}`, false);
                 }
             })
             .catch(error => {
-                console.error('Error inspecting pool:', error);
-                alert(`Error inspecting pool: ${error}`);
+                showToast(`Error inspecting pool: ${error}`, false);
             });
     }
 

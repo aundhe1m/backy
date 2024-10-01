@@ -21,11 +21,11 @@ function loadSchedules() {
             if (data.success) {
                 renderSchedules(data.schedules);
             } else {
-                alert('Error loading schedules.');
+                showToast('Error loading schedules.', false);
             }
         },
         error: function () {
-            alert('Error loading schedules.');
+            showToast('Error loading schedules.', false);
         }
     });
 }
