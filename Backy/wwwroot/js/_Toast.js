@@ -1,7 +1,10 @@
 function showToast(message, isSuccess, reload = false) {
-    // If the toast requires a reload, store the message and status in sessionStorage
     if (reload) {
+        // Store the message and status in sessionStorage
         sessionStorage.setItem('toastMessage', JSON.stringify({ message, isSuccess }));
+        // Immediately reload the page
+        location.reload();
+        return; // Do not proceed to show the toast on the current page
     }
 
     // Create or select the toast container
@@ -10,16 +13,14 @@ function showToast(message, isSuccess, reload = false) {
     // Create the toast element
     const toastElement = document.createElement('div');
     toastElement.classList.add('toast', 'align-items-center', 'text-white', 'border-0');
-    toastElement.role = 'alert';
-    toastElement.ariaLive = 'assertive';
-    toastElement.ariaAtomic = 'true';
+    toastElement.setAttribute('role', 'alert');
+    toastElement.setAttribute('aria-live', 'assertive');
+    toastElement.setAttribute('aria-atomic', 'true');
 
-    if (isSuccess) {
-        toastElement.classList.add('bg-success');
-    } else {
-        toastElement.classList.add('bg-danger');
-    }
+    // Add appropriate background based on success status
+    toastElement.classList.add(isSuccess ? 'bg-success' : 'bg-danger');
 
+    // Toast HTML structure
     toastElement.innerHTML = `
         <div class="d-flex">
             <div class="toast-body">
@@ -33,15 +34,8 @@ function showToast(message, isSuccess, reload = false) {
     toastContainer.appendChild(toastElement);
 
     // Initialize and show the toast
-    const toast = new bootstrap.Toast(toastElement, { delay: 3000 }); // 3-second delay
+    const toast = new bootstrap.Toast(toastElement, { delay: 10000 });
     toast.show();
-
-    // Automatically reload the page after the toast is hidden if required
-    if (reload) {
-        toastElement.addEventListener('hidden.bs.toast', function () {
-            location.reload();
-        });
-    }
 
     // If the toast indicates a failure, log the error
     if (!isSuccess) {
@@ -61,7 +55,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const toastData = sessionStorage.getItem('toastMessage');
     if (toastData) {
         const { message, isSuccess } = JSON.parse(toastData);
+        // Display the toast without reloading
         showToast(message, isSuccess);
+        // Remove the toast message from sessionStorage
         sessionStorage.removeItem('toastMessage');
     }
 });
