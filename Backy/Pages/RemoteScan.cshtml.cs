@@ -1,3 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Backy.Data;
 using Backy.Models;
 using Backy.Services;
@@ -6,13 +13,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Renci.SshNet;
-using System.Text.Json;
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 
 namespace Backy.Pages
 {
@@ -27,7 +27,8 @@ namespace Backy.Pages
             ApplicationDbContext context,
             IDataProtectionProvider provider,
             ILogger<RemoteScanModel> logger,
-            IIndexingQueue indexingQueue)
+            IIndexingQueue indexingQueue
+        )
         {
             _context = context;
             _protector = provider.CreateProtector("Backy.RemoteScan");
@@ -35,7 +36,8 @@ namespace Backy.Pages
             _indexingQueue = indexingQueue;
         }
 
-        public IList<StorageSourceViewModel> StorageSources { get; set; } = new List<StorageSourceViewModel>();
+        public IList<StorageSourceViewModel> StorageSources { get; set; } =
+            new List<StorageSourceViewModel>();
 
         [BindProperty]
         public RemoteScan RemoteScan { get; set; } = new RemoteScan();
@@ -49,16 +51,21 @@ namespace Backy.Pages
                 var model = new StorageSourceViewModel
                 {
                     RemoteScan = storage,
-                    IsIndexing = storage.IsIndexing
+                    IsIndexing = storage.IsIndexing,
                 };
 
                 // Calculate backup stats
-                var files = await _context.Files.Where(f => f.RemoteScanId == storage.Id).ToListAsync();
+                var files = await _context
+                    .Files.Where(f => f.RemoteScanId == storage.Id)
+                    .ToListAsync();
                 model.TotalSize = files.Sum(f => f.Size);
                 model.TotalBackupSize = files.Where(f => f.BackupExists).Sum(f => f.Size);
                 model.TotalFiles = files.Count;
                 model.BackupCount = files.Count(f => f.BackupExists);
-                model.BackupPercentage = model.TotalFiles > 0 ? Math.Round((double)model.BackupCount / model.TotalFiles * 100, 2) : 0;
+                model.BackupPercentage =
+                    model.TotalFiles > 0
+                        ? Math.Round((double)model.BackupCount / model.TotalFiles * 100, 2)
+                        : 0;
 
                 StorageSources.Add(model);
             }
@@ -78,19 +85,28 @@ namespace Backy.Pages
             {
                 if (string.IsNullOrWhiteSpace(RemoteScan.Password))
                 {
-                    ModelState.AddModelError(nameof(RemoteScan.Password), "Password is required when using Password authentication.");
+                    ModelState.AddModelError(
+                        nameof(RemoteScan.Password),
+                        "Password is required when using Password authentication."
+                    );
                 }
             }
             else if (RemoteScan.AuthenticationMethod == "SSH Key")
             {
                 if (string.IsNullOrWhiteSpace(RemoteScan.SSHKey))
                 {
-                    ModelState.AddModelError(nameof(RemoteScan.SSHKey), "SSH Key is required when using SSH Key authentication.");
+                    ModelState.AddModelError(
+                        nameof(RemoteScan.SSHKey),
+                        "SSH Key is required when using SSH Key authentication."
+                    );
                 }
             }
             else
             {
-                ModelState.AddModelError(nameof(RemoteScan.AuthenticationMethod), "Invalid Authentication Method.");
+                ModelState.AddModelError(
+                    nameof(RemoteScan.AuthenticationMethod),
+                    "Invalid Authentication Method."
+                );
             }
 
             if (!ModelState.IsValid)
@@ -100,11 +116,17 @@ namespace Backy.Pages
             }
 
             // Encrypt sensitive data before saving
-            if (RemoteScan.AuthenticationMethod == "Password" && !string.IsNullOrEmpty(RemoteScan.Password))
+            if (
+                RemoteScan.AuthenticationMethod == "Password"
+                && !string.IsNullOrEmpty(RemoteScan.Password)
+            )
             {
                 RemoteScan.Password = Encrypt(RemoteScan.Password);
             }
-            else if (RemoteScan.AuthenticationMethod == "SSH Key" && !string.IsNullOrEmpty(RemoteScan.SSHKey))
+            else if (
+                RemoteScan.AuthenticationMethod == "SSH Key"
+                && !string.IsNullOrEmpty(RemoteScan.SSHKey)
+            )
             {
                 RemoteScan.SSHKey = Encrypt(RemoteScan.SSHKey);
             }
@@ -113,7 +135,10 @@ namespace Backy.Pages
             bool isValid = ValidateConnection(RemoteScan);
             if (!isValid)
             {
-                ModelState.AddModelError(string.Empty, "Unable to connect with the provided details.");
+                ModelState.AddModelError(
+                    string.Empty,
+                    "Unable to connect with the provided details."
+                );
                 await OnGetAsync();
                 return Page();
             }
@@ -123,7 +148,12 @@ namespace Backy.Pages
             await _context.SaveChangesAsync();
 
             // Check and update storage status
-            await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(RemoteScan, _context, _protector, _logger);
+            await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(
+                RemoteScan,
+                _context,
+                _protector,
+                _logger
+            );
 
             // Enqueue indexing for the new storage source without blocking the frontend
             _indexingQueue.EnqueueIndexing(RemoteScan.Id);
@@ -164,7 +194,10 @@ namespace Backy.Pages
             }
             else
             {
-                ModelState.AddModelError(nameof(RemoteScan.AuthenticationMethod), "Invalid Authentication Method.");
+                ModelState.AddModelError(
+                    nameof(RemoteScan.AuthenticationMethod),
+                    "Invalid Authentication Method."
+                );
             }
 
             if (!ModelState.IsValid)
@@ -201,7 +234,10 @@ namespace Backy.Pages
             bool isValid = ValidateConnection(existingStorage);
             if (!isValid)
             {
-                ModelState.AddModelError(string.Empty, "Unable to connect with the provided details.");
+                ModelState.AddModelError(
+                    string.Empty,
+                    "Unable to connect with the provided details."
+                );
                 await OnGetAsync();
                 return Page();
             }
@@ -209,7 +245,12 @@ namespace Backy.Pages
             try
             {
                 await _context.SaveChangesAsync();
-                await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(existingStorage, _context, _protector, _logger);
+                await StorageStatusChecker.CheckAndUpdateStorageStatusAsync(
+                    existingStorage,
+                    _context,
+                    _protector,
+                    _logger
+                );
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -264,8 +305,8 @@ namespace Backy.Pages
 
             foreach (var storage in remoteScans)
             {
-                var files = await _context.Files
-                    .Where(f => f.RemoteScanId == storage.Id)
+                var files = await _context
+                    .Files.Where(f => f.RemoteScanId == storage.Id)
                     .ToListAsync();
 
                 var dto = new StorageSourceDto
@@ -280,7 +321,13 @@ namespace Backy.Pages
                     TotalBackupSize = files.Where(f => f.BackupExists).Sum(f => f.Size),
                     TotalFiles = files.Count,
                     BackupCount = files.Count(f => f.BackupExists),
-                    BackupPercentage = files.Count > 0 ? Math.Round((double)files.Count(f => f.BackupExists) / files.Count * 100, 2) : 0
+                    BackupPercentage =
+                        files.Count > 0
+                            ? Math.Round(
+                                (double)files.Count(f => f.BackupExists) / files.Count * 100,
+                                2
+                            )
+                            : 0,
                 };
 
                 storageDtos.Add(dto);
@@ -297,31 +344,33 @@ namespace Backy.Pages
                 return new JsonResult(new { success = false, message = "Storage not found." });
             }
 
-            return new JsonResult(new
-            {
-                success = true,
-                id = storage.Id,
-                name = storage.Name,
-                host = storage.Host,
-                port = storage.Port,
-                username = storage.Username,
-                authenticationMethod = storage.AuthenticationMethod,
-                remotePath = storage.RemotePath,
-                passwordSet = !string.IsNullOrEmpty(storage.Password),
-                sshKeySet = !string.IsNullOrEmpty(storage.SSHKey)
-            });
+            return new JsonResult(
+                new
+                {
+                    success = true,
+                    id = storage.Id,
+                    name = storage.Name,
+                    host = storage.Host,
+                    port = storage.Port,
+                    username = storage.Username,
+                    authenticationMethod = storage.AuthenticationMethod,
+                    remotePath = storage.RemotePath,
+                    passwordSet = !string.IsNullOrEmpty(storage.Password),
+                    sshKeySet = !string.IsNullOrEmpty(storage.SSHKey),
+                }
+            );
         }
 
         // Handler to get index schedules
         public async Task<JsonResult> OnGetGetIndexSchedulesAsync(Guid id)
         {
-            var schedules = await _context.IndexSchedules
-                .Where(s => s.RemoteScanId == id)
+            var schedules = await _context
+                .IndexSchedules.Where(s => s.RemoteScanId == id)
                 .GroupBy(s => s.TimeOfDayMinutes)
                 .Select(g => new
                 {
                     Time = $"{g.Key / 60:D2}:{g.Key % 60:D2}",
-                    Days = g.Select(s => s.DayOfWeek).ToList()
+                    Days = g.Select(s => s.DayOfWeek).ToList(),
                 })
                 .ToListAsync();
 
@@ -343,7 +392,9 @@ namespace Backy.Pages
                     return new JsonResult(new { success = false, message = "Invalid data." });
                 }
 
-                var existingSchedules = _context.IndexSchedules.Where(s => s.RemoteScanId == scheduleData.StorageId);
+                var existingSchedules = _context.IndexSchedules.Where(s =>
+                    s.RemoteScanId == scheduleData.StorageId
+                );
                 _context.IndexSchedules.RemoveRange(existingSchedules);
 
                 foreach (var schedule in scheduleData.Schedules)
@@ -351,9 +402,11 @@ namespace Backy.Pages
                     foreach (var day in schedule.Days)
                     {
                         var timeParts = schedule.Time.Split(':');
-                        if (timeParts.Length != 2 ||
-                            !int.TryParse(timeParts[0], out int hours) ||
-                            !int.TryParse(timeParts[1], out int minutes))
+                        if (
+                            timeParts.Length != 2
+                            || !int.TryParse(timeParts[0], out int hours)
+                            || !int.TryParse(timeParts[1], out int minutes)
+                        )
                         {
                             continue; // Skip invalid time formats
                         }
@@ -364,7 +417,7 @@ namespace Backy.Pages
                         {
                             RemoteScanId = scheduleData.StorageId,
                             DayOfWeek = day,
-                            TimeOfDayMinutes = totalMinutes
+                            TimeOfDayMinutes = totalMinutes,
                         };
                         _context.IndexSchedules.Add(indexSchedule);
                     }
@@ -381,20 +434,37 @@ namespace Backy.Pages
             }
         }
 
-        public async Task<JsonResult> OnGetFileExplorerAsync(Guid storageId, string? path, CancellationToken cancellationToken)
+        public async Task<JsonResult> OnGetFileExplorerAsync(
+            Guid storageId,
+            string? path,
+            CancellationToken cancellationToken
+        )
         {
-            _logger.LogInformation("OnGetFileExplorerAsync called with StorageId: {StorageId}, Path: {Path}", storageId, path);
+            _logger.LogInformation(
+                "OnGetFileExplorerAsync called with StorageId: {StorageId}, Path: {Path}",
+                storageId,
+                path
+            );
 
             // Fetch the pre-generated storageContent from the database
-            var storageContentJson = await _context.StorageContents
-                .Where(sc => sc.RemoteScanId == storageId)
+            var storageContentJson = await _context
+                .StorageContents.Where(sc => sc.RemoteScanId == storageId)
                 .Select(sc => sc.ContentJson)
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (storageContentJson == null)
             {
-                _logger.LogWarning("Storage content not found for storageId: {StorageId}", storageId);
-                return new JsonResult(new { success = false, message = "Storage content not available. Please index the storage first." });
+                _logger.LogWarning(
+                    "Storage content not found for storageId: {StorageId}",
+                    storageId
+                );
+                return new JsonResult(
+                    new
+                    {
+                        success = false,
+                        message = "Storage content not available. Please index the storage first.",
+                    }
+                );
             }
 
             // Deserialize the storageContent JSON
@@ -407,13 +477,12 @@ namespace Backy.Pages
                 nodeToReturn = FindNodeByPath(rootItem, path) ?? rootItem;
             }
 
-            var data = new
-            {
-                success = true,
-                storageContent = nodeToReturn
-            };
+            var data = new { success = true, storageContent = nodeToReturn };
 
-            _logger.LogInformation("Returning stored storageContent for storageId: {StorageId}", storageId);
+            _logger.LogInformation(
+                "Returning stored storageContent for storageId: {StorageId}",
+                storageId
+            );
             return new JsonResult(data);
         }
 
@@ -441,14 +510,20 @@ namespace Backy.Pages
             string remotePath,
             StorageContentItem parentNode,
             Guid storageId,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken
+        )
         {
             _logger.LogInformation("Traversing remote path: {RemotePath}", remotePath);
 
-            var directories = client.ListDirectory(remotePath)
+            var directories = client
+                .ListDirectory(remotePath)
                 .Where(d => d.IsDirectory && d.Name != "." && d.Name != "..");
 
-            _logger.LogInformation("Found {DirectoryCount} directories in path: {RemotePath}", directories.Count(), remotePath);
+            _logger.LogInformation(
+                "Found {DirectoryCount} directories in path: {RemotePath}",
+                directories.Count(),
+                remotePath
+            );
 
             foreach (var dir in directories)
             {
@@ -466,30 +541,44 @@ namespace Backy.Pages
                     Name = dir.Name,
                     FullPath = dirFullPath,
                     Type = "directory",
-                    Children = new List<StorageContentItem>()
+                    Children = new List<StorageContentItem>(),
                 };
 
                 parentNode.Children.Add(dirNode);
 
                 // Recursively traverse subdirectories
-                await TraverseAndBuildStorageContent(client, dirFullPath, dirNode, storageId, cancellationToken);
+                await TraverseAndBuildStorageContent(
+                    client,
+                    dirFullPath,
+                    dirNode,
+                    storageId,
+                    cancellationToken
+                );
             }
 
             // Fetch files directly under the current remotePath
-            var filesDirect = await _context.Files
-                .Where(f => f.RemoteScanId == storageId
-                            && f.FullPath.StartsWith(remotePath)
-                            && !f.IsDeleted)
+            var filesDirect = await _context
+                .Files.Where(f =>
+                    f.RemoteScanId == storageId && f.FullPath.StartsWith(remotePath) && !f.IsDeleted
+                )
                 .ToListAsync(cancellationToken);
 
-            _logger.LogInformation("Retrieved {FileCount} files directly under path: {RemotePath}", filesDirect.Count, remotePath);
+            _logger.LogInformation(
+                "Retrieved {FileCount} files directly under path: {RemotePath}",
+                filesDirect.Count,
+                remotePath
+            );
 
             // Filter in-memory for files directly under remotePath
             var directFiles = filesDirect
                 .Where(f => GetDirectoryPath(f.FullPath) == remotePath)
                 .ToList();
 
-            _logger.LogInformation("Filtered {DirectFileCount} direct files under path: {RemotePath}", directFiles.Count, remotePath);
+            _logger.LogInformation(
+                "Filtered {DirectFileCount} direct files under path: {RemotePath}",
+                directFiles.Count,
+                remotePath
+            );
 
             // Add files as children to the current node
             foreach (var file in directFiles)
@@ -501,30 +590,45 @@ namespace Backy.Pages
                     FullPath = file.FullPath,
                     Type = "file",
                     BackupExists = file.BackupExists,
-                    Children = new List<StorageContentItem>() // Files have no children
+                    Children =
+                        new List<StorageContentItem>() // Files have no children
+                    ,
                 };
                 parentNode.Children.Add(fileNode);
             }
 
             // Calculate total size for the current directory
             parentNode.Size = parentNode.Children.Sum(c => c.Type == "file" ? c.Size : c.Size);
-            _logger.LogInformation("Calculated total size for path {RemotePath}: {TotalSize}", remotePath, parentNode.Size);
+            _logger.LogInformation(
+                "Calculated total size for path {RemotePath}: {TotalSize}",
+                remotePath,
+                parentNode.Size
+            );
 
             // Determine backupExists for the current directory
             if (parentNode.Children.Any(c => c.Type == "file" && !c.BackupExists))
             {
                 parentNode.BackupExists = false;
-                _logger.LogInformation("BackupExists set to false for path: {RemotePath}", remotePath);
+                _logger.LogInformation(
+                    "BackupExists set to false for path: {RemotePath}",
+                    remotePath
+                );
             }
             else if (parentNode.Children.Any(c => c.Type == "file"))
             {
                 parentNode.BackupExists = true;
-                _logger.LogInformation("BackupExists set to true for path: {RemotePath}", remotePath);
+                _logger.LogInformation(
+                    "BackupExists set to true for path: {RemotePath}",
+                    remotePath
+                );
             }
             else
             {
                 parentNode.BackupExists = false; // No files in directory
-                _logger.LogInformation("BackupExists set to false (no files) for path: {RemotePath}", remotePath);
+                _logger.LogInformation(
+                    "BackupExists set to false (no files) for path: {RemotePath}",
+                    remotePath
+                );
             }
         }
 
@@ -568,7 +672,11 @@ namespace Backy.Pages
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Connection validation failed for storage: {Name}", storage.Name);
+                _logger.LogError(
+                    ex,
+                    "Connection validation failed for storage: {Name}",
+                    storage.Name
+                );
                 return false;
             }
         }
@@ -577,15 +685,27 @@ namespace Backy.Pages
         {
             if (storage.AuthenticationMethod == "Password")
             {
-                return new SftpClient(storage.Host, storage.Port, storage.Username, Decrypt(storage.Password));
+                return new SftpClient(
+                    storage.Host,
+                    storage.Port,
+                    storage.Username,
+                    Decrypt(storage.Password)
+                );
             }
             else
             {
-                using var keyStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Decrypt(storage.SSHKey)));
+                using var keyStream = new MemoryStream(
+                    System.Text.Encoding.UTF8.GetBytes(Decrypt(storage.SSHKey))
+                );
                 var keyFile = new PrivateKeyFile(keyStream);
                 var keyFiles = new[] { keyFile };
                 var authMethod = new PrivateKeyAuthenticationMethod(storage.Username, keyFiles);
-                var connectionInfo = new Renci.SshNet.ConnectionInfo(storage.Host, storage.Port, storage.Username, authMethod);
+                var connectionInfo = new Renci.SshNet.ConnectionInfo(
+                    storage.Host,
+                    storage.Port,
+                    storage.Username,
+                    authMethod
+                );
                 return new SftpClient(connectionInfo);
             }
         }

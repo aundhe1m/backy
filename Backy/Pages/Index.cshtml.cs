@@ -11,7 +11,5 @@ public class HomeModel : PageModel
         _logger = logger;
     }
 
-    public void OnGet()
-    {
-    }
+    public void OnGet() { }
 }

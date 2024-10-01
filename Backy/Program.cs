@@ -16,13 +16,18 @@ public class Program
         builder.Services.AddRazorPages();
 
         // Configure MySQL Database Context
-        var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        var connectionString =
+            builder.Configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException(
+                "Connection string 'DefaultConnection' not found."
+            );
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(connectionString));
-
+            options.UseNpgsql(connectionString)
+        );
 
         // Add Data Protection Services
-        builder.Services.AddDataProtection()
+        builder
+            .Services.AddDataProtection()
             .PersistKeysToFileSystem(new DirectoryInfo("/mnt/backy/backy-keys/")); // Ensure this directory exists and is accessible
 
         // Register the hosted service

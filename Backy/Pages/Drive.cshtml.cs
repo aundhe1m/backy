@@ -1,13 +1,13 @@
-using Backy.Data;
-using Backy.Models;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Backy.Data;
+using Backy.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace Backy.Pages
 {
@@ -41,7 +41,10 @@ namespace Backy.Pages
             _logger.LogDebug("Organizing drives...");
 
             var activeDrives = UpdateActiveDrives();
-            PoolGroups = _context.PoolGroups.Include(pg => pg.Drives).ThenInclude(d => d.Partitions).ToList();
+            PoolGroups = _context
+                .PoolGroups.Include(pg => pg.Drives)
+                .ThenInclude(d => d.Partitions)
+                .ToList();
             ProtectedDrives = _context.ProtectedDrives.ToList();
 
             // Update connected status and properties for drives in pools
@@ -84,11 +87,20 @@ namespace Backy.Pages
             }
 
             // NewDrives: drives that are active but not in any pool and not protected
-            var pooledDriveSerials = PoolGroups.SelectMany(p => p.Drives).Select(d => d.Serial).ToHashSet();
+            var pooledDriveSerials = PoolGroups
+                .SelectMany(p => p.Drives)
+                .Select(d => d.Serial)
+                .ToHashSet();
             var protectedSerials = ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
-            NewDrives = activeDrives.Where(d => !pooledDriveSerials.Contains(d.Serial) && !protectedSerials.Contains(d.Serial)).ToList();
+            NewDrives = activeDrives
+                .Where(d =>
+                    !pooledDriveSerials.Contains(d.Serial) && !protectedSerials.Contains(d.Serial)
+                )
+                .ToList();
 
-            _logger.LogDebug($"Drives organized. PoolGroups: {PoolGroups.Count}, NewDrives: {NewDrives.Count}");
+            _logger.LogDebug(
+                $"Drives organized. PoolGroups: {PoolGroups.Count}, NewDrives: {NewDrives.Count}"
+            );
         }
 
         private List<Drive> UpdateActiveDrives()
@@ -104,11 +116,12 @@ namespace Backy.Pages
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = "bash",
-                        Arguments = $"-c \"lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL,FSTYPE,PATH,ID-LINK\"",
+                        Arguments =
+                            $"-c \"lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL,FSTYPE,PATH,ID-LINK\"",
                         RedirectStandardOutput = true,
                         UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
+                        CreateNoWindow = true,
+                    },
                 };
                 process.Start();
                 string jsonOutput = process.StandardOutput.ReadToEnd();
@@ -122,7 +135,8 @@ namespace Backy.Pages
                     foreach (var device in lsblkOutput.Blockdevices)
                     {
                         // Skip sda and its children
-                        if (device.Name == "sda") continue;
+                        if (device.Name == "sda")
+                            continue;
 
                         if (device.Type == "disk")
                         {
@@ -134,7 +148,9 @@ namespace Backy.Pages
                                 Model = device.Model ?? "Unknown Model",
                                 IsConnected = true,
                                 Partitions = new List<PartitionInfo>(),
-                                IdLink = !string.IsNullOrEmpty(device.IdLink) ? $"/dev/disk/by-id/{device.IdLink}" : device.Path ?? string.Empty
+                                IdLink = !string.IsNullOrEmpty(device.IdLink)
+                                    ? $"/dev/disk/by-id/{device.IdLink}"
+                                    : device.Path ?? string.Empty,
                             };
 
                             // If the disk has partitions
@@ -148,13 +164,15 @@ namespace Backy.Pages
                                         UUID = partition.Uuid ?? "No UUID",
                                         Fstype = partition.Fstype ?? "Unknown",
                                         MountPoint = partition.Mountpoint ?? "Not Mounted",
-                                        Size = partition.Size ?? 0
+                                        Size = partition.Size ?? 0,
                                     };
 
                                     // Update used space if mounted
                                     if (!string.IsNullOrEmpty(partition.Mountpoint))
                                     {
-                                        partitionData.UsedSpace = GetUsedSpace(partition.Mountpoint);
+                                        partitionData.UsedSpace = GetUsedSpace(
+                                            partition.Mountpoint
+                                        );
                                         DriveData.IsMounted = true;
                                     }
 
@@ -174,10 +192,15 @@ namespace Backy.Pages
                             }
 
                             // Use disk UUID if available
-                            DriveData.UUID = device.Uuid ?? DriveData.Partitions.FirstOrDefault()?.UUID ?? "No UUID";
+                            DriveData.UUID =
+                                device.Uuid
+                                ?? DriveData.Partitions.FirstOrDefault()?.UUID
+                                ?? "No UUID";
 
                             activeDrives.Add(DriveData);
-                            _logger.LogDebug($"Active Drive added: {JsonSerializer.Serialize(DriveData)}");
+                            _logger.LogDebug(
+                                $"Active Drive added: {JsonSerializer.Serialize(DriveData)}"
+                            );
                         }
                     }
                 }
@@ -202,8 +225,8 @@ namespace Backy.Pages
                         Arguments = $"-c \"df -B1 | grep {mountpoint} | awk '{{print $3}}'\"",
                         RedirectStandardOutput = true,
                         UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
+                        CreateNoWindow = true,
+                    },
                 };
                 process.Start();
                 string result = process.StandardOutput.ReadToEnd().Trim();
@@ -213,7 +236,9 @@ namespace Backy.Pages
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error getting used space for mountpoint {mountpoint}: {ex.Message}");
+                _logger.LogError(
+                    $"Error getting used space for mountpoint {mountpoint}: {ex.Message}"
+                );
                 return 0;
             }
         }
@@ -237,11 +262,13 @@ namespace Backy.Pages
                     Vendor = activeDrive.Vendor,
                     Model = activeDrive.Model,
                     Name = activeDrive.Name,
-                    Label = activeDrive.Label
+                    Label = activeDrive.Label,
                 };
                 _context.ProtectedDrives.Add(Drive);
                 _context.SaveChanges();
-                return new JsonResult(new { success = true, message = "Drive protected successfully." });
+                return new JsonResult(
+                    new { success = true, message = "Drive protected successfully." }
+                );
             }
             return BadRequest(new { success = false, message = "Drive is already protected." });
         }
@@ -254,9 +281,13 @@ namespace Backy.Pages
             {
                 _context.ProtectedDrives.Remove(Drive);
                 _context.SaveChanges();
-                return new JsonResult(new { success = true, message = "Drive unprotected successfully." });
+                return new JsonResult(
+                    new { success = true, message = "Drive unprotected successfully." }
+                );
             }
-            return BadRequest(new { success = false, message = "Drive not found in protected list." });
+            return BadRequest(
+                new { success = false, message = "Drive not found in protected list." }
+            );
         }
 
         // Implement OnPostCreatePool to use mdadm with /dev/disk/by-id
@@ -267,26 +298,47 @@ namespace Backy.Pages
             string requestBody = await new StreamReader(Request.Body).ReadToEndAsync();
             var request = JsonSerializer.Deserialize<CreatePoolRequest>(requestBody);
 
-            if (request == null || string.IsNullOrEmpty(request.PoolLabel) || request.DriveSerials == null || !request.DriveSerials.Any())
+            if (
+                request == null
+                || string.IsNullOrEmpty(request.PoolLabel)
+                || request.DriveSerials == null
+                || request.DriveSerials.Count == 0
+            )
             {
-                return BadRequest(new { success = false, message = "Pool Label and at least one drive must be selected" });
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = "Pool Label and at least one drive must be selected",
+                    }
+                );
             }
 
-            _logger.LogInformation($"Creating pool with label: {request.PoolLabel} and drives: {string.Join(",", request.DriveSerials)}");
+            _logger.LogInformation(
+                $"Creating pool with label: {request.PoolLabel} and drives: {string.Join(",", request.DriveSerials)}"
+            );
 
             var activeDrives = UpdateActiveDrives();
             var Drives = activeDrives.Where(d => request.DriveSerials.Contains(d.Serial)).ToList();
 
             if (!Drives.Any())
             {
-                return BadRequest(new { success = false, message = "No active drives found matching the provided serials." });
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = "No active drives found matching the provided serials.",
+                    }
+                );
             }
 
             // Safety check to prevent operating on protected drives
             var protectedSerials = _context.ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
             if (Drives.Any(d => protectedSerials.Contains(d.Serial)))
             {
-                return BadRequest(new { success = false, message = "One or more selected drives are protected." });
+                return BadRequest(
+                    new { success = false, message = "One or more selected drives are protected." }
+                );
             }
 
             using var transaction = await _context.Database.BeginTransactionAsync();
@@ -297,7 +349,7 @@ namespace Backy.Pages
                 var newPoolGroup = new PoolGroup
                 {
                     GroupLabel = request.PoolLabel,
-                    Drives = new List<Drive>()
+                    Drives = new List<Drive>(),
                 };
                 _context.PoolGroups.Add(newPoolGroup);
                 await _context.SaveChangesAsync();
@@ -320,7 +372,7 @@ namespace Backy.Pages
                             IsConnected = true,
                             IdLink = Drive.IdLink,
                             Partitions = Drive.Partitions,
-                            PoolGroup = newPoolGroup
+                            PoolGroup = newPoolGroup,
                         };
                         _context.Drives.Add(dbDrive);
                     }
@@ -339,7 +391,8 @@ namespace Backy.Pages
                 var commandOutputs = new List<string>();
 
                 // Build mdadm command
-                string mdadmCommand = $"mdadm --create /dev/md{poolGroupId} --level=1 --raid-devices={Drives.Count} ";
+                string mdadmCommand =
+                    $"mdadm --create /dev/md{poolGroupId} --level=1 --raid-devices={Drives.Count} ";
                 mdadmCommand += string.Join(" ", Drives.Select(d => d.IdLink));
                 mdadmCommand += " --run --force";
 
@@ -347,7 +400,14 @@ namespace Backy.Pages
                 if (!mdadmResult.success)
                 {
                     await transaction.RollbackAsync();
-                    return BadRequest(new { success = false, message = mdadmResult.message, outputs = commandOutputs });
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = mdadmResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
                 }
 
                 // Format and mount the md device
@@ -357,19 +417,34 @@ namespace Backy.Pages
                 {
                     ExecuteShellCommand($"mdadm --stop /dev/md{poolGroupId}", commandOutputs);
                     await transaction.RollbackAsync();
-                    return BadRequest(new { success = false, message = mkfsResult.message, outputs = commandOutputs });
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = mkfsResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
                 }
 
                 // Mount the md device
                 string mountPath = $"/mnt/backy/md{poolGroupId}";
-                string mountCommand = $"mkdir -p {mountPath} && mount /dev/md{poolGroupId} {mountPath}";
+                string mountCommand =
+                    $"mkdir -p {mountPath} && mount /dev/md{poolGroupId} {mountPath}";
                 var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
                 if (!mountResult.success)
                 {
                     ExecuteShellCommand($"umount {mountPath}", commandOutputs);
                     ExecuteShellCommand($"mdadm --stop /dev/md{poolGroupId}", commandOutputs);
                     await transaction.RollbackAsync();
-                    return BadRequest(new { success = false, message = mountResult.message, outputs = commandOutputs });
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = mountResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
                 }
 
                 // Update MountPath
@@ -379,17 +454,29 @@ namespace Backy.Pages
                 // Commit transaction
                 await transaction.CommitAsync();
 
-                return new JsonResult(new { success = true, message = $"Pool '{request.PoolLabel}' created successfully.", outputs = commandOutputs });
+                return new JsonResult(
+                    new
+                    {
+                        success = true,
+                        message = $"Pool '{request.PoolLabel}' created successfully.",
+                        outputs = commandOutputs,
+                    }
+                );
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Error creating pool: {ex.Message}");
                 await transaction.RollbackAsync();
-                return BadRequest(new { success = false, message = "An error occurred while creating the pool." });
+                return BadRequest(
+                    new { success = false, message = "An error occurred while creating the pool." }
+                );
             }
         }
 
-        private (bool success, string message) ExecuteShellCommand(string command, List<string>? outputList = null)
+        private (bool success, string message) ExecuteShellCommand(
+            string command,
+            List<string>? outputList = null
+        )
         {
             outputList ??= new List<string>();
             string output;
@@ -409,7 +496,7 @@ namespace Backy.Pages
                         RedirectStandardError = true,
                         UseShellExecute = false,
                         CreateNoWindow = true,
-                    }
+                    },
                 };
 
                 process.Start();
@@ -433,7 +520,9 @@ namespace Backy.Pages
                 }
                 else
                 {
-                    _logger.LogWarning($"Command failed with exit code {exitCode}. Output: {output}");
+                    _logger.LogWarning(
+                        $"Command failed with exit code {exitCode}. Output: {output}"
+                    );
                     return (false, output.Trim());
                 }
             }
@@ -451,7 +540,9 @@ namespace Backy.Pages
         // In Drive.cshtml.cs
         public IActionResult OnPostUnmountPool(int poolGroupId)
         {
-            var poolGroup = _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+            var poolGroup = _context
+                .PoolGroups.Include(pg => pg.Drives)
+                .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
             if (poolGroup == null)
             {
                 return BadRequest(new { success = false, message = "Pool group not found." });
@@ -472,21 +563,37 @@ namespace Backy.Pages
                     {
                         // Parse lsof output into a list of processes
                         var processes = ParseLsofOutput(lsofResult.message);
-                        return new JsonResult(new
-                        {
-                            success = false,
-                            message = "Target is busy",
-                            processes = processes
-                        });
+                        return new JsonResult(
+                            new
+                            {
+                                success = false,
+                                message = "Target is busy",
+                                processes = processes,
+                            }
+                        );
                     }
                     else
                     {
-                        return BadRequest(new { success = false, message = "Failed to run lsof.", outputs = commandOutputs });
+                        return BadRequest(
+                            new
+                            {
+                                success = false,
+                                message = "Failed to run lsof.",
+                                outputs = commandOutputs,
+                            }
+                        );
                     }
                 }
                 else
                 {
-                    return BadRequest(new { success = false, message = unmountResult.message, outputs = commandOutputs });
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = unmountResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
                 }
             }
 
@@ -494,7 +601,14 @@ namespace Backy.Pages
             var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
             if (!stopResult.success)
             {
-                return BadRequest(new { success = false, message = stopResult.message, outputs = commandOutputs });
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = stopResult.message,
+                        outputs = commandOutputs,
+                    }
+                );
             }
 
             foreach (var drive in poolGroup.Drives)
@@ -507,25 +621,36 @@ namespace Backy.Pages
 
             _context.SaveChanges();
 
-            return new JsonResult(new { success = true, message = "Pool unmounted successfully.", outputs = commandOutputs });
+            return new JsonResult(
+                new
+                {
+                    success = true,
+                    message = "Pool unmounted successfully.",
+                    outputs = commandOutputs,
+                }
+            );
         }
 
         private List<ProcessInfo> ParseLsofOutput(string lsofOutput)
         {
             var processes = new List<ProcessInfo>();
             var lines = lsofOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            if (lines.Length < 2) return processes; // No processes found
+            if (lines.Length < 2)
+                return processes; // No processes found
 
             // The first line is the header
             var headers = Regex.Split(lines[0].Trim(), @"\s+");
             for (int i = 1; i < lines.Length; i++)
             {
                 var line = lines[i];
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
                 var columns = Regex.Split(line.Trim(), @"\s+");
                 if (columns.Length < headers.Length)
                 {
-                    _logger.LogWarning($"Line {i + 1} has fewer columns than headers. Skipping line.");
+                    _logger.LogWarning(
+                        $"Line {i + 1} has fewer columns than headers. Skipping line."
+                    );
                     continue; // Skip lines that don't have enough columns
                 }
 
@@ -546,7 +671,9 @@ namespace Backy.Pages
                                 }
                                 else
                                 {
-                                    _logger.LogWarning($"Invalid PID value '{columns[j]}' at line {i + 1}.");
+                                    _logger.LogWarning(
+                                        $"Invalid PID value '{columns[j]}' at line {i + 1}."
+                                    );
                                     process.PID = 0;
                                 }
                                 break;
@@ -563,7 +690,9 @@ namespace Backy.Pages
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError($"Error parsing column {j + 1} ('{headers[j]}') at line {i + 1}: {ex.Message}");
+                        _logger.LogError(
+                            $"Error parsing column {j + 1} ('{headers[j]}') at line {i + 1}: {ex.Message}"
+                        );
                     }
                 }
                 processes.Add(process);
@@ -590,9 +719,9 @@ namespace Backy.Pages
 
             int poolGroupId = request.PoolGroupId;
 
-            var poolGroup = _context.PoolGroups
-                                     .Include(pg => pg.Drives)
-                                     .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+            var poolGroup = _context
+                .PoolGroups.Include(pg => pg.Drives)
+                .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
             if (poolGroup == null)
             {
                 return BadRequest(new { success = false, message = "Pool group not found." });
@@ -607,7 +736,14 @@ namespace Backy.Pages
                 var killResult = ExecuteShellCommand(killCommand, commandOutputs);
                 if (!killResult.success)
                 {
-                    return BadRequest(new { success = false, message = $"Failed to kill process {pid}.", outputs = commandOutputs });
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = $"Failed to kill process {pid}.",
+                            outputs = commandOutputs,
+                        }
+                    );
                 }
             }
 
@@ -616,14 +752,28 @@ namespace Backy.Pages
             var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
             if (!unmountResult.success)
             {
-                return BadRequest(new { success = false, message = unmountResult.message, outputs = commandOutputs });
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = unmountResult.message,
+                        outputs = commandOutputs,
+                    }
+                );
             }
 
             string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
             var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
             if (!stopResult.success)
             {
-                return BadRequest(new { success = false, message = stopResult.message, outputs = commandOutputs });
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = stopResult.message,
+                        outputs = commandOutputs,
+                    }
+                );
             }
 
             foreach (var drive in poolGroup.Drives)
@@ -634,13 +784,22 @@ namespace Backy.Pages
             poolGroup.PoolEnabled = false;
             _context.SaveChanges();
 
-            return new JsonResult(new { success = true, message = "Pool unmounted successfully.", outputs = commandOutputs });
+            return new JsonResult(
+                new
+                {
+                    success = true,
+                    message = "Pool unmounted successfully.",
+                    outputs = commandOutputs,
+                }
+            );
         }
 
         // Implement OnPostMountPool to assemble mdadm and mount
         public IActionResult OnPostMountPool(int poolGroupId)
         {
-            var poolGroup = _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+            var poolGroup = _context
+                .PoolGroups.Include(pg => pg.Drives)
+                .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
             if (poolGroup == null)
             {
                 return BadRequest(new { success = false, message = "Pool group not found." });
@@ -652,7 +811,14 @@ namespace Backy.Pages
             var assembleResult = ExecuteShellCommand(assembleCommand, commandOutputs);
             if (!assembleResult.success)
             {
-                return BadRequest(new { success = false, message = assembleResult.message, outputs = commandOutputs });
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = assembleResult.message,
+                        outputs = commandOutputs,
+                    }
+                );
             }
 
             string mountPath = $"/mnt/backy/md{poolGroupId}";
@@ -660,7 +826,14 @@ namespace Backy.Pages
             var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
             if (!mountResult.success)
             {
-                return BadRequest(new { success = false, message = mountResult.message, outputs = commandOutputs });
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = mountResult.message,
+                        outputs = commandOutputs,
+                    }
+                );
             }
 
             foreach (var Drive in poolGroup.Drives)
@@ -671,7 +844,14 @@ namespace Backy.Pages
             poolGroup.PoolEnabled = true;
             _context.SaveChanges();
 
-            return new JsonResult(new { success = true, message = "Pool mounted successfully.", outputs = commandOutputs });
+            return new JsonResult(
+                new
+                {
+                    success = true,
+                    message = "Pool mounted successfully.",
+                    outputs = commandOutputs,
+                }
+            );
         }
 
         // Implement OnPostInspectPool to get mdadm --detail output
@@ -691,7 +871,9 @@ namespace Backy.Pages
             }
         }
 
-        private (long Size, long Used, long Available, string UsePercent) GetMountPointSize(string mountPoint)
+        private (long Size, long Used, long Available, string UsePercent) GetMountPointSize(
+            string mountPoint
+        )
         {
             try
             {
@@ -705,8 +887,8 @@ namespace Backy.Pages
                         RedirectStandardOutput = true,
                         RedirectStandardError = true, // Capture stderr for error handling
                         UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
+                        CreateNoWindow = true,
+                    },
                 };
                 process.Start();
 
@@ -769,7 +951,9 @@ namespace Backy.Pages
                 // Optionally, validate the mount point
                 if (!mountedOn.Equals(mountPoint, StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogWarning($"Mount point mismatch: expected {mountPoint}, got {mountedOn}");
+                    _logger.LogWarning(
+                        $"Mount point mismatch: expected {mountPoint}, got {mountedOn}"
+                    );
                     // Decide how to handle this scenario
                 }
 
@@ -781,7 +965,5 @@ namespace Backy.Pages
                 return (0, 0, 0, "0%");
             }
         }
-
     }
-
 }

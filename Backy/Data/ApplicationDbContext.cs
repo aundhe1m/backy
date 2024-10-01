@@ -15,25 +15,26 @@ namespace Backy.Data
         public DbSet<ProtectedDrive> ProtectedDrives { get; set; }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-            : base(options)
-        {
-        }
+            : base(options) { }
 
         // Configure model relationships and constraints
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<FileEntry>()
+            modelBuilder
+                .Entity<FileEntry>()
                 .HasIndex(f => new { f.RemoteScanId, f.FullPath })
                 .IsUnique()
                 .HasFilter("\"IsDeleted\" = false");
 
-            modelBuilder.Entity<PoolGroup>()
+            modelBuilder
+                .Entity<PoolGroup>()
                 .HasMany(pg => pg.Drives)
                 .WithOne(d => d.PoolGroup)
                 .HasForeignKey(d => d.PoolGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<Drive>()
+            modelBuilder
+                .Entity<Drive>()
                 .HasMany(d => d.Partitions)
                 .WithOne(p => p.Drive)
                 .HasForeignKey(p => p.DriveId)

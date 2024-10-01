@@ -35,7 +35,10 @@ namespace Backy.Models
         public string Status { get; set; } = "Offline"; // Online/Offline
 
         [Required(ErrorMessage = "Authentication Method is required.")]
-        [RegularExpression("Password|SSH Key", ErrorMessage = "Authentication Method must be either 'Password' or 'SSH Key'.")]
+        [RegularExpression(
+            "Password|SSH Key",
+            ErrorMessage = "Authentication Method must be either 'Password' or 'SSH Key'."
+        )]
         public string AuthenticationMethod { get; set; } = "Password"; // Password or SSH Key
 
         public bool IsIndexing { get; set; } = false;
