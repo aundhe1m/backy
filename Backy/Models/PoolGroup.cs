@@ -6,17 +6,23 @@ namespace Backy.Models
     public class PoolGroup
     {
         [Key]
-        public int PoolGroupId { get; set; }  // EF will make it the primary key
+        public int PoolGroupId { get; set; }
+
         public string GroupLabel { get; set; } = "Unnamed Group";
+
         public bool PoolEnabled { get; set; } = true;
+
         public bool AllDrivesConnected { get; set; } = true;
+
         public string MountPath { get; set; } = string.Empty;
 
-        // Updated properties
-        public long Size { get; set; } = 0;          // Total size in bytes
-        public long Used { get; set; } = 0;          // Used space in bytes
-        public long Available { get; set; } = 0;     // Available space in bytes
-        public string UsePercent { get; set; } = "0%"; // Usage percentage
+        public long Size { get; set; } = 0;
+
+        public long Used { get; set; } = 0;
+
+        public long Available { get; set; } = 0;
+
+        public string UsePercent { get; set; } = "0%";
 
         public List<Drive> Drives { get; set; } = new List<Drive>();
     }

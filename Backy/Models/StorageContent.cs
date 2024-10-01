@@ -12,7 +12,7 @@ namespace Backy.Models
         [ForeignKey("RemoteScanId")]
         public RemoteScan? RemoteScan { get; set; }
 
-        [Column(TypeName = "TEXT")] // Use appropriate type based on your database
+        [Column(TypeName = "TEXT")]
         public string ContentJson { get; set; } = string.Empty;
 
         public DateTimeOffset LastUpdated { get; set; }

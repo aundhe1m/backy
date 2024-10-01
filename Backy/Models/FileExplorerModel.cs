@@ -33,13 +33,14 @@ namespace Backy.Models
         public List<StorageContentItem> Children { get; set; } = new List<StorageContentItem>();
     }
 
-
-
     public class SearchResultItem
     {
-        public string Type { get; set; } = string.Empty; // "File" or "Directory"
+        public string Type { get; set; } = string.Empty;
+
         public string Name { get; set; } = string.Empty;
+
         public string FullPath { get; set; } = string.Empty;
+
         public string NavPath { get; set; } = string.Empty;
     }
 }
