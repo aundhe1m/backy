@@ -783,6 +783,127 @@ namespace Backy.Pages
             );
         }
 
+        // Handler for Removing PoolGroup
+        public IActionResult OnPostRemovePoolGroup(int poolGroupId)
+        {
+            var poolGroup = _context
+                .PoolGroups.Include(pg => pg.Drives)
+                .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+
+            if (poolGroup == null)
+            {
+                return BadRequest(new { success = false, message = "Pool group not found." });
+            }
+
+            if (!poolGroup.PoolEnabled)
+            {
+                // Pool is disabled; remove directly
+                _context.PoolGroups.Remove(poolGroup);
+                _context.SaveChanges();
+                return new JsonResult(
+                    new { success = true, message = "Pool group removed successfully." }
+                );
+            }
+            else
+            {
+                // Pool is enabled; need to unmount and remove
+                var commandOutputs = new List<string>();
+                string mountPoint = poolGroup.MountPath;
+
+                // Attempt to unmount
+                string unmountCommand = $"umount {mountPoint}";
+                var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
+
+                if (!unmountResult.success)
+                {
+                    if (unmountResult.message.Contains("target is busy"))
+                    {
+                        // Find processes using the mount point
+                        string lsofCommand = $"lsof +f -- {mountPoint}";
+                        var lsofResult = ExecuteShellCommand(lsofCommand, commandOutputs);
+
+                        if (lsofResult.success)
+                        {
+                            var processes = ParseLsofOutput(lsofResult.message);
+                            return new JsonResult(
+                                new
+                                {
+                                    success = false,
+                                    message = "Target is busy",
+                                    processes = processes,
+                                }
+                            );
+                        }
+                        else
+                        {
+                            return BadRequest(
+                                new
+                                {
+                                    success = false,
+                                    message = "Failed to run lsof.",
+                                    outputs = commandOutputs,
+                                }
+                            );
+                        }
+                    }
+                    else
+                    {
+                        return BadRequest(
+                            new
+                            {
+                                success = false,
+                                message = unmountResult.message,
+                                outputs = commandOutputs,
+                            }
+                        );
+                    }
+                }
+
+                // Stop the RAID array
+                string stopCommand = $"mdadm --stop /dev/md{poolGroup.PoolGroupId}";
+                var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
+
+                if (!stopResult.success)
+                {
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = stopResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
+                }
+
+                // Clean up drives by wiping filesystem signatures
+                foreach (var drive in poolGroup.Drives)
+                {
+                    string wipeCommand = $"wipefs -a {drive.IdLink}";
+                    var wipeResult = ExecuteShellCommand(wipeCommand, commandOutputs);
+
+                    if (!wipeResult.success)
+                    {
+                        return BadRequest(
+                            new
+                            {
+                                success = false,
+                                message = $"Failed to clean drive {drive.Serial}.",
+                                outputs = commandOutputs,
+                            }
+                        );
+                    }
+                }
+
+                // Remove the PoolGroup from the database
+                _context.PoolGroups.Remove(poolGroup);
+                _context.SaveChanges();
+
+                return new JsonResult(
+                    new { success = true, message = "Pool group removed successfully." }
+                );
+            }
+        }
+
         private List<ProcessInfo> ParseLsofOutput(string lsofOutput)
         {
             var processes = new List<ProcessInfo>();
@@ -899,51 +1020,125 @@ namespace Backy.Pages
                 }
             }
 
-            // Retry unmount and mdadm --stop
-            string unmountCommand = $"umount /mnt/backy/md{poolGroupId}";
-            var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
-            if (!unmountResult.success)
+            // After killing processes, perform actions based on Action
+            if (request.Action.Equals("UnmountPool", StringComparison.OrdinalIgnoreCase))
             {
-                return BadRequest(
-                    new
-                    {
-                        success = false,
-                        message = unmountResult.message,
-                        outputs = commandOutputs,
-                    }
-                );
-            }
-
-            string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
-            var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
-            if (!stopResult.success)
-            {
-                return BadRequest(
-                    new
-                    {
-                        success = false,
-                        message = stopResult.message,
-                        outputs = commandOutputs,
-                    }
-                );
-            }
-
-            foreach (var drive in poolGroup.Drives)
-            {
-                drive.IsMounted = false;
-            }
-
-            poolGroup.PoolEnabled = false;
-            _context.SaveChanges();
-
-            return new JsonResult(
-                new
+                // Retry unmount and mdadm --stop
+                string mountPoint = $"/mnt/backy/md{poolGroupId}";
+                string unmountCommand = $"umount {mountPoint}";
+                var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
+                if (!unmountResult.success)
                 {
-                    success = true,
-                    message = "Pool unmounted successfully.",
-                    outputs = commandOutputs,
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = unmountResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
                 }
-            );
+
+                string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
+                var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
+                if (!stopResult.success)
+                {
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = stopResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
+                }
+
+                // Update drive statuses and pool
+                foreach (var drive in poolGroup.Drives)
+                {
+                    drive.IsMounted = false;
+                }
+
+                poolGroup.PoolEnabled = false;
+                _context.SaveChanges();
+
+                return new JsonResult(
+                    new
+                    {
+                        success = true,
+                        message = "Pool unmounted successfully after killing processes.",
+                        outputs = commandOutputs,
+                    }
+                );
+            }
+            else if (request.Action.Equals("RemovePoolGroup", StringComparison.OrdinalIgnoreCase))
+            {
+                // Retry unmount and mdadm --stop
+                string mountPoint = poolGroup.MountPath;
+                string unmountCommand = $"umount {mountPoint}";
+                var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
+                if (!unmountResult.success)
+                {
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = unmountResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
+                }
+
+                string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
+                var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
+                if (!stopResult.success)
+                {
+                    return BadRequest(
+                        new
+                        {
+                            success = false,
+                            message = stopResult.message,
+                            outputs = commandOutputs,
+                        }
+                    );
+                }
+
+                // Wipe filesystem signatures
+                foreach (var drive in poolGroup.Drives)
+                {
+                    string wipeCommand = $"wipefs -a {drive.IdLink}";
+                    var wipeResult = ExecuteShellCommand(wipeCommand, commandOutputs);
+                    if (!wipeResult.success)
+                    {
+                        return BadRequest(
+                            new
+                            {
+                                success = false,
+                                message = $"Failed to clean drive {drive.Serial}.",
+                                outputs = commandOutputs,
+                            }
+                        );
+                    }
+                }
+
+                // Remove the PoolGroup from the database
+                _context.PoolGroups.Remove(poolGroup);
+                _context.SaveChanges();
+
+                return new JsonResult(
+                    new
+                    {
+                        success = true,
+                        message = "Pool group removed successfully after killing processes.",
+                    }
+                );
+            }
+            else
+            {
+                return BadRequest(
+                    new { success = false, message = "Unknown action for kill processes." }
+                );
+            }
         }
 
         // Implement OnPostMountPool to assemble mdadm and mount

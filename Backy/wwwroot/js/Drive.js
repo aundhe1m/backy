@@ -2,14 +2,17 @@ document.addEventListener('DOMContentLoaded', function () {
     // Variables to store selected drives for pool creation
     let selectedDrives = [];
 
+    let poolGroupIdToRemove = null;
+
     // Handle New Drive Cards
     const newDriveCards = document.querySelectorAll('.new-drive-card');
     const renamePoolForms = document.querySelectorAll('.rename-pool-form');
 
-    // Handle Eject/Mount/Inspect actions for Pools
+    // Handle Eject/Mount/Inspect/Remove actions for Pools
     const ejectPoolButtons = document.querySelectorAll('.eject-pool-button');
     const mountPoolButtons = document.querySelectorAll('.mount-pool-button');
     const inspectPoolButtons = document.querySelectorAll('.inspect-pool-button');
+    const removePoolGroupButtons = document.querySelectorAll('.remove-pool-group-button');
 
     // Handle Protected Drive Cards
     const protectedDriveCards = document.querySelectorAll('.protected-drive-card');
@@ -173,6 +176,75 @@ document.addEventListener('DOMContentLoaded', function () {
                     form.querySelectorAll('input, button').forEach(el => el.disabled = false);
                 });
         });
+    });
+
+    // Handle Remove Pool Group button
+    removePoolGroupButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            poolGroupIdToRemove = this.getAttribute('data-pool-group-id');
+            const removeModal = new bootstrap.Modal(document.getElementById('removePoolGroupModal'));
+            removeModal.show();
+        });
+    });
+
+    // Handle confirmation of removal
+    document.getElementById('confirmRemovePoolGroupButton').addEventListener('click', function () {
+        if (!poolGroupIdToRemove) {
+            showToast('Invalid Pool Group ID.', false);
+            return;
+        }
+
+        // Disable the button to prevent multiple clicks
+        this.disabled = true;
+
+        // Send AJAX POST to RemovePoolGroup
+        fetch(`/Drive?handler=RemovePoolGroup&poolGroupId=${poolGroupIdToRemove}`, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(json => { throw json; });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Hide the modal
+                const removeModal = bootstrap.Modal.getInstance(document.getElementById('removePoolGroupModal'));
+                removeModal.hide();
+
+                if (data.success) {
+                    showToast(data.message, true, true);
+                    // Remove the Pool Group card from the UI
+                    const poolGroupCard = document.querySelector(`.card[data-pool-group-id="${poolGroupIdToRemove}"]`);
+                    if (poolGroupCard) {
+                        poolGroupCard.remove();
+                    }
+                } else if (data.processes && data.processes.length > 0) {
+                    // Show the processListModal with processes that are keeping the mount point busy
+                    showProcessModal(poolGroupIdToRemove, data.processes, 'RemovePoolGroup');
+                } else {
+                    showToast(`Failed to remove pool group: ${data.message}`, false);
+                }
+            })
+            .catch(error => {
+                // Hide the modal
+                const removeModal = bootstrap.Modal.getInstance(document.getElementById('removePoolGroupModal'));
+                removeModal.hide();
+
+                if (error.message) {
+                    showToast(`Error removing pool group: ${error.message}`, false);
+                } else {
+                    showToast(`Error removing pool group.`, false);
+                }
+            })
+            .finally(() => {
+                // Re-enable the button
+                this.disabled = false;
+                poolGroupIdToRemove = null;
+            });
     });
 
     ejectPoolButtons.forEach(button => {
@@ -399,7 +471,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     showToast(`Pool unmounted successfully.`, true, true);
                 } else if (data.processes && data.processes.length > 0) {
-                    showProcessModal(poolGroupId, data.processes);
+                    showProcessModal(poolGroupId, data.processes, 'UnmountPool');
                 } else {
                     showToast(`Failed to unmount pool: ${data.message}`, false);
                 }
@@ -409,23 +481,24 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    function showProcessModal(poolGroupId, processes) {
+
+    function showProcessModal(poolGroupId, processes, action) {
         const modal = new bootstrap.Modal(document.getElementById('processListModal'));
         const tableBody = document.getElementById('processListTableBody');
         tableBody.innerHTML = ''; // Clear existing rows
 
         processes.forEach(process => {
             const row = `<tr>
-            <td>${process.pid}</td>
-            <td>${process.command}</td>
-            <td>${process.user}</td>
-            <td>${process.name}</td>
-        </tr>`;
+                <td>${process.pid}</td>
+                <td>${process.command}</td>
+                <td>${process.user}</td>
+                <td>${process.name}</td>
+            </tr>`;
             tableBody.insertAdjacentHTML('beforeend', row);
         });
 
         document.getElementById('killProcessesButton').onclick = function () {
-            killProcesses(poolGroupId, processes);
+            killProcesses(poolGroupId, processes, action);
             modal.hide();
         };
 
@@ -433,15 +506,20 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Function to kill processes
-    function killProcesses(poolGroupId, processes) {
+    function killProcesses(poolGroupId, processes, action) {
         const pids = processes.map(p => p.pid);
+        const postData = {
+            poolGroupId: poolGroupId,
+            pids: pids,
+            action: action
+        };
         fetch(`/Drive?handler=KillProcesses`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({ poolGroupId: poolGroupId, pids: pids })
+            body: JSON.stringify(postData)
         })
             .then(response => {
                 if (!response.ok) {
@@ -451,15 +529,27 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(data => {
                 if (data.success) {
-                    showToast(`Processes killed and pool unmounted successfully.`, true, true);
+                    showToast(data.message, true, true);
+                    // Remove the Pool Group card from the UI if action is RemovePoolGroup
+                    if (action === 'RemovePoolGroup') {
+                        const poolGroupCard = document.querySelector(`.card[data-pool-group-id="${poolGroupId}"]`);
+                        if (poolGroupCard) {
+                            poolGroupCard.remove();
+                        }
+                    }
                 } else {
                     showToast(`Failed to kill processes: ${data.message}`, false);
                 }
             })
             .catch(error => {
-                showToast(`Error killing processes: ${error.message || 'Unknown error.'}`, false);
+                if (error.message) {
+                    showToast(`Error killing processes: ${error.message}`, false);
+                } else {
+                    showToast(`Error killing processes.`, false);
+                }
             });
     }
+
 
     function mountPool(poolGroupId) {
         fetch(`/Drive?handler=MountPool&poolGroupId=${poolGroupId}`, {

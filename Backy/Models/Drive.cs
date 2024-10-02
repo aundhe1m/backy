@@ -78,6 +78,9 @@ namespace Backy.Models
 
         [JsonPropertyName("pids")]
         public List<int> Pids { get; set; } = new List<int>();
+
+        [JsonPropertyName("action")]
+        public string Action { get; set; } = "";
     }
 
     public class DiskInfo
