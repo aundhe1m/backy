@@ -73,14 +73,9 @@ namespace Backy.Models
 
     public class KillProcessesRequest
     {
-        [JsonPropertyName("poolGroupId")]
-        public int PoolGroupId { get; set; }
-
-        [JsonPropertyName("pids")]
+        public Guid PoolGroupGuid { get; set; }
         public List<int> Pids { get; set; } = new List<int>();
-
-        [JsonPropertyName("action")]
-        public string Action { get; set; } = "";
+        public string Action { get; set; } = string.Empty;
     }
 
     public class DiskInfo

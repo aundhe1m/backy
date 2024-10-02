@@ -8,6 +8,9 @@ namespace Backy.Models
         [Key]
         public int PoolGroupId { get; set; }
 
+        [Required]
+        public Guid PoolGroupGuid { get; set; } = Guid.NewGuid();
+
         public string GroupLabel { get; set; } = "Unnamed Group";
 
         public bool PoolEnabled { get; set; } = true;

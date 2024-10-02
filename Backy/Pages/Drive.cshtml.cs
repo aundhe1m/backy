@@ -27,6 +27,10 @@ namespace Backy.Pages
             _context = context;
         }
 
+        /// <summary>
+        /// Handles the GET request for the page.
+        /// Organizes the drives into pools, new drives, and protected drives.
+        /// </summary>
         public void OnGet()
         {
             _logger.LogDebug("Starting OnGet...");
@@ -36,6 +40,10 @@ namespace Backy.Pages
             _logger.LogDebug("OnGet completed.");
         }
 
+        /// <summary>
+        /// Organizes the drives into PoolGroups, NewDrives, and ProtectedDrives.
+        /// Updates the status of each drive and pool group.
+        /// </summary>
         private void OrganizeDrives()
         {
             _logger.LogDebug("Organizing drives...");
@@ -51,24 +59,24 @@ namespace Backy.Pages
             foreach (var pool in PoolGroups)
             {
                 bool allConnected = true;
-                foreach (var Drive in pool.Drives)
+                foreach (var drive in pool.Drives)
                 {
                     // Find matching active drive
-                    var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == Drive.Serial);
+                    var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == drive.Serial);
                     if (activeDrive != null)
                     {
                         // Update properties
-                        Drive.IsConnected = true;
-                        Drive.Name = activeDrive.Name;
-                        Drive.Vendor = activeDrive.Vendor;
-                        Drive.Model = activeDrive.Model;
-                        Drive.IsMounted = activeDrive.IsMounted;
-                        Drive.IdLink = activeDrive.IdLink;
-                        Drive.Partitions = activeDrive.Partitions;
+                        drive.IsConnected = true;
+                        drive.Name = activeDrive.Name;
+                        drive.Vendor = activeDrive.Vendor;
+                        drive.Model = activeDrive.Model;
+                        drive.IsMounted = activeDrive.IsMounted;
+                        drive.IdLink = activeDrive.IdLink;
+                        drive.Partitions = activeDrive.Partitions;
                     }
                     else
                     {
-                        Drive.IsConnected = false;
+                        drive.IsConnected = false;
                         allConnected = false;
                     }
                 }
@@ -103,6 +111,11 @@ namespace Backy.Pages
             );
         }
 
+        /// <summary>
+        /// Updates the list of active drives by parsing the output of 'lsblk'.
+        /// Skips the system drive (sda) and collects information about connected drives.
+        /// </summary>
+        /// <returns>List of active drives.</returns>
         private List<Drive> UpdateActiveDrives()
         {
             var activeDrives = new List<Drive>();
@@ -140,7 +153,7 @@ namespace Backy.Pages
 
                         if (device.Type == "disk")
                         {
-                            var DriveData = new Drive
+                            var driveData = new Drive
                             {
                                 Name = device.Name ?? "Unknown",
                                 Serial = device.Serial ?? "No Serial",
@@ -173,33 +186,27 @@ namespace Backy.Pages
                                         partitionData.UsedSpace = GetUsedSpace(
                                             partition.Mountpoint
                                         );
-                                        DriveData.IsMounted = true;
+                                        driveData.IsMounted = true;
                                     }
 
-                                    DriveData.Partitions.Add(partitionData);
+                                    driveData.Partitions.Add(partitionData);
                                 }
-
-                                // Sum up partition sizes and used spaces
-                                DriveData.Partitions.ForEach(p =>
-                                {
-                                    // No need to sum up PartitionSize and UsedSpace
-                                });
                             }
                             else
                             {
                                 // No partitions, set size to disk size
-                                DriveData.PartitionSize = device.Size ?? 0;
+                                driveData.PartitionSize = device.Size ?? 0;
                             }
 
                             // Use disk UUID if available
-                            DriveData.UUID =
+                            driveData.UUID =
                                 device.Uuid
-                                ?? DriveData.Partitions.FirstOrDefault()?.UUID
+                                ?? driveData.Partitions.FirstOrDefault()?.UUID
                                 ?? "No UUID";
 
-                            activeDrives.Add(DriveData);
+                            activeDrives.Add(driveData);
                             _logger.LogDebug(
-                                $"Active Drive added: {JsonSerializer.Serialize(DriveData)}"
+                                $"Active Drive added: {JsonSerializer.Serialize(driveData)}"
                             );
                         }
                     }
@@ -213,6 +220,11 @@ namespace Backy.Pages
             return activeDrives;
         }
 
+        /// <summary>
+        /// Retrieves the used space of a given mount point.
+        /// </summary>
+        /// <param name="mountpoint">The mount point path.</param>
+        /// <returns>The used space in bytes.</returns>
         private long GetUsedSpace(string mountpoint)
         {
             try
@@ -243,11 +255,16 @@ namespace Backy.Pages
             }
         }
 
-        // Handle POST request to protect a drive
+        /// <summary>
+        /// Protects a drive by adding it to the list of protected drives.
+        /// Prevents the drive from being included in pool creation.
+        /// </summary>
+        /// <param name="serial">The serial number of the drive to protect.</param>
+        /// <returns>An IActionResult indicating success or failure.</returns>
         public IActionResult OnPostProtectDrive(string serial)
         {
-            var Drive = _context.ProtectedDrives.FirstOrDefault(d => d.Serial == serial);
-            if (Drive == null)
+            var drive = _context.ProtectedDrives.FirstOrDefault(d => d.Serial == serial);
+            if (drive == null)
             {
                 // Find the drive in the active drives list
                 var activeDrive = UpdateActiveDrives().FirstOrDefault(d => d.Serial == serial);
@@ -256,7 +273,7 @@ namespace Backy.Pages
                     return BadRequest(new { success = false, message = "Drive not found." });
                 }
 
-                Drive = new ProtectedDrive
+                drive = new ProtectedDrive
                 {
                     Serial = serial,
                     Vendor = activeDrive.Vendor,
@@ -264,7 +281,7 @@ namespace Backy.Pages
                     Name = activeDrive.Name,
                     Label = activeDrive.Label,
                 };
-                _context.ProtectedDrives.Add(Drive);
+                _context.ProtectedDrives.Add(drive);
                 _context.SaveChanges();
                 return new JsonResult(
                     new { success = true, message = "Drive protected successfully." }
@@ -273,13 +290,17 @@ namespace Backy.Pages
             return BadRequest(new { success = false, message = "Drive is already protected." });
         }
 
-        // Handle POST request to unprotect a drive
+        /// <summary>
+        /// Unprotects a drive by removing it from the list of protected drives.
+        /// </summary>
+        /// <param name="serial">The serial number of the drive to unprotect.</param>
+        /// <returns>An IActionResult indicating success or failure.</returns>
         public IActionResult OnPostUnprotectDrive(string serial)
         {
-            var Drive = _context.ProtectedDrives.FirstOrDefault(d => d.Serial == serial);
-            if (Drive != null)
+            var drive = _context.ProtectedDrives.FirstOrDefault(d => d.Serial == serial);
+            if (drive != null)
             {
-                _context.ProtectedDrives.Remove(Drive);
+                _context.ProtectedDrives.Remove(drive);
                 _context.SaveChanges();
                 return new JsonResult(
                     new { success = true, message = "Drive unprotected successfully." }
@@ -290,11 +311,15 @@ namespace Backy.Pages
             );
         }
 
+        /// <summary>
+        /// Handles the creation of a new pool.
+        /// </summary>
+        /// <returns>Action result.</returns>
         public async Task<IActionResult> OnPostCreatePool()
         {
             _logger.LogInformation($"OnPostCreatePool called.");
             string requestBody = await new StreamReader(Request.Body).ReadToEndAsync();
-            var request = JsonSerializer.Deserialize<CreatePoolRequest>(requestBody);
+            CreatePoolRequest? request = JsonSerializer.Deserialize<CreatePoolRequest>(requestBody);
 
             if (
                 request == null
@@ -317,9 +342,9 @@ namespace Backy.Pages
             );
 
             var activeDrives = UpdateActiveDrives();
-            var Drives = activeDrives.Where(d => request.DriveSerials.Contains(d.Serial)).ToList();
+            var drives = activeDrives.Where(d => request.DriveSerials.Contains(d.Serial)).ToList();
 
-            if (!Drives.Any())
+            if (!drives.Any())
             {
                 return BadRequest(
                     new
@@ -332,7 +357,7 @@ namespace Backy.Pages
 
             // Safety check to prevent operating on protected drives
             var protectedSerials = _context.ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
-            if (Drives.Any(d => protectedSerials.Contains(d.Serial)))
+            if (drives.Any(d => protectedSerials.Contains(d.Serial)))
             {
                 return BadRequest(
                     new { success = false, message = "One or more selected drives are protected." }
@@ -343,7 +368,7 @@ namespace Backy.Pages
 
             try
             {
-                // Save PoolGroup to get PoolGroupId
+                // Save PoolGroup to get PoolGroupId and PoolGroupGuid
                 var newPoolGroup = new PoolGroup
                 {
                     GroupLabel = request.PoolLabel,
@@ -352,20 +377,21 @@ namespace Backy.Pages
                 _context.PoolGroups.Add(newPoolGroup);
                 await _context.SaveChangesAsync();
                 int poolGroupId = newPoolGroup.PoolGroupId;
+                Guid poolGroupGuid = newPoolGroup.PoolGroupGuid;
 
                 // Initialize a counter for default labels
                 int defaultLabelCounter = 1;
 
                 // Update drives and associate with PoolGroup
-                foreach (var Drive in Drives)
+                foreach (var drive in drives)
                 {
-                    var dbDrive = _context.Drives.FirstOrDefault(d => d.Serial == Drive.Serial);
+                    var dbDrive = _context.Drives.FirstOrDefault(d => d.Serial == drive.Serial);
                     string assignedLabel;
 
                     // Check if a label was provided for this drive
                     if (
                         request.DriveLabels != null
-                        && request.DriveLabels.TryGetValue(Drive.Serial, out string providedLabel)
+                        && request.DriveLabels.TryGetValue(drive.Serial, out string? providedLabel)
                     )
                     {
                         if (!string.IsNullOrWhiteSpace(providedLabel))
@@ -390,15 +416,15 @@ namespace Backy.Pages
                     {
                         dbDrive = new Drive
                         {
-                            Serial = Drive.Serial,
-                            Vendor = Drive.Vendor,
-                            Model = Drive.Model,
-                            Name = Drive.Name,
+                            Serial = drive.Serial,
+                            Vendor = drive.Vendor,
+                            Model = drive.Model,
+                            Name = drive.Name,
                             Label = assignedLabel,
                             IsMounted = true,
                             IsConnected = true,
-                            IdLink = Drive.IdLink,
-                            Partitions = Drive.Partitions,
+                            IdLink = drive.IdLink,
+                            Partitions = drive.Partitions,
                             PoolGroup = newPoolGroup,
                         };
                         _context.Drives.Add(dbDrive);
@@ -419,8 +445,8 @@ namespace Backy.Pages
 
                 // Build mdadm command
                 string mdadmCommand =
-                    $"mdadm --create /dev/md{poolGroupId} --level=1 --raid-devices={Drives.Count} ";
-                mdadmCommand += string.Join(" ", Drives.Select(d => d.IdLink));
+                    $"mdadm --create /dev/md{poolGroupId} --level=1 --raid-devices={drives.Count} ";
+                mdadmCommand += string.Join(" ", drives.Select(d => d.IdLink));
                 mdadmCommand += " --run --force";
 
                 var mdadmResult = ExecuteShellCommand(mdadmCommand, commandOutputs);
@@ -508,56 +534,49 @@ namespace Backy.Pages
                 // Read form data
                 var form = Request.Form;
 
-                if (!form.ContainsKey("PoolGroupId") || !form.ContainsKey("NewPoolLabel"))
+                if (!form.ContainsKey("PoolGroupGuid") || !form.ContainsKey("NewPoolLabel"))
                 {
                     return BadRequest(
                         new { success = false, message = "Missing required fields." }
                     );
                 }
 
-                // Safely parse PoolGroupId
-                if (!int.TryParse(form["PoolGroupId"], out int poolGroupId))
+                if (!Guid.TryParse(form["PoolGroupGuid"], out Guid poolGroupGuid))
                 {
                     return BadRequest(
-                        new { success = false, message = "Invalid Pool Group ID format." }
+                        new { success = false, message = "Invalid Pool Group GUID format." }
                     );
                 }
 
-                string newPoolLabel = form["NewPoolLabel"].ToString().Trim();
+                // Extract 'newPoolLabel' from the form data
+                string newPoolLabel = form["NewPoolLabel"].ToString();
 
-                if (string.IsNullOrWhiteSpace(newPoolLabel))
+                // Retrieve the PoolGroup with its Drives
+                var poolGroup = await _context
+                    .PoolGroups.Include(pg => pg.Drives)
+                    .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
+
+                if (poolGroup == null)
                 {
-                    return BadRequest(
-                        new { success = false, message = "Pool label cannot be empty." }
-                    );
+                    return BadRequest(new { success = false, message = "Pool group not found." });
                 }
 
                 // Deserialize DriveLabels JSON string
                 string driveLabelsJson = form.ContainsKey("DriveLabels")
                     ? form["DriveLabels"].ToString()
                     : "{}";
-                Dictionary<int, string> driveLabels;
+                Dictionary<int, string?> driveLabels;
                 try
                 {
                     driveLabels =
-                        JsonSerializer.Deserialize<Dictionary<int, string>>(driveLabelsJson)
-                        ?? new Dictionary<int, string>();
+                        JsonSerializer.Deserialize<Dictionary<int, string?>>(driveLabelsJson)
+                        ?? new Dictionary<int, string?>();
                 }
                 catch (JsonException)
                 {
                     return BadRequest(
                         new { success = false, message = "Invalid DriveLabels JSON format." }
                     );
-                }
-
-                // Retrieve the PoolGroup with its Drives
-                var poolGroup = await _context
-                    .PoolGroups.Include(pg => pg.Drives)
-                    .FirstOrDefaultAsync(pg => pg.PoolGroupId == poolGroupId);
-
-                if (poolGroup == null)
-                {
-                    return BadRequest(new { success = false, message = "Pool group not found." });
                 }
 
                 // Begin transaction
@@ -571,7 +590,7 @@ namespace Backy.Pages
                     // Update drive labels
                     foreach (var drive in poolGroup.Drives)
                     {
-                        if (driveLabels.TryGetValue(drive.Id, out string newLabel))
+                        if (driveLabels.TryGetValue(drive.Id, out string? newLabel))
                         {
                             // Only update if a new label is provided; otherwise, retain existing
                             if (!string.IsNullOrWhiteSpace(newLabel))
@@ -625,6 +644,12 @@ namespace Backy.Pages
             }
         }
 
+        /// <summary>
+        /// Executes a shell command and captures its output.
+        /// </summary>
+        /// <param name="command">The command to execute.</param>
+        /// <param name="outputList">An optional list to store the output.</param>
+        /// <returns>A tuple indicating success and the command output or error message.</returns>
         private (bool success, string message) ExecuteShellCommand(
             string command,
             List<string>? outputList = null
@@ -689,16 +714,23 @@ namespace Backy.Pages
             }
         }
 
-        // In Drive.cshtml.cs
-        public IActionResult OnPostUnmountPool(int poolGroupId)
+        /// <summary>
+        /// Handles the unmounting of a pool.
+        /// </summary>
+        /// <param name="poolGroupGuid">Pool group GUID.</param>
+        /// <returns>Action result.</returns>
+        public IActionResult OnPostUnmountPool(Guid poolGroupGuid)
         {
             var poolGroup = _context
                 .PoolGroups.Include(pg => pg.Drives)
-                .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+                .FirstOrDefault(pg => pg.PoolGroupGuid == poolGroupGuid);
+
             if (poolGroup == null)
             {
                 return BadRequest(new { success = false, message = "Pool group not found." });
             }
+
+            int poolGroupId = poolGroup.PoolGroupId; // Retrieve poolGroupId
 
             var commandOutputs = new List<string>();
             string mountPoint = $"/mnt/backy/md{poolGroupId}";
@@ -749,7 +781,7 @@ namespace Backy.Pages
                 }
             }
 
-            string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
+            string stopCommand = $"mdadm --stop /dev/md{poolGroup.PoolGroupId}";
             var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
             if (!stopResult.success)
             {
@@ -784,16 +816,18 @@ namespace Backy.Pages
         }
 
         // Handler for Removing PoolGroup
-        public IActionResult OnPostRemovePoolGroup(int poolGroupId)
+        public IActionResult OnPostRemovePoolGroup(Guid poolGroupGuid)
         {
             var poolGroup = _context
                 .PoolGroups.Include(pg => pg.Drives)
-                .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+                .FirstOrDefault(pg => pg.PoolGroupGuid == poolGroupGuid);
 
             if (poolGroup == null)
             {
                 return BadRequest(new { success = false, message = "Pool group not found." });
             }
+
+            int poolGroupId = poolGroup.PoolGroupId;
 
             if (!poolGroup.PoolEnabled)
             {
@@ -904,6 +938,11 @@ namespace Backy.Pages
             }
         }
 
+        /// <summary>
+        /// Parses the output of the 'lsof' command to retrieve processes using a mount point.
+        /// </summary>
+        /// <param name="lsofOutput">The output string from 'lsof'.</param>
+        /// <returns>A list of ProcessInfo objects representing the processes.</returns>
         private List<ProcessInfo> ParseLsofOutput(string lsofOutput)
         {
             var processes = new List<ProcessInfo>();
@@ -980,25 +1019,21 @@ namespace Backy.Pages
                 return BadRequest(new { success = false, message = "Invalid request data." });
             }
 
-            if (request.PoolGroupId <= 0)
+            if (request.PoolGroupGuid == Guid.Empty)
             {
-                return BadRequest(new { success = false, message = "Invalid Pool Group ID." });
+                return BadRequest(new { success = false, message = "Invalid Pool Group GUID." });
             }
-
-            if (request.Pids == null || !request.Pids.Any())
-            {
-                return BadRequest(new { success = false, message = "No process IDs provided." });
-            }
-
-            int poolGroupId = request.PoolGroupId;
 
             var poolGroup = _context
                 .PoolGroups.Include(pg => pg.Drives)
-                .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+                .FirstOrDefault(pg => pg.PoolGroupGuid == request.PoolGroupGuid);
+
             if (poolGroup == null)
             {
                 return BadRequest(new { success = false, message = "Pool group not found." });
             }
+
+            int poolGroupId = poolGroup.PoolGroupId;
 
             var commandOutputs = new List<string>();
 
@@ -1142,15 +1177,18 @@ namespace Backy.Pages
         }
 
         // Implement OnPostMountPool to assemble mdadm and mount
-        public IActionResult OnPostMountPool(int poolGroupId)
+        public IActionResult OnPostMountPool(Guid poolGroupGuid)
         {
             var poolGroup = _context
                 .PoolGroups.Include(pg => pg.Drives)
-                .FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+                .FirstOrDefault(pg => pg.PoolGroupGuid == poolGroupGuid);
+
             if (poolGroup == null)
             {
                 return BadRequest(new { success = false, message = "Pool group not found." });
             }
+
+            int poolGroupId = poolGroup.PoolGroupId; // Retrieve poolGroupId
 
             var commandOutputs = new List<string>();
             string assembleCommand = $"mdadm --assemble /dev/md{poolGroupId} ";
@@ -1202,8 +1240,18 @@ namespace Backy.Pages
         }
 
         // Implement OnPostInspectPool to get mdadm --detail output
-        public IActionResult OnPostInspectPool(int poolGroupId)
+        public IActionResult OnPostInspectPool(Guid poolGroupGuid)
         {
+            var poolGroup = _context.PoolGroups.FirstOrDefault(pg =>
+                pg.PoolGroupGuid == poolGroupGuid
+            );
+            if (poolGroup == null)
+            {
+                return BadRequest(new { success = false, message = "Pool group not found." });
+            }
+
+            int poolGroupId = poolGroup.PoolGroupId; // Retrieve poolGroupId
+
             string inspectCommand = $"mdadm --detail /dev/md{poolGroupId}";
             var commandOutputs = new List<string>();
             var inspectResult = ExecuteShellCommand(inspectCommand, commandOutputs);
@@ -1218,6 +1266,11 @@ namespace Backy.Pages
             }
         }
 
+        /// <summary>
+        /// Retrieves the size, used space, available space, and usage percentage of a mount point.
+        /// </summary>
+        /// <param name="mountPoint">The path to the mount point.</param>
+        /// <returns>A tuple containing size, used space, available space, and usage percentage.</returns>
         private (long Size, long Used, long Available, string UsePercent) GetMountPointSize(
             string mountPoint
         )

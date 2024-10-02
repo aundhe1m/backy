@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Variables to store selected drives for pool creation
     let selectedDrives = [];
 
-    let poolGroupIdToRemove = null;
+    let poolGroupGuidToRemove = null;
 
     // Handle New Drive Cards
     const newDriveCards = document.querySelectorAll('.new-drive-card');
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function () {
         form.addEventListener('submit', function (e) {
             e.preventDefault();
 
-            const poolGroupId = form.getAttribute('data-pool-group-id');
+            const poolGroupGuid = form.getAttribute('data-pool-group-guid');
             const newPoolLabelInput = form.querySelector(`input[name="newPoolLabel"]`);
             const newPoolLabel = newPoolLabelInput.value.trim();
 
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             const postData = new URLSearchParams({
-                'PoolGroupId': poolGroupId,
+                'PoolGroupGuid': poolGroupGuid,
                 'NewPoolLabel': newPoolLabel,
                 'DriveLabels': JSON.stringify(driveLabels)
             });
@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Handle Remove Pool Group button
     removePoolGroupButtons.forEach(button => {
         button.addEventListener('click', function () {
-            poolGroupIdToRemove = this.getAttribute('data-pool-group-id');
+            poolGroupGuidToRemove = this.getAttribute('data-pool-group-guid');
             const removeModal = new bootstrap.Modal(document.getElementById('removePoolGroupModal'));
             removeModal.show();
         });
@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Handle confirmation of removal
     document.getElementById('confirmRemovePoolGroupButton').addEventListener('click', function () {
-        if (!poolGroupIdToRemove) {
+        if (!poolGroupGuidToRemove) {
             showToast('Invalid Pool Group ID.', false);
             return;
         }
@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', function () {
         this.disabled = true;
 
         // Send AJAX POST to RemovePoolGroup
-        fetch(`/Drive?handler=RemovePoolGroup&poolGroupId=${poolGroupIdToRemove}`, {
+        fetch(`/Drive?handler=RemovePoolGroup&poolGroupGuid=${poolGroupGuidToRemove}`, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -218,13 +218,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     showToast(data.message, true, true);
                     // Remove the Pool Group card from the UI
-                    const poolGroupCard = document.querySelector(`.card[data-pool-group-id="${poolGroupIdToRemove}"]`);
+                    const poolGroupCard = document.querySelector(`.card[data-pool-group-guid="${poolGroupGuidToRemove}"]`);
                     if (poolGroupCard) {
                         poolGroupCard.remove();
                     }
                 } else if (data.processes && data.processes.length > 0) {
                     // Show the processListModal with processes that are keeping the mount point busy
-                    showProcessModal(poolGroupIdToRemove, data.processes, 'RemovePoolGroup');
+                    showProcessModal(poolGroupGuidToRemove, data.processes, 'RemovePoolGroup');
                 } else {
                     showToast(`Failed to remove pool group: ${data.message}`, false);
                 }
@@ -243,28 +243,28 @@ document.addEventListener('DOMContentLoaded', function () {
             .finally(() => {
                 // Re-enable the button
                 this.disabled = false;
-                poolGroupIdToRemove = null;
+                poolGroupGuidToRemove = null;
             });
     });
 
     ejectPoolButtons.forEach(button => {
         button.addEventListener('click', function () {
-            const poolGroupId = button.getAttribute('data-pool-group-id');
-            unmountPool(poolGroupId);
+            const poolGroupGuid = button.getAttribute('data-pool-group-guid');
+            unmountPool(poolGroupGuid);
         });
     });
 
     mountPoolButtons.forEach(button => {
         button.addEventListener('click', function () {
-            const poolGroupId = button.getAttribute('data-pool-group-id');
-            mountPool(poolGroupId);
+            const poolGroupGuid = button.getAttribute('data-pool-group-guid');
+            mountPool(poolGroupGuid);
         });
     });
 
     inspectPoolButtons.forEach(button => {
         button.addEventListener('click', function () {
-            const poolGroupId = button.getAttribute('data-pool-group-id');
-            inspectPool(poolGroupId);
+            const poolGroupGuid = button.getAttribute('data-pool-group-guid');
+            inspectPool(poolGroupGuid);
         });
     });
 
@@ -459,8 +459,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Functions to handle pool actions
-    function unmountPool(poolGroupId) {
-        fetch(`/Drive?handler=UnmountPool&poolGroupId=${poolGroupId}`, {
+    function unmountPool(poolGroupGuid) {
+        fetch(`/Drive?handler=UnmountPool&poolGroupGuid=${poolGroupGuid}`, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -471,7 +471,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     showToast(`Pool unmounted successfully.`, true, true);
                 } else if (data.processes && data.processes.length > 0) {
-                    showProcessModal(poolGroupId, data.processes, 'UnmountPool');
+                    showProcessModal(poolGroupGuid, data.processes, 'UnmountPool');
                 } else {
                     showToast(`Failed to unmount pool: ${data.message}`, false);
                 }
@@ -482,7 +482,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 
-    function showProcessModal(poolGroupId, processes, action) {
+    function showProcessModal(poolGroupGuid, processes, action) {
         const modal = new bootstrap.Modal(document.getElementById('processListModal'));
         const tableBody = document.getElementById('processListTableBody');
         tableBody.innerHTML = ''; // Clear existing rows
@@ -498,7 +498,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         document.getElementById('killProcessesButton').onclick = function () {
-            killProcesses(poolGroupId, processes, action);
+            killProcesses(poolGroupGuid, processes, action);
             modal.hide();
         };
 
@@ -506,10 +506,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Function to kill processes
-    function killProcesses(poolGroupId, processes, action) {
+    function killProcesses(poolGroupGuid, processes, action) {
         const pids = processes.map(p => p.pid);
         const postData = {
-            poolGroupId: poolGroupId,
+            poolGroupGuid: poolGroupGuid,
             pids: pids,
             action: action
         };
@@ -532,7 +532,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     showToast(data.message, true, true);
                     // Remove the Pool Group card from the UI if action is RemovePoolGroup
                     if (action === 'RemovePoolGroup') {
-                        const poolGroupCard = document.querySelector(`.card[data-pool-group-id="${poolGroupId}"]`);
+                        const poolGroupCard = document.querySelector(`.card[data-pool-group-guid="${poolGroupGuid}"]`);
                         if (poolGroupCard) {
                             poolGroupCard.remove();
                         }
@@ -551,8 +551,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 
-    function mountPool(poolGroupId) {
-        fetch(`/Drive?handler=MountPool&poolGroupId=${poolGroupId}`, {
+    function mountPool(poolGroupGuid) {
+        fetch(`/Drive?handler=MountPool&poolGroupGuid=${poolGroupGuid}`, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -571,8 +571,8 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    function inspectPool(poolGroupId) {
-        fetch(`/Drive?handler=InspectPool&poolGroupId=${poolGroupId}`, {
+    function inspectPool(poolGroupGuid) {
+        fetch(`/Drive?handler=InspectPool&poolGroupGuid=${poolGroupGuid}`, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'

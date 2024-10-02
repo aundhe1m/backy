@@ -44,7 +44,7 @@
     @foreach (var group in Model.PoolGroups)
     {
         <div class="col-12">
-            <div class="card mb-4" data-pool-group-id="@group.PoolGroupId">
+            <div class="card mb-4" data-pool-group-guid="@group.PoolGroupGuid">
                 <!-- Pool Group Header -->
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div class="d-flex align-items-center">
@@ -70,20 +70,20 @@
                         @if (group.PoolEnabled)
                         {
                             <button type="button" class="btn btn-transparent eject-pool-button"
-                                data-pool-group-id="@group.PoolGroupId" data-bs-toggle="tooltip" title="Unmount Pool">
+                                data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Unmount Pool">
                                 <img src="/icons/eject.svg" alt="Unmount Pool" style="height: 24px;">
                             </button>
                         }
                         else
                         {
                             <button type="button" class="btn btn-transparent mount-pool-button"
-                                data-pool-group-id="@group.PoolGroupId" data-bs-toggle="tooltip" title="Mount Pool">
+                                data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Mount Pool">
                                 <img src="/icons/play.svg" alt="Mount Pool" style="height: 24px;">
                             </button>
                         }
                         <!-- Inspect Button -->
                         <button type="button" class="btn btn-transparent inspect-pool-button"
-                            data-pool-group-id="@group.PoolGroupId" data-bs-toggle="tooltip" title="Inspect Pool">
+                            data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Inspect Pool">
                             <img src="/icons/eye.svg" alt="Inspect Pool" style="height: 24px;">
                         </button>
                         <!-- Options Dropdown -->
@@ -95,11 +95,11 @@
                             <ul class="dropdown-menu">
                                 <li>
                                     <button class="dropdown-item" data-bs-toggle="modal"
-                                        data-bs-target="#renamePoolModal-@group.PoolGroupId">Rename</button>
+                                        data-bs-target="#renamePoolModal-@group.PoolGroupGuid">Rename</button>
                                 </li>
                                 <li>
                                     <button type="button" class="dropdown-item remove-pool-group-button"
-                                        data-pool-group-id="@group.PoolGroupId">
+                                        data-pool-group-guid="@group.PoolGroupGuid">
                                         Remove
                                     </button>
                                 </li>
@@ -118,20 +118,21 @@
         </div>
 
         <!-- Rename Pool Modal -->
-        <div class="modal fade" id="renamePoolModal-@group.PoolGroupId" tabindex="-1"
-            aria-labelledby="renamePoolModalLabel-@group.PoolGroupId" aria-hidden="true">
+        <div class="modal fade" id="renamePoolModal-@group.PoolGroupGuid" tabindex="-1"
+            aria-labelledby="renamePoolModalLabel-@group.PoolGroupGuid" aria-hidden="true">
             <div class="modal-dialog modal-lg">
                 <div class="modal-content">
-                    <form class="rename-pool-form" data-pool-group-id="@group.PoolGroupId">
+                    <form class="rename-pool-form" data-pool-group-guid="@group.PoolGroupGuid">
                         <div class="modal-header">
-                            <h5 class="modal-title" id="renamePoolModalLabel-@group.PoolGroupId">Rename Backup Pool</h5>
+                            <h5 class="modal-title" id="renamePoolModalLabel-@group.PoolGroupGuid">Rename Backup Pool</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <!-- Pool Label -->
                             <div class="mb-3">
-                                <label for="newPoolGroupLabel-@group.PoolGroupId" class="form-label">New Pool Label</label>
-                                <input type="text" class="form-control" id="newPoolGroupLabel-@group.PoolGroupId"
+                                <label for="newPoolGroupLabel-@group.PoolGroupGuid" class="form-label">New Pool
+                                    Label</label>
+                                <input type="text" class="form-control" id="newPoolGroupLabel-@group.PoolGroupGuid"
                                     name="newPoolLabel" value="@group.GroupLabel" required />
                             </div>
                             <!-- Drives Table -->
