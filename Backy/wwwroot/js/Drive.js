@@ -99,12 +99,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('continueButton').addEventListener('click', function () {
                     showToast(`Pool created successfully.`, true, true);
                 });
+
             })
             .catch(error => {
                 hideSpinner();
                 displayCommandOutputs(error.outputs || [], true);
                 updateModalFooter('error');
                 showToast(`Error creating pool: ${error.message || 'Unknown error.'}`, false);
+
+                document.getElementById('closeButton').addEventListener('click', function () {
+                    location.reload();
+                });
             });
     });
 
@@ -435,7 +440,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (status === 'success') {
             modalFooter.innerHTML = '<button type="button" class="btn btn-primary" id="continueButton">Continue</button>';
         } else {
-            modalFooter.innerHTML = '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>';
+            modalFooter.innerHTML = '<button type="button" class="btn btn-secondary" id="closeButton">Close</button>';
         }
     }
 

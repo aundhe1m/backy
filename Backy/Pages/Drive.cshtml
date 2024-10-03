@@ -20,6 +20,7 @@
     <img src="/icons/info-circle.svg" alt="Info Icon" style="height: 24px; margin-right: 8px;" />
     <div>New drives detected</div>
 </div>
+    <h3>Drives</h3>
     @foreach (var Drive in Model.NewDrives)
     {
         @await Html.PartialAsync("_NewDriveCard", Drive)
@@ -27,157 +28,160 @@
     <hr />
 }
 
-<!-- Protected drives section -->
-@if (Model.ProtectedDrives.Any())
-{
-    <h3>Protected Drives</h3>
-    @foreach (var Drive in Model.ProtectedDrives)
-    {
-        @await Html.PartialAsync("_ProtectedDriveCard", Drive)
-    }
-    <hr />
-}
-
 <!-- Pool groups section -->
-<h3>Backup Pools</h3>
-<div class="row">
-    @foreach (var group in Model.PoolGroups)
-    {
-        <div class="col-12">
-            <div class="card mb-4" data-pool-group-guid="@group.PoolGroupGuid">
-                <!-- Pool Group Header -->
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <div class="d-flex align-items-center">
-                        <img src="/icons/hdd-rack.svg" alt="Pool Group Icon" style="height: 24px; margin-right: 8px;" />
-                        <h5 class="mb-0">@group.GroupLabel</h5>
-                    </div>
-                    <!-- Progress Bar -->
-                    <div>
-                        <span>@String.Format("{0:F2} GB", group.Used / 1024.0 / 1024.0 / 1024.0)</span> /
-                        <span>@String.Format("{0:F2} GB", group.Size / 1024.0 / 1024.0 / 1024.0)</span>
-                        @{
-                            // Directly use UsePercent
-                            var usedPercentage = group.UsePercent.TrimEnd('%');
-                        }
-                        <div class="progress progress-with-border" style="height: 4px">
-                            <div class="progress-bar" role="progressbar" style="width: @usedPercentage%"
-                                aria-valuenow="@usedPercentage" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                    </div>
-                    <!-- Existing buttons -->
-                    <div class="btn-group">
-                        <!-- Eject/Mount Button -->
-                        @if (group.PoolEnabled)
-                        {
-                            <button type="button" class="btn btn-transparent eject-pool-button"
-                                data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Unmount Pool">
-                                <img src="/icons/eject.svg" alt="Unmount Pool" style="height: 24px;">
-                            </button>
-                        }
-                        else
-                        {
-                            <button type="button" class="btn btn-transparent mount-pool-button"
-                                data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Mount Pool">
-                                <img src="/icons/play.svg" alt="Mount Pool" style="height: 24px;">
-                            </button>
-                        }
-                        <!-- Inspect Button -->
-                        <button type="button" class="btn btn-transparent inspect-pool-button"
-                            data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Inspect Pool">
-                            <img src="/icons/eye.svg" alt="Inspect Pool" style="height: 24px;">
-                        </button>
-                        <!-- Options Dropdown -->
-                        <span data-bs-toggle="tooltip" title="Options" alt="Options">
-                            <button type="button" class="btn btn-transparent" data-bs-toggle="dropdown"
-                                aria-expanded="false">
-                                <img src="/icons/gear.svg" alt="Options" style="height: 24px;">
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li>
-                                    <button class="dropdown-item" data-bs-toggle="modal"
-                                        data-bs-target="#renamePoolModal-@group.PoolGroupGuid">Rename</button>
-                                </li>
-                                <li>
-                                    <button type="button" class="dropdown-item remove-pool-group-button"
-                                        data-pool-group-guid="@group.PoolGroupGuid">
-                                        Remove
-                                    </button>
-                                </li>
-                            </ul>
-                        </span>
-                    </div>
-                </div>
-                <!-- Pool Drives -->
-                <div class="card-body">
-                    @foreach (var Drive in group.Drives)
-                    {
-                        @await Html.PartialAsync("_PoolGroupDriveCard", Drive)
-                    }
-                </div>
-            </div>
-        </div>
+@if (Model.PoolGroups.Any())
+{
+    <h3>Backup Pools</h3>
 
-        <!-- Rename Pool Modal -->
-        <div class="modal fade" id="renamePoolModal-@group.PoolGroupGuid" tabindex="-1"
-            aria-labelledby="renamePoolModalLabel-@group.PoolGroupGuid" aria-hidden="true">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <form class="rename-pool-form" data-pool-group-guid="@group.PoolGroupGuid">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="renamePoolModalLabel-@group.PoolGroupGuid">Rename Backup Pool</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="row">
+    @foreach (var group in Model.PoolGroups)
+        {
+            <div class="col-12">
+                <div class="card mb-4" data-pool-group-guid="@group.PoolGroupGuid">
+                    <!-- Pool Group Header -->
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <!-- Expand/Collapse button -->
+                            <button class="btn btn-link p-0 me-2 chevron-button" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#poolDetails-@group.PoolGroupGuid" aria-expanded="false"
+                                aria-controls="poolDetails-@group.PoolGroupGuid">
+                                <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon"
+                                    style="height: 24px;">
+                            </button>
+                            <!-- Pool Icon -->
+                            <img src="/icons/hdd-rack.svg" alt="Pool Group Icon" style="height: 24px; margin-right: 8px;" />
+                            <h5 class="mb-0">@group.GroupLabel</h5>
                         </div>
-                        <div class="modal-body">
-                            <!-- Pool Label -->
-                            <div class="mb-3">
-                                <label for="newPoolGroupLabel-@group.PoolGroupGuid" class="form-label">New Pool
-                                    Label</label>
-                                <input type="text" class="form-control" id="newPoolGroupLabel-@group.PoolGroupGuid"
-                                    name="newPoolLabel" value="@group.GroupLabel" required />
-                            </div>
-                            <!-- Drives Table -->
-                            <div class="table-responsive">
-                                <table class="table table-striped">
-                                    <thead>
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Vendor</th>
-                                            <th>Model</th>
-                                            <th>Serial</th>
-                                            <th>Current Label</th>
-                                            <th>New Label</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @for (int i = 0; i < group.Drives.Count; i++)
-                                        {
-                                            var drive = group.Drives[i];
-                                            <tr>
-                                                <td>@(i + 1)</td>
-                                                <td>@drive.Vendor</td>
-                                                <td>@drive.Model</td>
-                                                <td>@drive.Serial</td>
-                                                <td>@(string.IsNullOrEmpty(drive.Label) ? "No Label" : drive.Label)</td>
-                                                <td>
-                                                    <input type="text" class="form-control drive-new-label-input"
-                                                        data-drive-id="@drive.Id" placeholder="Optional" value="@drive.Label" />
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
+                        <!-- Progress Bar -->
+                        <div>
+                            <span>@String.Format("{0:F2} GB", group.Used / 1024.0 / 1024.0 / 1024.0)</span> /
+                            <span>@String.Format("{0:F2} GB", group.Size / 1024.0 / 1024.0 / 1024.0)</span>
+                            @{
+                                // Directly use UsePercent
+                                var usedPercentage = group.UsePercent.TrimEnd('%');
+                            }
+                            <div class="progress progress-with-border" style="height: 4px">
+                                <div class="progress-bar" role="progressbar" style="width: @usedPercentage%"
+                                    aria-valuenow="@usedPercentage" aria-valuemin="0" aria-valuemax="100"></div>
                             </div>
                         </div>
-                        <div class="modal-footer">
-                            <button type="submit" class="btn btn-primary">Rename Pool</button>
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <!-- Existing buttons -->
+                        <div class="btn-group">
+                            <!-- Eject/Mount Button -->
+                            @if (group.PoolEnabled)
+                            {
+                                <button type="button" class="btn btn-transparent eject-pool-button"
+                                    data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Unmount Pool">
+                                    <img src="/icons/eject.svg" alt="Unmount Pool" style="height: 24px;">
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-transparent mount-pool-button"
+                                    data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Mount Pool">
+                                    <img src="/icons/play.svg" alt="Mount Pool" style="height: 24px;">
+                                </button>
+                            }
+                            <!-- Inspect Button -->
+                            <button type="button" class="btn btn-transparent inspect-pool-button"
+                                data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Inspect Pool">
+                                <img src="/icons/eye.svg" alt="Inspect Pool" style="height: 24px;">
+                            </button>
+                            <!-- Options Dropdown -->
+                            <span data-bs-toggle="tooltip" title="Options" alt="Options">
+                                <button type="button" class="btn btn-transparent" data-bs-toggle="dropdown"
+                                    aria-expanded="false">
+                                    <img src="/icons/gear.svg" alt="Options" style="height: 24px;">
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li>
+                                        <button class="dropdown-item" data-bs-toggle="modal"
+                                            data-bs-target="#renamePoolModal-@group.PoolGroupGuid">Rename</button>
+                                    </li>
+                                    <li>
+                                        <button type="button" class="dropdown-item remove-pool-group-button"
+                                            data-pool-group-guid="@group.PoolGroupGuid">
+                                            Remove
+                                        </button>
+                                    </li>
+                                </ul>
+                            </span>
                         </div>
-                    </form>
+                    </div>
+                    <!-- Pool Drives -->
+                    <div class="collapse" id="poolDetails-@group.PoolGroupGuid">
+                        <div class="card-body">
+                            @foreach (var Drive in group.Drives)
+                            {
+                                @await Html.PartialAsync("_PoolGroupDriveCard", Drive)
+                            }
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    }
-</div>
+
+            <!-- Rename Pool Modal -->
+            <div class="modal fade" id="renamePoolModal-@group.PoolGroupGuid" tabindex="-1"
+                aria-labelledby="renamePoolModalLabel-@group.PoolGroupGuid" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <form class="rename-pool-form" data-pool-group-guid="@group.PoolGroupGuid">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="renamePoolModalLabel-@group.PoolGroupGuid">Rename Backup Pool</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <!-- Pool Label -->
+                                <div class="mb-3">
+                                    <label for="newPoolGroupLabel-@group.PoolGroupGuid" class="form-label">New Pool
+                                        Label</label>
+                                    <input type="text" class="form-control" id="newPoolGroupLabel-@group.PoolGroupGuid"
+                                        name="newPoolLabel" value="@group.GroupLabel" required />
+                                </div>
+                                <!-- Drives Table -->
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Vendor</th>
+                                                <th>Model</th>
+                                                <th>Serial</th>
+                                                <th>Current Label</th>
+                                                <th>New Label</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int i = 0; i < group.Drives.Count; i++)
+                                            {
+                                                var drive = group.Drives[i];
+                                                <tr>
+                                                    <td>@(i + 1)</td>
+                                                    <td>@drive.Vendor</td>
+                                                    <td>@drive.Model</td>
+                                                    <td>@drive.Serial</td>
+                                                    <td>@(string.IsNullOrEmpty(drive.Label) ? "No Label" : drive.Label)</td>
+                                                    <td>
+                                                        <input type="text" class="form-control drive-new-label-input"
+                                                            data-drive-id="@drive.Id" placeholder="Optional" value="@drive.Label" />
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="submit" class="btn btn-primary">Rename Pool</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
 
 <!-- Create Pool Modal -->
 <div class="modal fade" id="createPoolModal" tabindex="-1" aria-labelledby="createPoolModalLabel" aria-hidden="true">
@@ -301,6 +305,17 @@
         </div>
     </div>
 </div>
+
+<!-- Protected drives section -->
+@if (Model.ProtectedDrives.Any())
+{
+    <h3>Protected Drives</h3>
+    @foreach (var Drive in Model.ProtectedDrives)
+    {
+        @await Html.PartialAsync("_ProtectedDriveCard", Drive)
+    }
+    <hr />
+}
 
 <script src="/js/_Toast.js"></script>
 <script src="/js/Drive.js"></script>
