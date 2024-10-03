@@ -8,7 +8,8 @@
         <div class="d-flex align-items-center">
             <!-- Expand/Collapse button -->
             <button class="btn btn-link p-0 me-2 chevron-button" type="button" data-bs-toggle="collapse"
-                data-bs-target="#driveDetails-@Model.Id" aria-expanded="false" aria-controls="driveDetails-@Model.Id">
+                data-bs-target="#driveDetails-@Model.Serial" aria-expanded="false"
+                aria-controls="driveDetails-@Model.Serial">
                 <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon" style="height: 24px;">
             </button>
             <!-- Drive Name -->
@@ -37,7 +38,7 @@
         </div>
     </div>
     <!-- Collapsible Details -->
-    <div class="collapse" id="driveDetails-@Model.Id">
+    <div class="collapse" id="driveDetails-@Model.Serial">
         <div class="card-body">
             <!-- Drive Details Table -->
             <div class="table-responsive">

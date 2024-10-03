@@ -6,14 +6,11 @@ namespace Backy.Models
 {
     public class Drive
     {
-        [Key]
-        public int Id { get; set; }
-
         public string? Name { get; set; }
 
         public string? Label { get; set; }
 
-        public string Serial { get; set; } = "No Serial";
+        public required string Serial { get; set; }
 
         public string UUID { get; set; } = "No UUID";
 
@@ -30,10 +27,6 @@ namespace Backy.Models
         public bool IsMounted { get; set; } = false;
 
         public string IdLink { get; set; } = string.Empty;
-
-        public int? PoolGroupId { get; set; }
-
-        public PoolGroup? PoolGroup { get; set; }
 
         public List<PartitionInfo> Partitions { get; set; } = new List<PartitionInfo>();
     }

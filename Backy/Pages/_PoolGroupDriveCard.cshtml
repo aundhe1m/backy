@@ -1,4 +1,4 @@
-@model Backy.Models.Drive
+@model Backy.Models.PoolDrive
 
 @{
     string headerBackgroundColor;
@@ -18,7 +18,7 @@
     var isConnected = Model.IsConnected ? "Connected" : "Disconnected";
 }
 
-<div class="card drive-card mb-3" data-search-text="@Model.Name @Model.Label @Model.Vendor @Model.Model @Model.Serial">
+<div class="card drive-card mb-3" data-search-text="@Model.Label @Model.Vendor @Model.Model @Model.Serial">
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center"
         style="background-color:@headerBackgroundColor; color:black;">
@@ -50,6 +50,10 @@
                     <tr>
                         <th>Serial</th>
                         <td>@Model.Serial</td>
+                    </tr>
+                    <tr>
+                        <th>Size</th>
+                        <td>@String.Format("{0:F2} GB", Model.Size / 1024.0 / 1024.0 / 1024.0)</td>
                     </tr>
                 </tbody>
             </table>

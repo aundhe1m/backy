@@ -9,9 +9,8 @@ namespace Backy.Data
         public DbSet<IndexSchedule> IndexSchedules { get; set; }
         public DbSet<FileEntry> Files { get; set; }
         public DbSet<StorageContent> StorageContents { get; set; }
-
         public DbSet<PoolGroup> PoolGroups { get; set; }
-        public DbSet<Drive> Drives { get; set; }
+        public DbSet<PoolDrive> PoolDrives { get; set; }
         public DbSet<ProtectedDrive> ProtectedDrives { get; set; }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
@@ -30,14 +29,15 @@ namespace Backy.Data
                 .Entity<PoolGroup>()
                 .HasMany(pg => pg.Drives)
                 .WithOne(d => d.PoolGroup)
-                .HasForeignKey(d => d.PoolGroupId)
+                .HasForeignKey(d => d.PoolGroupGuid)
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder
-                .Entity<Drive>()
-                .HasMany(d => d.Partitions)
-                .WithOne(p => p.Drive)
-                .HasForeignKey(p => p.DriveId)
+                .Entity<PoolDrive>()
+                .HasOne(d => d.PoolGroup)
+                .WithMany(pg => pg.Drives)
+                .HasForeignKey(d => d.PoolGroupGuid)
+                .HasPrincipalKey(pg => pg.PoolGroupGuid)
                 .OnDelete(DeleteBehavior.Cascade);
 
             base.OnModelCreating(modelBuilder);

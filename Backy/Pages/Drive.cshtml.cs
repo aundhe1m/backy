@@ -49,10 +49,7 @@ namespace Backy.Pages
             _logger.LogDebug("Organizing drives...");
 
             var activeDrives = UpdateActiveDrives();
-            PoolGroups = _context
-                .PoolGroups.Include(pg => pg.Drives)
-                .ThenInclude(d => d.Partitions)
-                .ToList();
+            PoolGroups = _context.PoolGroups.Include(pg => pg.Drives).ToList();
             ProtectedDrives = _context.ProtectedDrives.ToList();
 
             // Update connected status and properties for drives in pools
@@ -67,12 +64,11 @@ namespace Backy.Pages
                     {
                         // Update properties
                         drive.IsConnected = true;
-                        drive.Name = activeDrive.Name;
                         drive.Vendor = activeDrive.Vendor;
                         drive.Model = activeDrive.Model;
                         drive.IsMounted = activeDrive.IsMounted;
-                        drive.IdLink = activeDrive.IdLink;
-                        drive.Partitions = activeDrive.Partitions;
+                        drive.DevPath = activeDrive.IdLink;
+                        drive.Size = activeDrive.Size;
                     }
                     else
                     {
@@ -159,6 +155,7 @@ namespace Backy.Pages
                                 Serial = device.Serial ?? "No Serial",
                                 Vendor = device.Vendor ?? "Unknown Vendor",
                                 Model = device.Model ?? "Unknown Model",
+                                Size = device.Size ?? 0,
                                 IsConnected = true,
                                 Partitions = new List<PartitionInfo>(),
                                 IdLink = !string.IsNullOrEmpty(device.IdLink)
@@ -197,12 +194,6 @@ namespace Backy.Pages
                                 // No partitions, set size to disk size
                                 driveData.PartitionSize = device.Size ?? 0;
                             }
-
-                            // Use disk UUID if available
-                            driveData.UUID =
-                                device.Uuid
-                                ?? driveData.Partitions.FirstOrDefault()?.UUID
-                                ?? "No UUID";
 
                             activeDrives.Add(driveData);
                             _logger.LogDebug(
@@ -372,7 +363,7 @@ namespace Backy.Pages
                 var newPoolGroup = new PoolGroup
                 {
                     GroupLabel = request.PoolLabel,
-                    Drives = new List<Drive>(),
+                    Drives = new List<PoolDrive>(),
                 };
                 _context.PoolGroups.Add(newPoolGroup);
                 await _context.SaveChangesAsync();
@@ -385,7 +376,7 @@ namespace Backy.Pages
                 // Update drives and associate with PoolGroup
                 foreach (var drive in drives)
                 {
-                    var dbDrive = _context.Drives.FirstOrDefault(d => d.Serial == drive.Serial);
+                    var dbDrive = _context.PoolDrives.FirstOrDefault(d => d.Serial == drive.Serial);
                     string assignedLabel;
 
                     // Check if a label was provided for this drive
@@ -414,20 +405,19 @@ namespace Backy.Pages
 
                     if (dbDrive == null)
                     {
-                        dbDrive = new Drive
+                        dbDrive = new PoolDrive
                         {
                             Serial = drive.Serial,
                             Vendor = drive.Vendor,
                             Model = drive.Model,
-                            Name = drive.Name,
                             Label = assignedLabel,
                             IsMounted = true,
                             IsConnected = true,
-                            IdLink = drive.IdLink,
-                            Partitions = drive.Partitions,
+                            DevPath = drive.IdLink,
+                            Size = drive.Size,
                             PoolGroup = newPoolGroup,
                         };
-                        _context.Drives.Add(dbDrive);
+                        _context.PoolDrives.Add(dbDrive);
                     }
                     else
                     {
@@ -912,7 +902,7 @@ namespace Backy.Pages
                 // Clean up drives by wiping filesystem signatures
                 foreach (var drive in poolGroup.Drives)
                 {
-                    string wipeCommand = $"wipefs -a {drive.IdLink}";
+                    string wipeCommand = $"wipefs -a {drive.DevPath}";
                     var wipeResult = ExecuteShellCommand(wipeCommand, commandOutputs);
 
                     if (!wipeResult.success)
@@ -1141,7 +1131,7 @@ namespace Backy.Pages
                 // Wipe filesystem signatures
                 foreach (var drive in poolGroup.Drives)
                 {
-                    string wipeCommand = $"wipefs -a {drive.IdLink}";
+                    string wipeCommand = $"wipefs -a {drive.DevPath}";
                     var wipeResult = ExecuteShellCommand(wipeCommand, commandOutputs);
                     if (!wipeResult.success)
                     {
@@ -1192,7 +1182,7 @@ namespace Backy.Pages
 
             var commandOutputs = new List<string>();
             string assembleCommand = $"mdadm --assemble /dev/md{poolGroupId} ";
-            assembleCommand += string.Join(" ", poolGroup.Drives.Select(d => d.IdLink));
+            assembleCommand += string.Join(" ", poolGroup.Drives.Select(d => d.DevPath));
             var assembleResult = ExecuteShellCommand(assembleCommand, commandOutputs);
             if (!assembleResult.success)
             {

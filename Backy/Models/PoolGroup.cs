@@ -1,3 +1,5 @@
+// File: Backy/Models/PoolGroup.cs
+
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
@@ -27,6 +29,6 @@ namespace Backy.Models
 
         public string UsePercent { get; set; } = "0%";
 
-        public List<Drive> Drives { get; set; } = new List<Drive>();
+        public List<PoolDrive> Drives { get; set; } = new List<PoolDrive>();
     }
 }
