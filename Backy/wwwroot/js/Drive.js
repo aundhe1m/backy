@@ -17,6 +17,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // Select all elements with the 'format-size' class
     const sizeElements = document.querySelectorAll('.format-size');
 
+    // Search Functionality
+    const searchInput = document.getElementById('driveSearchInput');
+
     // Handle Protected Drive Cards
     const protectedDriveCards = document.querySelectorAll('.protected-drive-card');
 
@@ -200,6 +203,22 @@ document.addEventListener('DOMContentLoaded', function () {
                     // Re-enable form elements
                     form.querySelectorAll('input, button').forEach(el => el.disabled = false);
                 });
+        });
+    });
+
+    searchInput.addEventListener('input', function () {
+        const query = this.value.trim().toLowerCase();
+        const searchElements = document.querySelectorAll('[data-search-text]');
+
+        searchElements.forEach(function (element) {
+            const searchText = element.getAttribute('data-search-text').toLowerCase();
+            const matches = searchText.includes(query);
+
+            if (matches) {
+                element.style.display = ''; // Show element
+            } else {
+                element.style.display = 'none'; // Hide element
+            }
         });
     });
 

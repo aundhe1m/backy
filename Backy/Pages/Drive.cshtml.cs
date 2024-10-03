@@ -1166,7 +1166,7 @@ namespace Backy.Pages
             string assembleCommand = $"mdadm --assemble /dev/md{poolGroupId} ";
             assembleCommand += string.Join(" ", poolGroup.Drives.Select(d => d.DevPath));
             var assembleResult = ExecuteShellCommand(assembleCommand, commandOutputs);
-            if (!assembleResult.success)
+            if (!assembleResult.success) // Add a try to mount before returning bad request, and a else for the mkdir+mount
             {
                 return BadRequest(
                     new
