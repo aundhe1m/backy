@@ -1211,8 +1211,8 @@ namespace Backy.Pages
             );
         }
 
-        // Implement OnPostInspectPool to get mdadm --detail output
-        public IActionResult OnPostInspectPool(Guid poolGroupGuid)
+        // Implement OnPostStatusPool to get mdadm --detail output
+        public IActionResult OnPostStatusPool(Guid poolGroupGuid)
         {
             var poolGroup = _context.PoolGroups.FirstOrDefault(pg =>
                 pg.PoolGroupGuid == poolGroupGuid
@@ -1224,17 +1224,17 @@ namespace Backy.Pages
 
             int poolGroupId = poolGroup.PoolGroupId; // Retrieve poolGroupId
 
-            string inspectCommand = $"mdadm --detail /dev/md{poolGroupId}";
+            string statusCommand = $"mdadm --detail /dev/md{poolGroupId}";
             var commandOutputs = new List<string>();
-            var inspectResult = ExecuteShellCommand(inspectCommand, commandOutputs);
+            var statusResult = ExecuteShellCommand(statusCommand, commandOutputs);
 
-            if (inspectResult.success)
+            if (statusResult.success)
             {
-                return new JsonResult(new { success = true, output = inspectResult.message });
+                return new JsonResult(new { success = true, output = statusResult.message });
             }
             else
             {
-                return BadRequest(new { success = false, message = inspectResult.message });
+                return BadRequest(new { success = false, message = statusResult.message });
             }
         }
 

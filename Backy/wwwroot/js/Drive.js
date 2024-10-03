@@ -8,14 +8,34 @@ document.addEventListener('DOMContentLoaded', function () {
     const newDriveCards = document.querySelectorAll('.new-drive-card');
     const renamePoolForms = document.querySelectorAll('.rename-pool-form');
 
-    // Handle Eject/Mount/Inspect/Remove actions for Pools
+    // Handle Eject/Mount/Status/Remove actions for Pools
     const ejectPoolButtons = document.querySelectorAll('.eject-pool-button');
     const mountPoolButtons = document.querySelectorAll('.mount-pool-button');
-    const inspectPoolButtons = document.querySelectorAll('.inspect-pool-button');
+    const statusPoolButtons = document.querySelectorAll('.status-pool-button');
     const removePoolGroupButtons = document.querySelectorAll('.remove-pool-group-button');
+
+    // Select all elements with the 'format-size' class
+    const sizeElements = document.querySelectorAll('.format-size');
 
     // Handle Protected Drive Cards
     const protectedDriveCards = document.querySelectorAll('.protected-drive-card');
+
+    sizeElements.forEach(function (element) {
+        // Retrieve the raw size in bytes from the data attribute
+        const sizeInBytes = parseInt(element.getAttribute('data-size'), 10);
+
+        // Handle cases where sizeInBytes might not be a valid number
+        if (!isNaN(sizeInBytes)) {
+            // Use the formatSize function to get a human-readable format
+            const formattedSize = formatSize(sizeInBytes);
+
+            // Update the inner text of the span with the formatted size
+            element.textContent = formattedSize;
+        } else {
+            // Fallback in case of invalid size
+            element.textContent = '0 B';
+        }
+    });
 
     // Handle Create Pool button in toast
     document.getElementById('createPoolToastButton').addEventListener('click', function () {
@@ -266,10 +286,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    inspectPoolButtons.forEach(button => {
+    statusPoolButtons.forEach(button => {
         button.addEventListener('click', function () {
             const poolGroupGuid = button.getAttribute('data-pool-group-guid');
-            inspectPool(poolGroupGuid);
+            statusPool(poolGroupGuid);
         });
     });
 
@@ -576,8 +596,8 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    function inspectPool(poolGroupGuid) {
-        fetch(`/Drive?handler=InspectPool&poolGroupGuid=${poolGroupGuid}`, {
+    function statusPool(poolGroupGuid) {
+        fetch(`/Drive?handler=StatusPool&poolGroupGuid=${poolGroupGuid}`, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -586,24 +606,24 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showInspectModal(data.output);
+                    showStatusModal(data.output);
                 } else {
-                    showToast(`Failed to inspect pool: ${data.message}`, false);
+                    showToast(`Failed to status pool: ${data.message}`, false);
                 }
             })
             .catch(error => {
-                showToast(`Error inspecting pool: ${error}`, false);
+                showToast(`Error statusing pool: ${error}`, false);
             });
     }
 
-    function showInspectModal(output) {
+    function showStatusModal(output) {
         // Create and show a modal to display the output
-        const inspectModalHtml = `
-            <div class="modal fade" id="inspectModal" tabindex="-1" aria-labelledby="inspectModalLabel" aria-hidden="true">
+        const statusModalHtml = `
+            <div class="modal fade" id="statusModal" tabindex="-1" aria-labelledby="statusModalLabel" aria-hidden="true">
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title" id="inspectModalLabel">Pool Inspection</h5>
+                            <h5 class="modal-title" id="statusModalLabel">Pool Statusion</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
@@ -614,13 +634,13 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
 
-        document.body.insertAdjacentHTML('beforeend', inspectModalHtml);
-        const inspectModal = new bootstrap.Modal(document.getElementById('inspectModal'));
-        inspectModal.show();
+        document.body.insertAdjacentHTML('beforeend', statusModalHtml);
+        const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
+        statusModal.show();
 
         // Remove the modal from DOM after it's closed
-        document.getElementById('inspectModal').addEventListener('hidden.bs.modal', function () {
-            document.getElementById('inspectModal').remove();
+        document.getElementById('statusModal').addEventListener('hidden.bs.modal', function () {
+            document.getElementById('statusModal').remove();
         });
     }
 });

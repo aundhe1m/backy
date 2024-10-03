@@ -54,8 +54,8 @@
                         </div>
                         <!-- Progress Bar -->
                         <div>
-                            <span>@String.Format("{0:F2} GB", group.Used / 1024.0 / 1024.0 / 1024.0)</span> /
-                            <span>@String.Format("{0:F2} GB", group.Size / 1024.0 / 1024.0 / 1024.0)</span>
+                            <span class="format-size" data-size="@group.Used"></span> /
+                            <span class="format-size" data-size="@group.Size"></span>
                             @{
                                 // Directly use UsePercent
                                 var usedPercentage = group.UsePercent.TrimEnd('%');
@@ -82,10 +82,11 @@
                                     <img src="/icons/play.svg" alt="Mount Pool" style="height: 24px;">
                                 </button>
                             }
-                            <!-- Inspect Button -->
-                            <button type="button" class="btn btn-transparent inspect-pool-button"
-                                data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip" title="Inspect Pool">
-                                <img src="/icons/eye.svg" alt="Inspect Pool" style="height: 24px;">
+                            <!-- Status Button -->
+                            <button type="button" class="btn btn-transparent status-pool-button"
+                                data-pool-group-guid="@group.PoolGroupGuid" data-bs-toggle="tooltip"
+                                title="Inspect Pool Status">
+                                <img src="/icons/heart-pulse.svg" alt="Pool Status" style="height: 24px;">
                             </button>
                             <!-- Options Dropdown -->
                             <span data-bs-toggle="tooltip" title="Options" alt="Options">
@@ -111,6 +112,32 @@
                     <!-- Pool Drives -->
                     <div class="collapse" id="poolDetails-@group.PoolGroupGuid">
                         <div class="card-body">
+                            <!-- Drive Details Table -->
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <tbody>
+                                        <tr>
+                                            <th>Mount path</th>
+                                            <td>@group.MountPath</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Storage size</th>
+                                            <td class="format-size" data-size="@group.Size"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Used storage</th>
+                                            <td>
+                                                <span class="format-size" data-size="@group.Used"></span>
+                                                (@group.UsePercent)
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>Available storage</th>
+                                            <td class="format-size" data-size="@group.Available"></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                             @foreach (var Drive in group.Drives)
                             {
                                 @await Html.PartialAsync("_PoolGroupDriveCard", Drive)
@@ -318,5 +345,6 @@
 }
 
 <script src="/js/_Toast.js"></script>
+<script src="/js/_FormatSize.js"></script>
 <script src="/js/Drive.js"></script>
 <link rel="stylesheet" href="/css/Drive.css">
