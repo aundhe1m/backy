@@ -52,6 +52,8 @@ namespace Backy.Pages
             PoolGroups = _context.PoolGroups.Include(pg => pg.Drives).ToList();
             ProtectedDrives = _context.ProtectedDrives.ToList();
 
+            bool changesMade = false; // Flag to track if any changes are made
+
             // Update connected status and properties for drives in pools
             foreach (var pool in PoolGroups)
             {
@@ -83,11 +85,40 @@ namespace Backy.Pages
                 if (pool.PoolEnabled && !string.IsNullOrEmpty(pool.MountPath))
                 {
                     var (size, used, available, usePercent) = GetMountPointSize(pool.MountPath);
-                    pool.Size = size;
-                    pool.Used = used;
-                    pool.Available = available;
-                    pool.UsePercent = usePercent;
+
+                    // Check if GetMountPointSize returned valid data
+                    if (size > 0)
+                    {
+                        // Only update if there's a significant change
+                        if (
+                            pool.Size != size
+                            || pool.Used != used
+                            || pool.Available != available
+                            || pool.UsePercent != usePercent
+                        )
+                        {
+                            pool.Size = size;
+                            pool.Used = used;
+                            pool.Available = available;
+                            pool.UsePercent = usePercent;
+                            changesMade = true; // Mark that changes have been made
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            $"Failed to retrieve mount point size for {pool.MountPath}. Keeping existing values."
+                        );
+                        // Do not overwrite existing values
+                    }
                 }
+            }
+
+            // Save changes to the database only if any changes were made
+            if (changesMade)
+            {
+                _context.SaveChanges();
+                _logger.LogDebug("Pool sizes updated and changes saved to the database.");
             }
 
             // NewDrives: drives that are active but not in any pool and not protected
