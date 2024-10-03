@@ -177,22 +177,8 @@ namespace Backy.Pages
                                         Size = partition.Size ?? 0,
                                     };
 
-                                    // Update used space if mounted
-                                    if (!string.IsNullOrEmpty(partition.Mountpoint))
-                                    {
-                                        partitionData.UsedSpace = GetUsedSpace(
-                                            partition.Mountpoint
-                                        );
-                                        driveData.IsMounted = true;
-                                    }
-
                                     driveData.Partitions.Add(partitionData);
                                 }
-                            }
-                            else
-                            {
-                                // No partitions, set size to disk size
-                                driveData.PartitionSize = device.Size ?? 0;
                             }
 
                             activeDrives.Add(driveData);
@@ -209,41 +195,6 @@ namespace Backy.Pages
             }
 
             return activeDrives;
-        }
-
-        /// <summary>
-        /// Retrieves the used space of a given mount point.
-        /// </summary>
-        /// <param name="mountpoint">The mount point path.</param>
-        /// <returns>The used space in bytes.</returns>
-        private long GetUsedSpace(string mountpoint)
-        {
-            try
-            {
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "bash",
-                        Arguments = $"-c \"df -B1 | grep {mountpoint} | awk '{{print $3}}'\"",
-                        RedirectStandardOutput = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                    },
-                };
-                process.Start();
-                string result = process.StandardOutput.ReadToEnd().Trim();
-                process.WaitForExit();
-
-                return long.TryParse(result, out long used) ? used : 0;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    $"Error getting used space for mountpoint {mountpoint}: {ex.Message}"
-                );
-                return 0;
-            }
         }
 
         /// <summary>

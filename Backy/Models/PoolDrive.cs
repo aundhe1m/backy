@@ -13,26 +13,23 @@ namespace Backy.Models
         [Required]
         public Guid DriveGuid { get; set; } = Guid.NewGuid();
 
-        public string Label { get; set; } = string.Empty;
+        public required string Label { get; set; }
 
-        public string Serial { get; set; } = "No Serial";
+        public required string Serial { get; set; }
 
-        public string UUID { get; set; } = "No UUID";
+        public required string Vendor { get; set; }
 
-        public string Vendor { get; set; } = "Unknown Vendor";
+        public required string Model { get; set; }
 
-        public string Model { get; set; } = "Unknown Model";
-
-        public long Size { get; set; } = 0;
+        public required long Size { get; set; }
 
         public bool IsConnected { get; set; } = false;
 
         public bool IsMounted { get; set; } = false;
 
-        public string DevPath { get; set; } = string.Empty; // Renamed from IdLink
+        public required string DevPath { get; set; }
 
-        // Foreign key to PoolGroup
-        public Guid? PoolGroupGuid { get; set; }
+        public Guid PoolGroupGuid { get; set; }
 
         [ForeignKey(nameof(PoolGroupGuid))]
         public PoolGroup? PoolGroup { get; set; }

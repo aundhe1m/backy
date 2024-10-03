@@ -12,15 +12,11 @@ namespace Backy.Models
 
         public required string Serial { get; set; }
 
-        public string UUID { get; set; } = "No UUID";
-
         public string Vendor { get; set; } = "Unknown Vendor";
 
         public string Model { get; set; } = "Unknown Model";
 
         public long Size { get; set; } = 0;
-
-        public long PartitionSize { get; set; } = 0;
 
         public bool IsConnected { get; set; } = false;
 
@@ -32,19 +28,6 @@ namespace Backy.Models
     }
 
     // Models and DTOs
-    public class DiskArrayResult
-    {
-        [JsonPropertyName("discarray")]
-        public List<DiskInfo> Discarray { get; set; } = new List<DiskInfo>();
-    }
-
-    public class DriveDto
-    {
-        public int Id { get; set; }
-        public required string Serial { get; set; }
-        public required string Label { get; set; }
-    }
-
     public class CreatePoolRequest
     {
         public required string PoolLabel { get; set; }
@@ -69,24 +52,6 @@ namespace Backy.Models
         public Guid PoolGroupGuid { get; set; }
         public List<int> Pids { get; set; } = new List<int>();
         public string Action { get; set; } = string.Empty;
-    }
-
-    public class DiskInfo
-    {
-        [JsonPropertyName("mount")]
-        public string Mount { get; set; } = string.Empty;
-
-        [JsonPropertyName("size")]
-        public string Size { get; set; } = "0";
-
-        [JsonPropertyName("used")]
-        public string Used { get; set; } = "0";
-
-        [JsonPropertyName("avail")]
-        public string Avail { get; set; } = "0";
-
-        [JsonPropertyName("use%")]
-        public string UsePercent { get; set; } = "0%";
     }
 
     public class LsblkOutput

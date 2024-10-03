@@ -12,8 +12,6 @@ namespace Backy.Models
 
         public long Size { get; set; } = 0;
 
-        public long UsedSpace { get; set; } = 0;
-
         public string Fstype { get; set; } = "Unknown";
     }
 }

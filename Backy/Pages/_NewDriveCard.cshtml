@@ -20,7 +20,7 @@
         <div>
             <!-- Display drive size -->
             <div>
-                <span>@String.Format("{0:F2} GB", Model.PartitionSize / 1024.0 / 1024.0 / 1024.0)</span>
+                <span>@String.Format("{0:F2} GB", Model.Size / 1024.0 / 1024.0 / 1024.0)</span>
             </div>
         </div>
         <!-- Action Buttons -->
@@ -62,30 +62,60 @@
                         </tr>
                         <tr>
                             <th>Size</th>
-                            <td>@String.Format("{0:F2} GB", Model.PartitionSize / 1024.0 / 1024.0 / 1024.0)</td>
+                            <td>@String.Format("{0:F2} GB", Model.Size / 1024.0 / 1024.0 / 1024.0)</td>
                         </tr>
-                        @foreach (var partition in Model.Partitions)
-                        {
-                            <tr>
-                                <th>Partition Name</th>
-                                <td>@partition.Name</td>
-                            </tr>
-                            <tr>
-                                <th>Mountpoint</th>
-                                <td>@partition.MountPoint</td>
-                            </tr>
-                            <tr>
-                                <th>Partition UUID</th>
-                                <td>@partition.UUID</td>
-                            </tr>
-                            <tr>
-                                <th>Filesystem</th>
-                                <td>@partition.Fstype</td>
-                            </tr>
-                        }
                     </tbody>
                 </table>
             </div>
+            @foreach (var partition in Model.Partitions)
+            {
+
+                <div class="card partition-card mb-2">
+                    <!-- Card Header -->
+                    <div class="card-header d-flex justify-content-between align-items-center"
+                        style="background-color: #01686b36;">
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-link p-0 me-2 chevron-button" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#partitionDetails-@partition.Name" aria-expanded="false"
+                                aria-controls="partitionDetails-@partition.Name">
+                                <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon"
+                                    style="height: 24px;">
+                            </button>
+                            <!-- Drive Name -->
+                            <img src="/icons/pie-chart.svg" alt="Partition" style="height: 24px; margin-right: 8px;" />
+                            <span>@partition.Name</span>
+                        </div>
+                    </div>
+                    <!-- Collapsible Details -->
+                    <div class="collapse" id="partitionDetails-@partition.Name">
+                        <div class="card-body">
+                            <!-- Drive Details Table -->
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <tbody>
+                                        <tr>
+                                            <th>Partition Name</th>
+                                            <td>@partition.Name</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Mountpoint</th>
+                                            <td>@partition.MountPoint</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Partition UUID</th>
+                                            <td>@partition.UUID</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Filesystem</th>
+                                            <td>@partition.Fstype</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
         </div>
     </div>
 </div>
