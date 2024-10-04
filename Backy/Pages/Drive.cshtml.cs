@@ -1165,41 +1165,62 @@ namespace Backy.Pages
             var commandOutputs = new List<string>();
             string assembleCommand = $"mdadm --assemble /dev/md{poolGroupId} ";
             assembleCommand += string.Join(" ", poolGroup.Drives.Select(d => d.DevPath));
-            var assembleResult = ExecuteShellCommand(assembleCommand, commandOutputs);
-            if (!assembleResult.success) // Add a try to mount before returning bad request, and a else for the mkdir+mount
-            {
-                return BadRequest(
-                    new
-                    {
-                        success = false,
-                        message = assembleResult.message,
-                        outputs = commandOutputs,
-                    }
-                );
-            }
 
+            // Execute the assemble command
+            var assembleResult = ExecuteShellCommand(assembleCommand, commandOutputs);
+
+            // Initialize variables to track results
+            bool assembleSucceeded = assembleResult.success;
+            string assembleMessage = assembleResult.message;
+
+            // Attempt to mount regardless of assemble result
             string mountPath = $"/mnt/backy/md{poolGroupId}";
             string mountCommand = $"mkdir -p {mountPath} && mount /dev/md{poolGroupId} {mountPath}";
             var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
-            if (!mountResult.success)
+            bool mountSucceeded = mountResult.success;
+            string mountMessage = mountResult.message;
+
+            // Analyze results
+            if (!assembleSucceeded && !mountSucceeded)
             {
+                // Both assemble and mount failed
+                _logger.LogError($"Error running mdadm assemble: {assembleMessage}.");
+                _logger.LogError($"Error running mount command: {mountMessage}.");
+
                 return BadRequest(
                     new
                     {
                         success = false,
-                        message = mountResult.message,
+                        message = $"Assemble Error: {assembleMessage}; Mount Error: {mountMessage}",
+                        outputs = commandOutputs,
+                    }
+                );
+            }
+            else if (!mountSucceeded)
+            {
+                // Mount failed, regardless of assemble
+                _logger.LogError($"Error running mount command: {mountMessage}.");
+
+                return BadRequest(
+                    new
+                    {
+                        success = false,
+                        message = mountMessage,
                         outputs = commandOutputs,
                     }
                 );
             }
 
-            foreach (var Drive in poolGroup.Drives)
+            // Update the database to reflect the mounted drives and enabled pool
+            foreach (var drive in poolGroup.Drives)
             {
-                Drive.IsMounted = true;
+                drive.IsMounted = true;
             }
 
             poolGroup.PoolEnabled = true;
             _context.SaveChanges();
+
+            _logger.LogInformation("Pool mounted successfully.");
 
             return new JsonResult(
                 new
