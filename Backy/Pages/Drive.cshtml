@@ -113,12 +113,17 @@
                         </div>
                     </div>
                     <!-- Pool Drives -->
-                    <div class="collapse" id="poolDetails-@group.PoolGroupGuid">
-                        <div class="card-body">
-                            <!-- Pool Details Table -->
+
+                    <div class="card-body">
+                        <!-- Pool Details Table -->
+                        <div class="collapse" id="poolDetails-@group.PoolGroupGuid">
                             <div class="table-responsive">
                                 <table class="table table-striped">
                                     <tbody>
+                                        <tr>
+                                            <th>Pool Status</th>
+                                            <td>@group.PoolStatus</td>
+                                        </tr>
                                         <tr>
                                             <th>Mount path</th>
                                             <td>@group.MountPath</td>
@@ -141,11 +146,11 @@
                                     </tbody>
                                 </table>
                             </div>
-                            @foreach (var Drive in group.Drives)
-                            {
-                                @await Html.PartialAsync("_PoolGroupDriveCard", Drive)
-                            }
                         </div>
+                        @foreach (var Drive in group.Drives)
+                        {
+                            @await Html.PartialAsync("_PoolGroupDriveCard", Drive)
+                        }
                     </div>
                 </div>
             </div>

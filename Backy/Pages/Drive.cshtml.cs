@@ -82,6 +82,17 @@ namespace Backy.Pages
                 // Set PoolEnabled based on whether all drives are connected
                 pool.AllDrivesConnected = allConnected;
 
+                if (pool.PoolEnabled)
+                {
+                    // Fetch Pool Status
+                    string status = FetchPoolStatus(pool.PoolGroupId);
+                    if (pool.PoolStatus != status)
+                    {
+                        pool.PoolStatus = status;
+                        changesMade = true;
+                    }
+                }
+
                 if (pool.PoolEnabled && !string.IsNullOrEmpty(pool.MountPath))
                 {
                     var (size, used, available, usePercent) = GetMountPointSize(pool.MountPath);
@@ -139,6 +150,48 @@ namespace Backy.Pages
         }
 
         /// <summary>
+        /// Fetches the status of the mdadm pool.
+        /// </summary>
+        private string FetchPoolStatus(int poolGroupId)
+        {
+            string command = $"mdadm --detail /dev/md{poolGroupId}";
+            var commandOutputs = new List<string>();
+            var (success, output) = ExecuteShellCommand(command, commandOutputs);
+            if (!success)
+            {
+                return "Offline";
+            }
+            else
+            {
+                // Parse the output to get the State line
+                var lines = output.Split('\n');
+                foreach (var line in lines)
+                {
+                    if (line.Trim().StartsWith("State :"))
+                    {
+                        var state = line.Substring(line.IndexOf(':') + 1).Trim();
+                        switch (state.ToLower())
+                        {
+                            case "clean":
+                                return "Active";
+                            case "clean, resyncing":
+                                return "Resyncing";
+                            case "clean, degraded":
+                                return "Degraded";
+                            case "clean, degraded, recovering":
+                                return "Recovering";
+                            case "clean, failed":
+                                return "Failed";
+                            default:
+                                return "Unknown";
+                        }
+                    }
+                }
+                return "Unknown";
+            }
+        }
+
+        /// <summary>
         /// Updates the list of active drives by parsing the output of 'lsblk'.
         /// Skips the system drive (sda) and collects information about connected drives.
         /// </summary>
@@ -187,6 +240,7 @@ namespace Backy.Pages
                                 Vendor = device.Vendor ?? "Unknown Vendor",
                                 Model = device.Model ?? "Unknown Model",
                                 Size = device.Size ?? 0,
+                                IsMounted = !string.IsNullOrEmpty(device.Mountpoint),
                                 IsConnected = true,
                                 Partitions = new List<PartitionInfo>(),
                                 IdLink = !string.IsNullOrEmpty(device.IdLink)
@@ -207,6 +261,11 @@ namespace Backy.Pages
                                         MountPoint = partition.Mountpoint ?? "Not Mounted",
                                         Size = partition.Size ?? 0,
                                     };
+
+                                    if (!string.IsNullOrEmpty(partition.Mountpoint))
+                                    {
+                                        driveData.IsMounted = true;
+                                    }
 
                                     driveData.Partitions.Add(partitionData);
                                 }
@@ -1256,6 +1315,62 @@ namespace Backy.Pages
             else
             {
                 return BadRequest(new { success = false, message = statusResult.message });
+            }
+        }
+
+        public IActionResult OnPostForceAddDrive()
+        {
+            var form = Request.Form;
+            if (
+                !form.ContainsKey("driveId")
+                || !form.ContainsKey("poolGroupGuid")
+                || !form.ContainsKey("devPath")
+            )
+            {
+                return BadRequest(new { success = false, message = "Invalid request data." });
+            }
+
+            if (
+                !int.TryParse(form["driveId"], out int driveId)
+                || !Guid.TryParse(form["poolGroupGuid"], out Guid poolGroupGuid)
+            )
+            {
+                return BadRequest(new { success = false, message = "Invalid parameters." });
+            }
+
+            string devPath = form["devPath"].ToString();
+
+            var poolGroup = _context.PoolGroups.FirstOrDefault(pg =>
+                pg.PoolGroupGuid == poolGroupGuid
+            );
+            if (poolGroup == null)
+            {
+                return BadRequest(new { success = false, message = "Pool group not found." });
+            }
+
+            int poolGroupId = poolGroup.PoolGroupId;
+
+            string command = $"mdadm --manage /dev/md{poolGroupId} --add {devPath}";
+            var commandOutputs = new List<string>();
+            var (success, message) = ExecuteShellCommand(command, commandOutputs);
+
+            if (success)
+            {
+                // Optionally update the drive's status
+                var drive = _context.PoolDrives.FirstOrDefault(d => d.Id == driveId);
+                if (drive != null)
+                {
+                    drive.IsMounted = true;
+                    _context.SaveChanges();
+                }
+
+                return new JsonResult(
+                    new { success = true, message = "Drive added to the pool successfully." }
+                );
+            }
+            else
+            {
+                return BadRequest(new { success = false, message = message });
             }
         }
 

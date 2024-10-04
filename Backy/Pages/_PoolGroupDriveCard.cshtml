@@ -33,6 +33,15 @@
             <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
             <span>@(string.IsNullOrEmpty(Model.Label) ? "Unnamed Drive" : Model.Label)</span>
         </div>
+        <!-- Force Add Button -->
+        @if (!Model.IsMounted)
+        {
+            <button type="button" class="btn btn-transparent force-add-button" data-drive-id="@Model.Id"
+                data-pool-group-guid="@Model.PoolGroupGuid" data-dev-path="@Model.DevPath" data-bs-toggle="tooltip"
+                title="Force Add Drive">
+                <img src="/icons/plus-circle-dotted.svg" alt="Force Add Drive" style="height: 24px;">
+            </button>
+        }
     </div>
 
     <!-- Drive Details -->

@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const mountPoolButtons = document.querySelectorAll('.mount-pool-button');
     const statusPoolButtons = document.querySelectorAll('.status-pool-button');
     const removePoolGroupButtons = document.querySelectorAll('.remove-pool-group-button');
+    const forceAddButtons = document.querySelectorAll('.force-add-button');
 
     // Select all elements with the 'format-size' class
     const sizeElements = document.querySelectorAll('.format-size');
@@ -230,6 +231,48 @@ document.addEventListener('DOMContentLoaded', function () {
             removeModal.show();
         });
     });
+
+    forceAddButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const driveId = this.getAttribute('data-drive-id');
+            const poolGroupGuid = this.getAttribute('data-pool-group-guid');
+            const devPath = this.getAttribute('data-dev-path');
+            forceAddDrive(driveId, poolGroupGuid, devPath);
+        });
+    });
+
+    function forceAddDrive(driveId, poolGroupGuid, devPath) {
+        const postData = new URLSearchParams({
+            'driveId': driveId,
+            'poolGroupGuid': poolGroupGuid,
+            'devPath': devPath
+        });
+
+        fetch('/Drive?handler=ForceAddDrive', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: postData.toString()
+        })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(json => { throw json; });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, true, true);
+                } else {
+                    showToast(`Failed to force add drive: ${data.message}`, false);
+                }
+            })
+            .catch(error => {
+                showToast(`Error force adding drive: ${error.message || error}`, false);
+            });
+    }
 
     // Handle confirmation of removal
     document.getElementById('confirmRemovePoolGroupButton').addEventListener('click', function () {

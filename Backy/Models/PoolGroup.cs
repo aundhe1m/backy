@@ -29,6 +29,8 @@ namespace Backy.Models
 
         public string UsePercent { get; set; } = "0%";
 
+        public string PoolStatus { get; set; } = "Unknown";
+
         public List<PoolDrive> Drives { get; set; } = new List<PoolDrive>();
     }
 }
