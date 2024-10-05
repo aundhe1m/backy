@@ -4,10 +4,11 @@
     ViewData["Title"] = "Remote Scan";
 }
 
-<h1>@ViewData["Title"]</h1>
-
-<!-- Add New Storage Source Button -->
-<button class="btn btn-success mb-3" onclick="openAddModal()">Add New Storage Source</button>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@ViewData["Title"]</h1>
+    <!-- Add New Storage Source Button -->
+    <button class="btn btn-primary mb-3" onclick="openAddModal()">Add New Storage Source</button>
+</div>
 
 <!-- Storage Source Cards -->
 <div class="row">
@@ -27,8 +28,8 @@
             <form method="post" id="storageForm">
                 <div class="modal-header">
                     <h5 class="modal-title" id="storageModalLabel">Add/Edit Storage Source</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close" onclick="closeModal()">
-                        <span aria-hidden="true">&times;</span>
+                    <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close"
+                        onclick="closeModal()">
                     </button>
                 </div>
                 <div class="modal-body">
@@ -111,10 +112,13 @@
     <div class="modal-dialog modal-lg" role="document" style="max-width: 90%;">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">File Explorer</h5>
-                <div class="input-group" style="width: 50%; position: relative;">
-                    <input type="text" class="form-control" placeholder="Search..." id="searchInput">
-                    <!-- Search button with icon -->
+                <h5 class="modal-title" style="padding-left: 10px;">File Explorer</h5>
+                @* example search *@
+
+                <!-- Search with icon button -->
+                <div class="input-group" style="width: 50%;position: relative;margin-left: 100px;margin-right: 100px;">
+                    <input type="text" class="form-control" placeholder="Search..." id="searchInput"
+                        aria-describedby="searchButton">
                     <div class="input-group-append">
                         <button class="btn btn-outline-secondary" type="button" id="searchButton"
                             onclick="searchFiles($('#searchInput').val(), true)">
@@ -124,9 +128,8 @@
                     <!-- Suggestions dropdown -->
                     <div id="searchSuggestions" class="dropdown-menu" style="width: 100%;"></div>
                 </div>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close"
-                    onclick="closeFileExplorer()">
-                    <span aria-hidden="true">&times;</span>
+                <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close"
+                    onclick="closeFileExplorer()" style="padding-right: 30px;">
                 </button>
             </div>
             <div class="modal-body" style="position: relative; overflow: hidden; max-height: 80vh;">
@@ -144,7 +147,6 @@
     </div>
 </div>
 
-
 <!-- Index Schedule Modal -->
 <div class="modal fade" id="scheduleModal" tabindex="-1" role="dialog" aria-labelledby="scheduleModalLabel"
     aria-hidden="true">
@@ -153,9 +155,8 @@
             <form id="scheduleForm">
                 <div class="modal-header">
                     <h5 class="modal-title">Schedule Index</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"
+                    <button type="button" class="btn-close" data-dismiss="modal" aria-label="Close"
                         onclick="closeScheduleModal()">
-                        <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
                 <div class="modal-body">

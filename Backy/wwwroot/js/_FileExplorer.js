@@ -275,7 +275,7 @@ function buildFileTable(highlightFile) {
     const tableHeader = $(`
         <thead>
             <tr>
-                <th id="sort-name" class="sortable">Name <img src="/icons/caret-up-fill.svg" class="sort-icon"></th>
+                <th id="sort-name" class="sortable">Name <img src="/icons/sort-alpha-down.svg" class="sort-icon"></th>
                 <th id="sort-size" class="sortable">Size</th>
                 <th id="sort-backup" class="sortable">Backup</th>
             </tr>
@@ -412,12 +412,15 @@ function toggleSort(column) {
 function updateSortIcons(fileTable) {
     fileTable.find('th img.sort-icon').remove();
 
-    const sortIcon = $('<img class="sort-icon">').attr('src', sortOrder === 'asc' ? '/icons/caret-up-fill.svg' : '/icons/caret-down-fill.svg');
+    const sortIconAlpha = $('<img class="sort-icon">').attr('src', sortOrder === 'asc' ? '/icons/sort-alpha-down.svg' : '/icons/sort-alpha-up-alt.svg');
+    const sortIcon = $('<img class="sort-icon">').attr('src', sortOrder === 'asc' ? '/icons/sort-down.svg' : '/icons/sort-up.svg');
 
     if (sortColumn === 'name') {
-        fileTable.find('#sort-name').append(' ').append(sortIcon);
+        fileTable.find('#sort-name').append(' ').append(sortIconAlpha);
+
     } else if (sortColumn === 'size') {
         fileTable.find('#sort-size').append(' ').append(sortIcon);
+
     } else if (sortColumn === 'backup') {
         fileTable.find('#sort-backup').append(' ').append(sortIcon);
     }
