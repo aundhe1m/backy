@@ -63,13 +63,6 @@
                             <th>Size</th>
                             <td>@FormatSize(Model.Size)</td>
                         </tr>
-                        @if (Model is ProtectedDrive)
-                        {
-                            <tr>
-                                <th>Protection Status</th>
-                                <td>Protected</td>
-                            </tr>
-                        }
                         @if (Model.Partitions != null && Model.Partitions.Any())
                         {
                             <tr>

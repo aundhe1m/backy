@@ -1,14 +1,19 @@
 ﻿@page "/DriveManagement"
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
 @using Backy.Data
 @using Backy.Models
 @using Backy.Services
 @using Backy.Components
 @using Blazored.Toast.Services
-@using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
 @inject ApplicationDbContext DbContext
 @inject IToastService ToastService
 @inject ILogger<DriveManagement> Logger
+@inject Modal Modal
+@inject ILoadingService LoadingService
+@inject IDriveService DriveService
 
 <PageTitle>Drive Catalog - Backy</PageTitle>
 
@@ -23,11 +28,8 @@
 {
     @foreach (var pool in PoolGroups)
     {
-        <PoolGroupDriveCard Model="@pool"
-                            OnUnmountPool="@UnmountPool"
-                            OnRemovePoolGroup="@RemovePoolGroup"
-                            OnMountPool="@MountPool"
-                            OnRenamePoolGroup="@RenamePoolGroup" />
+        <PoolGroupDriveCard Model="@pool" OnUnmountPool="@UnmountPool" OnRemovePoolGroup="@RemovePoolGroup"
+    OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup" />
     }
 }
 
@@ -36,12 +38,10 @@
 {
     <h2>New Drives</h2>
     <div class="row">
-        @foreach (var drive in NewDrives)
+    @foreach (var drive in NewDrives)
         {
             <div class="col-md-4">
-                <NewDriveCard Model="@drive"
-                              OnProtect="@ProtectDrive"
-                              OnSelect="@SelectDrive" />
+                <NewDriveCard Model="@drive" OnProtect="@ProtectDrive" OnSelect="@SelectDrive" />
             </div>
         }
     </div>
@@ -52,11 +52,10 @@
 {
     <h2>Protected Drives</h2>
     <div class="row">
-        @foreach (var drive in ProtectedDrives)
+    @foreach (var drive in ProtectedDrives)
         {
             <div class="col-md-4">
-                <ProtectedDriveCard Model="@drive"
-                                    OnUnprotect="@UnprotectDrive" />
+                <ProtectedDriveCard Model="@drive" OnUnprotect="@UnprotectDrive" />
             </div>
         }
     </div>
@@ -65,19 +64,19 @@
 <!-- Create Pool Modal -->
 @if (isCreatePoolModalOpen)
 {
-    <Modal Title="Create Pool" Visible="isCreatePoolModalOpen" VisibleChanged="@(v => isCreatePoolModalOpen = v)">
-        <EditForm Model="@CreatePoolRequest" OnValidSubmit="HandleCreatePool">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
+    <Modal Title="Create Pool" Visible="isCreatePoolModalOpen" OnClose="CloseCreatePoolModal">
+    <EditForm Model="@CreatePoolRequest" OnValidSubmit="HandleCreatePool">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
 
-            <div class="mb-3">
-                <label for="poolLabel" class="form-label">Pool Label</label>
-                <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
-                <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
-            </div>
+        <div class="mb-3">
+            <label for="poolLabel" class="form-label">Pool Label</label>
+            <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
+            <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
+        </div>
 
-            <!-- Drive Labels -->
-            @foreach (var drive in SelectedDrives)
+        <!-- Drive Labels -->
+        @foreach (var drive in SelectedDrives)
             {
                 <div class="mb-3">
                     <label class="form-label">Drive Label (@drive.Serial)</label>
@@ -97,18 +96,18 @@
 @if (isRenamePoolModalOpen)
 {
     <Modal Title="Rename Pool" Visible="isRenamePoolModalOpen" VisibleChanged="@(v => isRenamePoolModalOpen = v)">
-        <EditForm Model="@RenamePoolRequest" OnValidSubmit="HandleRenamePool">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
+    <EditForm Model="@RenamePoolRequest" OnValidSubmit="HandleRenamePool">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
 
-            <div class="mb-3">
-                <label for="newPoolLabel" class="form-label">New Pool Label</label>
-                <InputText id="newPoolLabel" class="form-control" @bind-Value="RenamePoolRequest.NewPoolLabel" required />
-                <ValidationMessage For="@(() => RenamePoolRequest.NewPoolLabel)" />
-            </div>
+        <div class="mb-3">
+            <label for="newPoolLabel" class="form-label">New Pool Label</label>
+            <InputText id="newPoolLabel" class="form-control" @bind-Value="RenamePoolRequest.NewPoolLabel" required />
+            <ValidationMessage For="@(() => RenamePoolRequest.NewPoolLabel)" />
+        </div>
 
-            <!-- Drive Labels -->
-            @foreach (var drive in PoolToRename.Drives)
+        <!-- Drive Labels -->
+        @foreach (var drive in PoolToRename.Drives)
             {
                 <div class="mb-3">
                     <label class="form-label">Drive Label (@drive.Serial)</label>
@@ -129,11 +128,15 @@
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
     private List<ProtectedDrive> ProtectedDrives { get; set; } = new List<ProtectedDrive>();
     private List<Drive> SelectedDrives { get; set; } = new List<Drive>();
-    private CreatePoolRequest CreatePoolRequest { get; set; } = new CreatePoolRequest();
+    private CreatePoolRequest CreatePoolRequest { get; set; } = new CreatePoolRequest
+        {
+            PoolLabel = string.Empty,
+            DriveSerials = new List<string>()
+        };
     private bool isCreatePoolModalOpen = false;
     private bool isRenamePoolModalOpen = false;
-    private PoolGroup PoolToRename { get; set; }
-    private RenamePoolRequest RenamePoolRequest { get; set; }
+    private PoolGroup? PoolToRename { get; set; }
+    private RenamePoolRequest? RenamePoolRequest { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -144,7 +147,7 @@
     {
         try
         {
-            LoadingService.ShowLoading();
+            await LoadingService.ShowLoading();
             await OrganizeDrives();
         }
         catch (Exception ex)
@@ -154,7 +157,7 @@
         }
         finally
         {
-            LoadingService.HideLoading();
+            await LoadingService.HideLoading();
         }
     }
 
@@ -221,7 +224,8 @@
         // NewDrives: drives that are active but not in any pool and not protected
         var pooledDriveSerials = PoolGroups.SelectMany(p => p.Drives).Select(d => d.Serial).ToHashSet();
         var protectedSerials = ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
-        NewDrives = activeDrives.Where(d => !pooledDriveSerials.Contains(d.Serial) && !protectedSerials.Contains(d.Serial)).ToList();
+        NewDrives = activeDrives.Where(d => !pooledDriveSerials.Contains(d.Serial) &&
+        !protectedSerials.Contains(d.Serial)).ToList();
     }
 
     private async Task ProtectDrive(string serial)
@@ -285,11 +289,11 @@
     private void OpenCreatePoolModal()
     {
         CreatePoolRequest = new CreatePoolRequest
-        {
-            PoolLabel = "",
-            DriveSerials = SelectedDrives.Select(d => d.Serial).ToList(),
-            DriveLabels = SelectedDrives.ToDictionary(d => d.Serial, d => d.Label ?? "")
-        };
+            {
+                PoolLabel = "",
+                DriveSerials = SelectedDrives.Select(d => d.Serial).ToList(),
+                DriveLabels = SelectedDrives.ToDictionary(d => d.Serial, d => d.Label ?? "")
+            };
         isCreatePoolModalOpen = true;
     }
 
@@ -360,7 +364,7 @@
     {
         try
         {
-            LoadingService.ShowLoading();
+            await LoadingService.ShowLoading();
             var result = await DriveService.RemovePoolGroupAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
@@ -379,7 +383,7 @@
         }
         finally
         {
-            LoadingService.HideLoading();
+            await LoadingService.HideLoading();
         }
     }
 
@@ -387,7 +391,7 @@
     {
         try
         {
-            LoadingService.ShowLoading();
+            await LoadingService.ShowLoading();
             var result = await DriveService.MountPoolAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
@@ -416,11 +420,11 @@
         isRenamePoolModalOpen = true;
         PoolToRename = poolGroup;
         RenamePoolRequest = new RenamePoolRequest
-        {
-            PoolGroupGuid = poolGroup.PoolGroupGuid,
-            NewPoolLabel = poolGroup.GroupLabel,
-            DriveLabels = poolGroup.Drives.ToDictionary(d => d.Id, d => d.Label)
-        };
+            {
+                PoolGroupGuid = poolGroup.PoolGroupGuid,
+                NewPoolLabel = poolGroup.GroupLabel,
+                DriveLabels = poolGroup.Drives.ToDictionary(d => d.Id, d => d.Label)
+            };
     }
 
     private void CloseRenamePoolModal()

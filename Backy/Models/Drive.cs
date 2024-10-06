@@ -54,7 +54,6 @@ namespace Backy.Models
         public required Dictionary<int, string?> DriveLabels { get; set; }
     }
 
-
     public class KillProcessesRequest
     {
         public Guid PoolGroupGuid { get; set; }

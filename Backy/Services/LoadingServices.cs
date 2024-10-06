@@ -14,8 +14,8 @@ namespace Backy.Services
 
     public class LoadingService : ILoadingService
     {
-        public event Func<Task> OnShow;
-        public event Func<Task> OnHide;
+        public event Func<Task>? OnShow;
+        public event Func<Task>? OnHide;
 
         public async Task ShowLoading()
         {

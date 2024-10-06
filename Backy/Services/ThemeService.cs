@@ -13,7 +13,7 @@ namespace Backy.Services
 
     public class ThemeService : IThemeService
     {
-        public event Func<Task> OnThemeChanged;
+        public event Func<Task>? OnThemeChanged;
 
         public bool IsDarkMode { get; private set; } = false;
 

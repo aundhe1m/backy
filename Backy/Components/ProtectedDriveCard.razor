@@ -22,8 +22,8 @@
 </div>
 
 @code {
-    [Parameter]
-    public ProtectedDrive Model { get; set; }
+    [Parameter, EditorRequired]
+    public ProtectedDrive Model { get; set; } = default!;
 
     [Parameter]
     public EventCallback<string> OnUnprotect { get; set; }

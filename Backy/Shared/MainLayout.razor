@@ -1,7 +1,11 @@
 ﻿@inherits LayoutComponentBase
 @using Microsoft.AspNetCore.Components.Routing
 @using Backy.Services
-@inject LoadingService LoadingService
+@using Blazored.Toast
+@using Blazored.Toast.Services
+@inject IToastService ToastService
+@inject ILoadingService LoadingService
+@implements IDisposable
 
 <div>
     <header>
@@ -9,16 +13,17 @@
             <div class="container">
                 <a class="navbar-brand" href="/">Backy</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse"
-                        aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                    aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
                     <ul class="navbar-nav flex-grow-1">
                         <li class="nav-item px-3">
+
                             <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">Home</NavLink>
                         </li>
                         <li class="nav-item px-3">
-                            <NavLink class="nav-link" href="/Drive">Drive Catalog</NavLink>
+                            <NavLink class="nav-link" href="/DriveManagement">Drive Catalog</NavLink>
                         </li>
                         <li class="nav-item px-3">
                             <NavLink class="nav-link" href="/FileIndex">FileIndex</NavLink>
@@ -51,7 +56,7 @@
     }
 
     <!-- Blazored Toast Notifications -->
-    <Blazored.Toast.BlazoredToast />
+    <BlazoredToasts Position="Blazored.Toast.Configuration.ToastPosition.TopRight" />
 
     <footer class="border-top footer text-muted bg-dark text-light">
         <div class="container">
@@ -86,7 +91,6 @@
 
     public void Dispose()
     {
-        // Unsubscribe from loading events
         LoadingService.OnShow -= ShowLoading;
         LoadingService.OnHide -= HideLoading;
     }

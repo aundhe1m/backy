@@ -29,7 +29,7 @@ builder.Services.AddDataProtection();
 
 // Register Application Services
 builder.Services.AddSingleton<IThemeService, ThemeService>();
-builder.Services.AddScoped<IIndexingQueue, IndexingQueue>();
+builder.Services.AddSingleton<IIndexingQueue, IndexingQueue>();
 builder.Services.AddHostedService<FileIndexingService>();
 builder.Services.AddHostedService<StorageStatusService>();
 

@@ -1,4 +1,4 @@
-﻿@page "/"
+﻿@* @page "/"
 @using Backy.Data
 @using Backy.Models
 @using Blazored.Toast.Services
@@ -9,84 +9,84 @@
 <PageTitle>Home - Backy</PageTitle>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Welcome to Backy</h1>
-    <!-- Add any additional header actions if needed -->
+<h1>Welcome to Backy</h1>
+<!-- Add any additional header actions if needed -->
 </div>
 
 <!-- Example Content: Dashboard or Summary -->
 <div class="row">
-    <div class="col-md-4">
-        <div class="card text-white bg-primary mb-3">
-            <div class="card-header">Total Drives</div>
-            <div class="card-body">
-                <h5 class="card-title">@TotalDrives</h5>
-                <p class="card-text">Number of connected drives.</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card text-white bg-success mb-3">
-            <div class="card-header">Total Backup Size</div>
-            <div class="card-body">
-                <h5 class="card-title">@TotalBackupSize</h5>
-                <p class="card-text">Total size of all backups.</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card text-white bg-warning mb-3">
-            <div class="card-header">Backup Percentage</div>
-            <div class="card-body">
-                <h5 class="card-title">@BackupPercentage %</h5>
-                <p class="card-text">Percentage of files backed up.</p>
-            </div>
-        </div>
-    </div>
+<div class="col-md-4">
+<div class="card text-white bg-primary mb-3">
+<div class="card-header">Total Drives</div>
+<div class="card-body">
+<h5 class="card-title">@TotalDrives</h5>
+<p class="card-text">Number of connected drives.</p>
+</div>
+</div>
+</div>
+<div class="col-md-4">
+<div class="card text-white bg-success mb-3">
+<div class="card-header">Total Backup Size</div>
+<div class="card-body">
+<h5 class="card-title">@TotalBackupSize</h5>
+<p class="card-text">Total size of all backups.</p>
+</div>
+</div>
+</div>
+<div class="col-md-4">
+<div class="card text-white bg-warning mb-3">
+<div class="card-header">Backup Percentage</div>
+<div class="card-body">
+<h5 class="card-title">@BackupPercentage %</h5>
+<p class="card-text">Percentage of files backed up.</p>
+</div>
+</div>
+</div>
 </div>
 
 @code {
-    private int TotalDrives = 0;
-    private string TotalBackupSize = "0 B";
-    private double BackupPercentage = 0.0;
+private int TotalDrives = 0;
+private string TotalBackupSize = "0 B";
+private double BackupPercentage = 0.0;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadDashboardData();
-    }
-
-    private async Task LoadDashboardData()
-    {
-        try
-        {
-            // Fetch data from the database
-            TotalDrives = await DbContext.Drives.CountAsync();
-            long totalBackupSizeBytes = await DbContext.Files
-                .Where(f => f.BackupExists && !f.IsDeleted)
-                .SumAsync(f => (long?)f.Size) ?? 0;
-            long totalSizeBytes = await DbContext.Files
-                .Where(f => !f.IsDeleted)
-                .SumAsync(f => (long?)f.Size) ?? 0;
-            BackupPercentage = totalSizeBytes > 0 ? Math.Round((double)totalBackupSizeBytes / totalSizeBytes * 100, 2) : 0.0;
-
-            // Format the total backup size
-            TotalBackupSize = FormatSize(totalBackupSizeBytes);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error loading dashboard data.");
-            ToastService.ShowError("Failed to load dashboard data.");
-        }
-    }
-
-    private string FormatSize(long sizeInBytes)
-    {
-        if (sizeInBytes < 1024)
-            return $"{sizeInBytes} B";
-        else if (sizeInBytes < 1024 * 1024)
-            return $"{(sizeInBytes / 1024.0):F2} KB";
-        else if (sizeInBytes < 1024 * 1024 * 1024)
-            return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
-        else
-            return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
-    }
+protected override async Task OnInitializedAsync()
+{
+await LoadDashboardData();
 }
+
+private async Task LoadDashboardData()
+{
+try
+{
+// Fetch data from the database
+TotalDrives = await DbContext.Drives.CountAsync();
+long totalBackupSizeBytes = await DbContext.Files
+.Where(f => f.BackupExists && !f.IsDeleted)
+.SumAsync(f => (long?)f.Size) ?? 0;
+long totalSizeBytes = await DbContext.Files
+.Where(f => !f.IsDeleted)
+.SumAsync(f => (long?)f.Size) ?? 0;
+BackupPercentage = totalSizeBytes > 0 ? Math.Round((double)totalBackupSizeBytes / totalSizeBytes * 100, 2) : 0.0;
+
+// Format the total backup size
+TotalBackupSize = FormatSize(totalBackupSizeBytes);
+}
+catch (Exception ex)
+{
+Logger.LogError(ex, "Error loading dashboard data.");
+ToastService.ShowError("Failed to load dashboard data.");
+}
+}
+
+private string FormatSize(long sizeInBytes)
+{
+if (sizeInBytes < 1024)
+return $"{sizeInBytes} B";
+else if (sizeInBytes < 1024 * 1024)
+return $"{(sizeInBytes / 1024.0):F2} KB";
+else if (sizeInBytes < 1024 * 1024 * 1024)
+return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
+else
+return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
+}
+} *@

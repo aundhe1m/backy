@@ -19,6 +19,7 @@ namespace Backy.Services
         Task<(bool Success, string Message)> UnmountPoolAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> RemovePoolGroupAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> MountPoolAsync(Guid poolGroupGuid);
+        Task<(bool Success, string Message)> RenamePoolGroupAsync(RenamePoolRequest request);
     }
 
     public class DriveService : IDriveService

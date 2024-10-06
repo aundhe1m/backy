@@ -1,0 +1,20 @@
+﻿@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Microsoft.Extensions.Configuration
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.Extensions.Logging
+@using Backy.Shared
+@using Microsoft.AspNetCore.Routing
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p>Sorry, there's nothing at this address.</p>
+        </LayoutView>
+    </NotFound>
+</Router>

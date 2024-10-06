@@ -6,7 +6,7 @@
 @inject NavigationManager Navigation
 
 
-<div class="card drive-card new-drive-card mb-3" @attribute(new Dictionary)>
+<div class="card drive-card new-drive-card mb-3" @attributes="DriveAttributes">
     {
     { "data-drive-serial", Model.Serial },
     { "data-vendor", Model.Vendor },
@@ -55,14 +55,23 @@
 </div>
 
 @code {
-    [Parameter]
-    public Drive Model { get; set; }
+    [Parameter, EditorRequired]
+    public Drive Model { get; set; } = default!;
 
     [Parameter]
     public EventCallback<string> OnProtect { get; set; }
 
     [Parameter]
     public EventCallback<string> OnSelect { get; set; }
+
+    private Dictionary<string, object> DriveAttributes => new Dictionary<string, object>
+{
+{ "data-drive-serial", Model.Serial },
+{ "data-vendor", Model.Vendor },
+{ "data-model", Model.Model },
+{ "data-serial", Model.Serial },
+{ "data-search-text", $"{Model.Name} {Model.Label} {Model.Vendor} {Model.Model} {Model.Serial}" }
+};
 
     private bool isDetailsVisible = false;
     private HashSet<string> expandedPartitions = new HashSet<string>();
