@@ -1,0 +1,294 @@
+﻿@using Backy.Models
+@using System.Net.Http.Json
+@using Microsoft.Extensions.Logging
+@using Blazored.Toast.Services
+@inject HttpClient Http
+@inject ILogger<FileExplorer> Logger
+@inject IToastService ToastService
+
+<div class="modal fade @(Visible ? "show d-block" : "d-none")" tabindex="-1" role="dialog" aria-labelledby="fileExplorerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document" style="max-width: 90%;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">File Explorer</h5>
+                <button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="position: relative; overflow: hidden; max-height: 80vh;">
+                @if (IsLoading)
+                {
+                    <div class="spinner-overlay">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (ErrorMessage != null)
+                {
+                    <div class="alert alert-danger" role="alert">
+                        @ErrorMessage
+                    </div>
+                }
+                else
+                {
+                    <div class="row">
+                        <!-- Directory Navigation -->
+                        <div class="col-md-3 directory-navigation">
+                            <ul class="list-group">
+                                @if (StorageContent?.Children != null)
+                                {
+                                    @foreach (var child in StorageContent.Children.Where(c => c.Type == "directory").OrderBy(c => c.Name))
+                                    {
+                                        <li class="list-group-item">
+                                            <button class="btn btn-sm btn-link chevron-button" @onclick="() => NavigateTo(child)">
+                                                <img src="/icons/chevron-right.svg" class="chevron-icon" />
+                                            </button>
+                                            <a href="javascript:void(0);" @onclick="() => NavigateTo(child)">
+                                                <img src="/icons/folder.svg" class="directory-icon" />
+                                                @child.Name
+                                            </a>
+                                            @if (ExpandedPaths.Contains(child.FullPath))
+                                            {
+                                                <ul class="list-group">
+                                                    @foreach (var subChild in child.Children.Where(c => c.Type == "directory").OrderBy(c => c.Name))
+                                                    {
+                                                        <li class="list-group-item">
+                                                            <button class="btn btn-sm btn-link chevron-button" @onclick="() => NavigateTo(subChild)">
+                                                                <img src="/icons/chevron-right.svg" class="chevron-icon" />
+                                                            </button>
+                                                            <a href="javascript:void(0);" @onclick="() => NavigateTo(subChild)">
+                                                                <img src="/icons/folder.svg" class="directory-icon" />
+                                                                @subChild.Name
+                                                            </a>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            }
+                                        </li>
+                                    }
+                                }
+                            </ul>
+                        </div>
+                        <!-- File Table and Breadcrumb -->
+                        <div class="col-md-9">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb align-items-center">
+                                    <li class="breadcrumb-item">
+                                        <button class="btn btn-link p-0 me-2" @onclick="NavigateBack" disabled="@(!CanNavigateBack)">
+                                            <img src="/icons/arrow-left-circle.svg" class="back-icon" alt="Back" />
+                                        </button>
+                                    </li>
+                                    @foreach (var crumb in Breadcrumbs)
+                                    {
+                                        <li class="breadcrumb-item">
+                                            @if (crumb == Breadcrumbs.Last())
+                                            {
+                                                <span>@crumb.Name</span>
+                                            }
+                                            else
+                                            {
+                                                <a href="javascript:void(0);" @onclick="() => NavigateTo(crumb)">
+                                                    @crumb.Name
+                                                </a>
+                                            }
+                                        </li>
+                                    }
+                                </ol>
+                            </nav>
+                            <table class="table table-striped file-table">
+                                <thead>
+                                    <tr>
+                                        <th @onclick="() => SortFiles("name")" class="sortable">Name <img src="@GetSortIcon("name")" class="sort-icon" /></th>
+                                        <th @onclick="() => SortFiles("size")" class="sortable">Size <img src="@GetSortIcon("size")" class="sort-icon" /></th>
+                                        <th @onclick="() => SortFiles("backup")" class="sortable">Backup <img src="@GetSortIcon("backup")" class="sort-icon" /></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (CurrentFiles != null)
+                                    {
+                                        @foreach (var file in CurrentFiles.OrderBy(GetSortFunction()))
+                                        {
+                                            <tr class="@((file.Name == HighlightedFile) ? "highlighted-file" : "")">
+                                                <td>
+                                                    @if (file.Type == "directory")
+                                                    {
+                                                        <img src="/icons/folder.svg" class="directory-table-icon" />
+                                                        <a href="javascript:void(0);" @onclick="() => NavigateTo(file)">
+                                                            @file.Name
+                                                        </a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <img src="/icons/file-earmark.svg" class="file-table-icon" />
+                                                        @file.Name
+                                                    }
+                                                </td>
+                                                <td>@FormatSize(file.Size)</td>
+                                                <td>
+                                                    @if (file.BackupExists)
+                                                    {
+                                                        <img src="/icons/check2.svg" class="badge-icon" alt="Yes" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <img src="/icons/x.svg" class="badge-icon" alt="No" />
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="Close">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid StorageId { get; set; }
+
+    [Parameter]
+    public bool Visible { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> VisibleChanged { get; set; }
+
+    [Parameter]
+    public string? HighlightedFile { get; set; }
+
+    private bool IsLoading { get; set; } = false;
+    private string? ErrorMessage { get; set; } = null;
+    private StorageContentItem? StorageContent { get; set; } = null;
+    private StorageContentItem? CurrentNode { get; set; } = null;
+    private List<StorageContentItem> Breadcrumbs { get; set; } = new List<StorageContentItem>();
+    private List<StorageContentItem> CurrentFiles { get; set; } = new List<StorageContentItem>();
+    private HashSet<string> ExpandedPaths { get; set; } = new HashSet<string>();
+
+    // Sorting
+    private string SortColumn { get; set; } = "name";
+    private string SortOrder { get; set; } = "asc";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && StorageContent == null)
+        {
+            await FetchFileExplorerData();
+        }
+    }
+
+    private async Task FetchFileExplorerData()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        try
+        {
+            var response = await Http.GetFromJsonAsync<FileExplorerResponse>($"RemoteScan?handler=FileExplorer&storageId={StorageId}");
+            if (response?.Success == true)
+            {
+                StorageContent = response.StorageContent;
+                CurrentNode = StorageContent;
+                Breadcrumbs = new List<StorageContentItem> { StorageContent };
+                CurrentFiles = StorageContent.Children;
+            }
+            else
+            {
+                ErrorMessage = response?.Message ?? "Unable to load file explorer data.";
+                Logger.LogError("Failed to load file explorer data for StorageId: {StorageId}", StorageId);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = "An error occurred while loading the file explorer.";
+            Logger.LogError(ex, "Exception while loading file explorer data for StorageId: {StorageId}", StorageId);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void Close()
+    {
+        Visible = false;
+        VisibleChanged.InvokeAsync(false);
+    }
+
+    private void NavigateTo(StorageContentItem node)
+    {
+        if (node.Type == "directory")
+        {
+            CurrentNode = node;
+            Breadcrumbs.Add(node);
+            CurrentFiles = node.Children;
+        }
+    }
+
+    private void NavigateBack()
+    {
+        if (Breadcrumbs.Count > 1)
+        {
+            Breadcrumbs.RemoveAt(Breadcrumbs.Count - 1);
+            CurrentNode = Breadcrumbs.Last();
+            CurrentFiles = CurrentNode.Children;
+        }
+    }
+
+    private bool CanNavigateBack => Breadcrumbs.Count > 1;
+
+    private void SortFiles(string column)
+    {
+        if (SortColumn == column)
+        {
+            SortOrder = SortOrder == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            SortColumn = column;
+            SortOrder = "asc";
+        }
+    }
+
+    private Func<StorageContentItem, object> GetSortFunction()
+    {
+        return SortColumn switch
+        {
+            "name" => (StorageContentItem item) => item.Name,
+            "size" => (StorageContentItem item) => item.Size,
+            "backup" => (StorageContentItem item) => item.BackupExists,
+            _ => (StorageContentItem item) => item.Name,
+        };
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (SortColumn != column)
+            return "/icons/sort-alpha-down.svg";
+
+        return SortOrder == "asc" ? "/icons/sort-alpha-down.svg" : "/icons/sort-alpha-up-alt.svg";
+    }
+
+    private string FormatSize(long sizeInBytes)
+    {
+        if (sizeInBytes < 1024)
+            return $"{sizeInBytes} B";
+        else if (sizeInBytes < 1024 * 1024)
+            return $"{(sizeInBytes / 1024.0):F2} KB";
+        else if (sizeInBytes < 1024 * 1024 * 1024)
+            return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
+        else
+            return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
+    }
+
+    public class FileExplorerResponse
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+        public StorageContentItem StorageContent { get; set; }
+    }
+}

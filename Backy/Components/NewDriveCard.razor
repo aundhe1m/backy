@@ -1,0 +1,104 @@
+﻿@using Backy.Models
+@using Microsoft.Extensions.Logging
+@using Blazored.Toast.Services
+@inject ILogger<NewDriveCard> Logger
+@inject IToastService ToastService
+@inject NavigationManager Navigation
+
+
+<div class="card drive-card new-drive-card mb-3" @attribute(new Dictionary)>
+    {
+    { "data-drive-serial", Model.Serial },
+    { "data-vendor", Model.Vendor },
+    { "data-model", Model.Model },
+    { "data-serial", Model.Serial },
+    { "data-search-text", $"{Model.Name} {Model.Label} {Model.Vendor} {Model.Model} {Model.Serial}" }
+    })>
+    <!-- Card Header -->
+    <div class="card-header d-flex justify-content-between align-items-center"
+        style="background-color: #343a40; color:white;">
+        <div class="d-flex align-items-center">
+            <!-- Expand/Collapse button -->
+            <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
+                <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon" style="height: 24px;" />
+            </button>
+            <!-- Drive Icon -->
+            <img src="/icons/device-hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
+            <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
+        </div>
+        <!-- Drive Size -->
+        <div>
+            <!-- Display drive size -->
+            <div>
+                <span>@FormatSize(Model.Size)</span>
+            </div>
+        </div>
+        <!-- Action Buttons -->
+        <div class="btn-group">
+            <!-- Protect Button -->
+            <button type="button" class="btn btn-transparent protect-drive-button"
+                @onclick="() => ProtectDrive(Model.Serial)" title="Protect Drive">
+                <img src="/icons/shield-lock.svg" alt="Protect Drive" style="height: 24px;" />
+            </button>
+            <!-- Select Button -->
+            <button type="button" class="btn btn-transparent select-drive-button"
+                @onclick="() => SelectDrive(Model.Serial)" title="Select Drive">
+                <img src="/icons/plus-square.svg" alt="Select Drive" style="height: 24px;" />
+            </button>
+        </div>
+    </div>
+    <!-- Collapsible Details -->
+    @if (isDetailsVisible)
+    {
+        <!-- Details Content -->
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Drive Model { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnProtect { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelect { get; set; }
+
+    private bool isDetailsVisible = false;
+    private HashSet<string> expandedPartitions = new HashSet<string>();
+
+    private void ToggleDetails()
+    {
+        isDetailsVisible = !isDetailsVisible;
+    }
+
+    private void TogglePartitionDetails(string partitionName)
+    {
+        if (expandedPartitions.Contains(partitionName))
+            expandedPartitions.Remove(partitionName);
+        else
+            expandedPartitions.Add(partitionName);
+    }
+
+    private async Task ProtectDrive(string serial)
+    {
+        await OnProtect.InvokeAsync(serial);
+    }
+
+    private async Task SelectDrive(string serial)
+    {
+        await OnSelect.InvokeAsync(serial);
+    }
+
+    private string FormatSize(long sizeInBytes)
+    {
+        if (sizeInBytes < 1024)
+            return $"{sizeInBytes} B";
+        else if (sizeInBytes < 1024 * 1024)
+            return $"{(sizeInBytes / 1024.0):F2} KB";
+        else if (sizeInBytes < 1024 * 1024 * 1024)
+            return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
+        else
+            return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
+    }
+}

@@ -1,0 +1,737 @@
+﻿@page "/RemoteScan"
+@using Backy.Data
+@using Backy.Models
+@using Backy.Services
+@using Blazored.Toast.Services
+@using Microsoft.AspNetCore.DataProtection
+@using Microsoft.EntityFrameworkCore
+@using Renci.SshNet
+@using static Backy.Pages.RemoteScanModel
+@inject ApplicationDbContext DbContext
+@inject ILogger<RemoteScan> Logger
+@inject IDataProtectionProvider DataProtectionProvider
+@inject IIndexingQueue IndexingQueue
+@inject ILoadingService LoadingService
+@inject IToastService ToastService
+
+<PageTitle>Remote Scan</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Remote Scan</h1>
+    <button class="btn btn-primary" @onclick="OpenAddModal">Add New Storage Source</button>
+</div>
+
+<!-- Storage Source Cards -->
+<div class="row">
+    @foreach (var source in StorageSources)
+    {
+        <div class="col-12">
+            <PoolGroupDriveCard Model="@source.PoolDrive" />
+        </div>
+    }
+</div>
+
+<!-- Add/Edit Modal -->
+@if (isModalOpen)
+{
+    <Modal Title="@modalTitle" Visible="isModalOpen" VisibleChanged="@(v => isModalOpen = v)">
+        <EditForm Model="@RemoteScan" OnValidSubmit="HandleValidSubmit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <InputHidden @bind-Value="RemoteScan.Id" />
+
+            <div class="mb-3">
+                <label for="storageName" class="form-label">Name</label>
+                <InputText id="storageName" class="form-control" @bind-Value="RemoteScan.Name" required />
+                <ValidationMessage For="@(() => RemoteScan.Name)" />
+            </div>
+            <div class="mb-3">
+                <label for="storageHost" class="form-label">Host</label>
+                <InputText id="storageHost" class="form-control" @bind-Value="RemoteScan.Host" required />
+                <ValidationMessage For="@(() => RemoteScan.Host)" />
+            </div>
+            <div class="mb-3">
+                <label for="storagePort" class="form-label">Port</label>
+                <InputNumber id="storagePort" class="form-control" @bind-Value="RemoteScan.Port" required />
+                <ValidationMessage For="@(() => RemoteScan.Port)" />
+            </div>
+            <div class="mb-3">
+                <label for="storageUsername" class="form-label">Username</label>
+                <InputText id="storageUsername" class="form-control" @bind-Value="RemoteScan.Username" required />
+                <ValidationMessage For="@(() => RemoteScan.Username)" />
+            </div>
+            <div class="mb-3">
+                <label for="authMethod" class="form-label">Authentication Method</label>
+                <InputSelect id="authMethod" class="form-control" @bind-Value="RemoteScan.AuthenticationMethod" required>
+                    <option value="">Select Authentication Method</option>
+                    <option value="Password">Password</option>
+                    <option value="SSH Key">SSH Key</option>
+                </InputSelect>
+                <ValidationMessage For="@(() => RemoteScan.AuthenticationMethod)" />
+            </div>
+            @if (ShowPasswordField)
+            {
+                <div class="mb-3">
+                    <label for="storagePassword" class="form-label">Password</label>
+                    <InputText id="storagePassword" type="password" class="form-control" @bind-Value="RemoteScan.Password" />
+                    <ValidationMessage For="@(() => RemoteScan.Password)" />
+                </div>
+            }
+            @if (ShowSSHKeyField)
+            {
+                <div class="mb-3">
+                    <label for="storageSSHKey" class="form-label">SSH Key</label>
+                    <InputTextArea id="storageSSHKey" class="form-control" @bind-Value="RemoteScan.SSHKey"></InputTextArea>
+                    <ValidationMessage For="@(() => RemoteScan.SSHKey)" />
+                </div>
+            }
+            <div class="mb-3">
+                <label for="storageRemotePath" class="form-label">Remote Path</label>
+                <InputText id="storageRemotePath" class="form-control" @bind-Value="RemoteScan.RemotePath" required />
+                <ValidationMessage For="@(() => RemoteScan.RemotePath)" />
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+                <button type="submit" class="btn btn-primary">@modalSubmitButtonText</button>
+            </div>
+        </EditForm>
+    </Modal>
+}
+
+<!-- File Explorer Modal -->
+@if (isFileExplorerOpen)
+{
+    <Modal Title="File Explorer" Visible="isFileExplorerOpen" VisibleChanged="@(v => isFileExplorerOpen = v)">
+        <div class="modal-body" style="position: relative; overflow: hidden; max-height: 80vh;">
+            @if (isFileExplorerLoading)
+            {
+                <div class="spinner-overlay">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="file-explorer-content">
+                    <div class="row">
+                        <div class="col-md-3 directory-navigation">
+                            <ul class="list-group">
+                                @if (storageContent != null && storageContent.Children != null)
+                                {
+                                    @foreach (var child in storageContent.Children.Where(c => c.Type == "directory").OrderBy(c => c.Name))
+                                    {
+                                        <li class="list-group-item">
+                                            <button class="btn btn-sm btn-link chevron-button" @onclick="() => ToggleDirectory(child.FullPath)">
+                                                <img src="/icons/chevron-right.svg" class="chevron-icon" />
+                                            </button>
+                                            <a href="javascript:void(0);" @onclick="() => NavigateTo(child)">
+                                                <img src="/icons/folder.svg" class="directory-icon" />
+                                                @child.Name
+                                            </a>
+                                            @if (expandedDirectories.Contains(child.FullPath))
+                                            {
+                                                <ul class="list-group">
+                                                    @foreach (var subChild in child.Children.Where(c => c.Type == "directory").OrderBy(c => c.Name))
+                                                    {
+                                                        <li class="list-group-item">
+                                                            <button class="btn btn-sm btn-link chevron-button" @onclick="() => ToggleDirectory(subChild.FullPath)">
+                                                                <img src="/icons/chevron-right.svg" class="chevron-icon" />
+                                                            </button>
+                                                            <a href="javascript:void(0);" @onclick="() => NavigateTo(subChild)">
+                                                                <img src="/icons/folder.svg" class="directory-icon" />
+                                                                @subChild.Name
+                                                            </a>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            }
+                                        </li>
+                                    }
+                                }
+                            </ul>
+                        </div>
+                        <div class="col-md-9">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb align-items-center">
+                                    <li class="breadcrumb-item">
+                                        <button class="btn btn-link p-0 me-2" @onclick="NavigateBack">
+                                            <img src="/icons/arrow-left-circle.svg" class="back-icon" alt="Back" />
+                                        </button>
+                                    </li>
+                                    @foreach (var crumb in breadcrumbs)
+                                    {
+                                        <li class="breadcrumb-item">
+                                            @if (crumb == breadcrumbs.Last())
+                                            {
+                                                <span>@crumb.Name</span>
+                                            }
+                                            else
+                                            {
+                                                <a href="javascript:void(0);" @onclick="() => NavigateTo(crumb)">
+                                                    @crumb.Name
+                                                </a>
+                                            }
+                                        </li>
+                                    }
+                                </ol>
+                            </nav>
+                            <table class="table table-striped file-table">
+                                <thead>
+                                    <tr>
+                                        <th @onclick="() => SortFiles("name")" class="sortable">
+                                            Name
+                                            <img src="@GetSortIcon("name")" class="sort-icon" />
+                                        </th>
+                                        <th @onclick="() => SortFiles("size")" class="sortable">
+                                            Size
+                                            <img src="@GetSortIcon("size")" class="sort-icon" />
+                                        </th>
+                                        <th @onclick="() => SortFiles("backup")" class="sortable">
+                                            Backup
+                                            <img src="@GetSortIcon("backup")" class="sort-icon" />
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (currentFiles != null)
+                                    {
+                                        @foreach (var file in currentFiles.OrderBy(GetSortFunction()))
+                                        {
+                                            <tr class="@((file.Name == highlightedFile) ? "highlighted-file" : "")">
+                                                <td>
+                                                    @if (file.Type == "directory")
+                                                    {
+                                                        <img src="/icons/folder.svg" class="directory-table-icon" />
+                                                        <a href="javascript:void(0);" @onclick="() => NavigateTo(file)">
+                                                            @file.Name
+                                                        </a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <img src="/icons/file-earmark.svg" class="file-table-icon" />
+                                                        @file.Name
+                                                    }
+                                                </td>
+                                                <td>@FormatSize(file.Size)</td>
+                                                <td>
+                                                    @if (file.BackupExists)
+                                                    {
+                                                        <img src="/icons/check2.svg" class="badge-icon" alt="Yes" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <img src="/icons/x.svg" class="badge-icon" alt="No" />
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @onclick="CloseFileExplorer">Close</button>
+        </div>
+    </Modal>
+}
+
+<!-- Index Schedule Modal -->
+@if (isScheduleModalOpen)
+{
+    <Modal Title="Schedule Index" Visible="isScheduleModalOpen" VisibleChanged="@(v => isScheduleModalOpen = v)">
+        <div class="modal-body">
+            <!-- Schedules Table -->
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Mon</th>
+                        <th>Tue</th>
+                        <th>Wed</th>
+                        <th>Thu</th>
+                        <th>Fri</th>
+                        <th>Sat</th>
+                        <th>Sun</th>
+                        <th>Time</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var schedule in indexSchedules)
+                    {
+                        <tr>
+                            @for (int day = 0; day < 7; day++)
+                            {
+                                <td>
+                                    <InputCheckbox @bind-Value="schedule.Days[day]" />
+                                </td>
+                            }
+                            <td>
+                                <InputText @bind-Value="schedule.Time" class="form-control" placeholder="HH:mm" />
+                            </td>
+                            <td>
+                                <button class="btn btn-danger btn-sm" @onclick="() => RemoveSchedule(schedule)">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <!-- Add Schedule Button -->
+            <button type="button" class="btn btn-primary" @onclick="AddScheduleRow">Add Schedule</button>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @onclick="CloseScheduleModal">Close</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveSchedules">Save Changes</button>
+        </div>
+    </Modal>
+}
+
+@code {
+    // Storage Sources
+    private List<StorageSourceViewModel> StorageSources { get; set; } = new List<StorageSourceViewModel>();
+
+    // Add/Edit Modal
+    private RemoteScan RemoteScan { get; set; } = new RemoteScan();
+    private string modalTitle = "Add New Storage Source";
+    private string modalSubmitButtonText = "Save";
+    private bool isModalOpen = false;
+
+    // Authentication Fields Visibility
+    private bool ShowPasswordField => RemoteScan.AuthenticationMethod == "Password";
+    private bool ShowSSHKeyField => RemoteScan.AuthenticationMethod == "SSH Key";
+
+    // File Explorer Modal
+    private bool isFileExplorerOpen = false;
+    private bool isFileExplorerLoading = false;
+    private StorageContentItem storageContent = null;
+    private string highlightedFile = "";
+    private StorageContentItem currentNode = null;
+    private HashSet<string> expandedDirectories = new HashSet<string>();
+    private List<StorageContentItem> breadcrumbs = new List<StorageContentItem>();
+    private List<StorageContentItem> currentFiles = new List<StorageContentItem>();
+
+    // Sorting
+    private string sortColumn = "name";
+    private string sortOrder = "asc";
+
+    // Schedule Modal
+    private List<ScheduleDto> indexSchedules = new List<ScheduleDto>();
+    private bool isScheduleModalOpen = false;
+
+    // Data Protector
+    private IDataProtector Protector { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Protector = DataProtectionProvider.CreateProtector("RemoteScanProtector");
+        await LoadStorageSources();
+    }
+
+    private async Task LoadStorageSources()
+    {
+        try
+        {
+            var remoteScans = await DbContext.RemoteScans.ToListAsync();
+
+            StorageSources = remoteScans.Select(storage => new StorageSourceViewModel
+            {
+                RemoteScan = storage,
+                IsIndexing = storage.IsIndexing,
+                TotalSize = DbContext.Files.Where(f => f.RemoteScanId == storage.Id && !f.IsDeleted).Sum(f => f.Size),
+                TotalBackupSize = DbContext.Files.Where(f => f.RemoteScanId == storage.Id && f.BackupExists && !f.IsDeleted).Sum(f => f.Size),
+                TotalFiles = DbContext.Files.Count(f => f.RemoteScanId == storage.Id && !f.IsDeleted),
+                BackupCount = DbContext.Files.Count(f => f.RemoteScanId == storage.Id && f.BackupExists && !f.IsDeleted),
+                BackupPercentage = DbContext.Files.Count(f => f.RemoteScanId == storage.Id && f.BackupExists && !f.IsDeleted) > 0 ?
+                                    Math.Round((double)DbContext.Files.Count(f => f.RemoteScanId == storage.Id && f.BackupExists && !f.IsDeleted) / DbContext.Files.Count(f => f.RemoteScanId == storage.Id && !f.IsDeleted) * 100, 2) : 0
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading storage sources.");
+            ToastService.ShowError("Failed to load storage sources.");
+        }
+    }
+
+    // Add/Edit Modal Methods
+    private void OpenAddModal()
+    {
+        RemoteScan = new RemoteScan();
+        modalTitle = "Add New Storage Source";
+        modalSubmitButtonText = "Add Storage";
+        isModalOpen = true;
+    }
+
+    private void CloseModal()
+    {
+        isModalOpen = false;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        // Encrypt sensitive data
+        if (RemoteScan.AuthenticationMethod == "Password" && !string.IsNullOrEmpty(RemoteScan.Password))
+        {
+            RemoteScan.Password = Protector.Protect(RemoteScan.Password);
+        }
+        else if (RemoteScan.AuthenticationMethod == "SSH Key" && !string.IsNullOrEmpty(RemoteScan.SSHKey))
+        {
+            RemoteScan.SSHKey = Protector.Protect(RemoteScan.SSHKey);
+        }
+
+        // Validate connection
+        bool isValid = ValidateConnection(RemoteScan);
+        if (!isValid)
+        {
+            // Show error toast
+            ToastService.ShowError("Unable to connect with the provided details.");
+            return;
+        }
+
+        try
+        {
+            if (RemoteScan.Id == Guid.Empty)
+            {
+                // Add new RemoteScan
+                DbContext.RemoteScans.Add(RemoteScan);
+                await DbContext.SaveChangesAsync();
+                IndexingQueue.EnqueueIndexing(RemoteScan.Id);
+                Logger.LogInformation("Added new RemoteScan: {Name}", RemoteScan.Name);
+            }
+            else
+            {
+                // Update existing RemoteScan
+                var existing = await DbContext.RemoteScans.FindAsync(RemoteScan.Id);
+                if (existing != null)
+                {
+                    existing.Name = RemoteScan.Name;
+                    existing.Host = RemoteScan.Host;
+                    existing.Port = RemoteScan.Port;
+                    existing.Username = RemoteScan.Username;
+                    existing.AuthenticationMethod = RemoteScan.AuthenticationMethod;
+                    existing.RemotePath = RemoteScan.RemotePath;
+
+                    if (RemoteScan.AuthenticationMethod == "Password" && RemoteScan.Password != "********")
+                    {
+                        existing.Password = Protector.Protect(RemoteScan.Password);
+                    }
+                    else if (RemoteScan.AuthenticationMethod == "SSH Key" && RemoteScan.SSHKey != "********")
+                    {
+                        existing.SSHKey = Protector.Protect(RemoteScan.SSHKey);
+                    }
+
+                    await DbContext.SaveChangesAsync();
+                    IndexingQueue.EnqueueIndexing(existing.Id);
+                    Logger.LogInformation("Updated RemoteScan: {Name}", existing.Name);
+                }
+            }
+
+            await LoadStorageSources();
+            isModalOpen = false;
+
+            // Show success toast
+            ToastService.ShowSuccess("Storage source saved successfully.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving storage source.");
+            ToastService.ShowError("Failed to save storage source.");
+        }
+    }
+
+    private bool ValidateConnection(RemoteScan storage)
+    {
+        try
+        {
+            using var client = CreateSftpClient(storage);
+            client.Connect();
+            bool isConnected = client.IsConnected;
+            client.Disconnect();
+            return isConnected;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Connection validation failed for storage: {Name}", storage.Name);
+            return false;
+        }
+    }
+
+    private SftpClient CreateSftpClient(RemoteScan storage)
+    {
+        if (storage.AuthenticationMethod == "Password")
+        {
+            return new SftpClient(storage.Host, storage.Port, storage.Username, Protector.Unprotect(storage.Password ?? ""));
+        }
+        else
+        {
+            using var keyStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Protector.Unprotect(storage.SSHKey ?? "")));
+            var keyFile = new PrivateKeyFile(keyStream);
+            var keyFiles = new[] { keyFile };
+            var authMethod = new PrivateKeyAuthenticationMethod(storage.Username, keyFiles);
+            var connectionInfo = new Renci.SshNet.ConnectionInfo(storage.Host, storage.Port, storage.Username, authMethod);
+            return new SftpClient(connectionInfo);
+        }
+    }
+
+    // Delete Storage
+    private async Task DeleteStorageAsync(Guid id)
+    {
+        try
+        {
+            var storage = await DbContext.RemoteScans.FindAsync(id);
+            if (storage != null)
+            {
+                DbContext.RemoteScans.Remove(storage);
+                await DbContext.SaveChangesAsync();
+                await LoadStorageSources();
+                ToastService.ShowSuccess("Storage removed successfully.");
+            }
+            else
+            {
+                ToastService.ShowError("Storage not found.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting storage.");
+            ToastService.ShowError("Failed to delete storage.");
+        }
+    }
+
+    // Toggle Enable/Disable
+    private async Task ToggleEnableAsync(Guid id)
+    {
+        try
+        {
+            var storage = await DbContext.RemoteScans.FindAsync(id);
+            if (storage != null)
+            {
+                storage.IsEnabled = !storage.IsEnabled;
+                await DbContext.SaveChangesAsync();
+                await LoadStorageSources();
+                string status = storage.IsEnabled ? "enabled" : "disabled";
+                ToastService.ShowSuccess($"Storage {status} successfully.");
+            }
+            else
+            {
+                ToastService.ShowError("Storage not found.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error toggling storage status.");
+            ToastService.ShowError("Failed to toggle storage status.");
+        }
+    }
+
+    // Start Indexing
+    private async Task StartIndexingAsync(Guid id)
+    {
+        try
+        {
+            IndexingQueue.EnqueueIndexing(id);
+            ToastService.ShowSuccess("Indexing started successfully.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error starting indexing.");
+            ToastService.ShowError("Failed to start indexing.");
+        }
+    }
+
+    // File Explorer Logic
+    private async Task OpenFileExplorer(Guid storageId)
+    {
+        isFileExplorerOpen = true;
+        isFileExplorerLoading = true;
+        await FetchFileExplorerData(storageId);
+    }
+
+    private async Task FetchFileExplorerData(Guid storageId)
+    {
+        try
+        {
+            // Implement API call to get storage content
+            // This is a placeholder. Replace with actual data fetching logic.
+            await Task.Delay(1000); // Simulate loading
+            // Example:
+            storageContent = await DbContext.StorageContents
+                .Include(sc => sc.Children)
+                .FirstOrDefaultAsync(sc => sc.StorageId == storageId);
+
+            isFileExplorerLoading = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error fetching file explorer data.");
+            ToastService.ShowError("Failed to load file explorer data.");
+            isFileExplorerLoading = false;
+        }
+    }
+
+    private void CloseFileExplorer()
+    {
+        isFileExplorerOpen = false;
+    }
+
+    private void NavigateTo(StorageContentItem node)
+    {
+        currentNode = node;
+        breadcrumbs = GetBreadcrumbs(node);
+        StateHasChanged();
+    }
+
+    private void NavigateBack()
+    {
+        if (currentNode.Parent != null)
+        {
+            currentNode = currentNode.Parent;
+            breadcrumbs = GetBreadcrumbs(currentNode);
+            StateHasChanged();
+        }
+    }
+
+    private List<StorageContentItem> GetBreadcrumbs(StorageContentItem node)
+    {
+        var crumbs = new List<StorageContentItem>();
+        var current = node;
+        while (current != null)
+        {
+            crumbs.Insert(0, current);
+            current = current.Parent;
+        }
+        return crumbs;
+    }
+
+    private void ToggleDirectory(string fullPath)
+    {
+        if (expandedDirectories.Contains(fullPath))
+            expandedDirectories.Remove(fullPath);
+        else
+            expandedDirectories.Add(fullPath);
+    }
+
+    private void SortFiles(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortOrder = sortOrder == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            sortColumn = column;
+            sortOrder = "asc";
+        }
+    }
+
+    private Func<StorageContentItem, object> GetSortFunction()
+    {
+        return sortColumn switch
+        {
+            "name" => (StorageContentItem item) => item.Name,
+            "size" => (StorageContentItem item) => item.Size,
+            "backup" => (StorageContentItem item) => item.BackupExists,
+            _ => (StorageContentItem item) => item.Name,
+        };
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (sortColumn != column)
+            return "/icons/sort-alpha-down.svg";
+
+        return sortOrder == "asc" ? "/icons/sort-alpha-down.svg" : "/icons/sort-alpha-up-alt.svg";
+    }
+
+    private void RenderFileExplorer(string highlightFile = "")
+    {
+        currentFiles = currentNode.Children.ToList();
+        if (!string.IsNullOrEmpty(highlightFile))
+        {
+            highlightedFile = highlightFile;
+        }
+    }
+
+    // Schedule Modal Logic
+    private void OpenScheduleModal(Guid storageId)
+    {
+        // Load existing schedules for the storage
+        indexSchedules = DbContext.IndexSchedules
+            .Where(s => s.RemoteScanId == storageId)
+            .Select(s => new ScheduleDto
+            {
+                Days = new List<int> { s.DayOfWeek },
+                Time = $"{s.TimeOfDayMinutes / 60:D2}:{s.TimeOfDayMinutes % 60:D2}"
+            })
+            .ToList();
+        isScheduleModalOpen = true;
+    }
+
+    private void CloseScheduleModal()
+    {
+        isScheduleModalOpen = false;
+    }
+
+    private void AddScheduleRow()
+    {
+        indexSchedules.Add(new ScheduleDto { Days = new List<int>(), Time = "" });
+    }
+
+    private void RemoveSchedule(ScheduleDto schedule)
+    {
+        indexSchedules.Remove(schedule);
+    }
+
+    private async Task SaveSchedules()
+    {
+        try
+        {
+            // Remove existing schedules for the storage
+            var storageId = RemoteScan.Id;
+            var existingSchedules = DbContext.IndexSchedules.Where(s => s.RemoteScanId == storageId);
+            DbContext.IndexSchedules.RemoveRange(existingSchedules);
+
+            // Add new schedules
+            foreach (var schedule in indexSchedules)
+            {
+                foreach (var day in schedule.Days)
+                {
+                    if (string.IsNullOrEmpty(schedule.Time))
+                        continue;
+
+                    var timeParts = schedule.Time.Split(':');
+                    if (timeParts.Length != 2 ||
+                        !int.TryParse(timeParts[0], out int hours) ||
+                        !int.TryParse(timeParts[1], out int minutes))
+                        continue;
+
+                    int totalMinutes = hours * 60 + minutes;
+
+                    var indexSchedule = new IndexSchedule
+                    {
+                        RemoteScanId = storageId,
+                        DayOfWeek = day,
+                        TimeOfDayMinutes = totalMinutes,
+                    };
+                    DbContext.IndexSchedules.Add(indexSchedule);
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            ToastService.ShowSuccess("Schedules saved successfully.");
+            CloseScheduleModal();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving index schedules.");
+            ToastService.ShowError("An error occurred while saving schedules.");
+        }
+    }
+}

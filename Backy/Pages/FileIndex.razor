@@ -1,0 +1,139 @@
+﻿@page "/FileIndex"
+@using Backy.Data
+@using Backy.Models
+@using Blazored.Toast.Services
+@inject ApplicationDbContext DbContext
+@inject IToastService ToastService
+@inject ILogger<FileIndex> Logger
+
+<PageTitle>FileIndex - Backy</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>File Index</h1>
+    <!-- Add any additional header actions if needed -->
+</div>
+
+<!-- File Index Table -->
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Backup Exists</th>
+                <th>Remote Path</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var file in Files)
+            {
+                <tr>
+                    <td>@file.FileName</td>
+                    <td>@FormatSize(file.Size)</td>
+                    <td>
+                        @if (file.BackupExists)
+                        {
+                            <img src="/icons/check2.svg" class="badge-icon" alt="Yes" />
+                        }
+                        else
+                        {
+                            <img src="/icons/x.svg" class="badge-icon" alt="No" />
+                        }
+                    </td>
+                    <td>@file.RemotePath</td>
+                    <td>
+                        <!-- Actions like Delete, Restore, etc. -->
+                        <button class="btn btn-danger btn-sm me-1" @onclick="() => DeleteFile(file.Id)">Delete</button>
+                        @if (file.BackupExists)
+                        {
+                            <button class="btn btn-secondary btn-sm" @onclick="() => RestoreFile(file.Id)">Restore</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<File> Files { get; set; } = new List<File>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFiles();
+    }
+
+    private async Task LoadFiles()
+    {
+        try
+        {
+            Files = await DbContext.Files.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading files.");
+            ToastService.ShowError("Failed to load files.");
+        }
+    }
+
+    private async Task DeleteFile(Guid fileId)
+    {
+        try
+        {
+            var file = await DbContext.Files.FindAsync(fileId);
+            if (file != null)
+            {
+                DbContext.Files.Remove(file);
+                await DbContext.SaveChangesAsync();
+                Files.Remove(file);
+                ToastService.ShowSuccess("File deleted successfully.");
+            }
+            else
+            {
+                ToastService.ShowError("File not found.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting file.");
+            ToastService.ShowError("Failed to delete file.");
+        }
+    }
+
+    private async Task RestoreFile(Guid fileId)
+    {
+        try
+        {
+            var file = await DbContext.Files.FindAsync(fileId);
+            if (file != null)
+            {
+                file.BackupExists = true;
+                await DbContext.SaveChangesAsync();
+                await LoadFiles();
+                ToastService.ShowSuccess("File restored successfully.");
+            }
+            else
+            {
+                ToastService.ShowError("File not found.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error restoring file.");
+            ToastService.ShowError("Failed to restore file.");
+        }
+    }
+
+    private string FormatSize(long sizeInBytes)
+    {
+        if (sizeInBytes < 1024)
+            return $"{sizeInBytes} B";
+        else if (sizeInBytes < 1024 * 1024)
+            return $"{(sizeInBytes / 1024.0):F2} KB";
+        else if (sizeInBytes < 1024 * 1024 * 1024)
+            return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
+        else
+            return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
+    }
+}

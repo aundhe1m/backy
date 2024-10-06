@@ -1,0 +1,112 @@
+﻿/* Dark Mode Styles */
+
+/* Body */
+body {
+    background-color: #121212;
+    color: #ffffff;
+}
+
+/* Navbar */
+.navbar-dark {
+    background-color: #1f1f1f;
+}
+
+/* Cards */
+.card {
+    background-color: #1e1e1e;
+    color: #ffffff;
+}
+
+/* Table */
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: #bb86fc;
+    border-color: #bb86fc;
+}
+
+.btn-primary:hover {
+    background-color: #3700b3;
+    border-color: #3700b3;
+}
+
+.btn-secondary {
+    background-color: #03dac6;
+    border-color: #03dac6;
+}
+
+.btn-secondary:hover {
+    background-color: #018786;
+    border-color: #018786;
+}
+
+.btn-danger {
+    background-color: #cf6679;
+    border-color: #cf6679;
+}
+
+.btn-danger:hover {
+    background-color: #b00020;
+    border-color: #b00020;
+}
+
+/* Inputs */
+.form-control {
+    background-color: #2c2c2c;
+    color: #ffffff;
+    border: 1px solid #444444;
+}
+
+.form-control:focus {
+    background-color: #3c3c3c;
+    color: #ffffff;
+    border-color: #bb86fc;
+    box-shadow: 0 0 0 0.2rem rgba(187, 134, 252, 0.5);
+}
+
+/* Modal */
+.modal-content {
+    background-color: #1e1e1e;
+    color: #ffffff;
+}
+
+.modal-header {
+    border-bottom: 1px solid #444444;
+}
+
+.modal-footer {
+    border-top: 1px solid #444444;
+}
+
+/* Toasts */
+.toast-success {
+    background-color: #03dac6;
+}
+
+.toast-danger {
+    background-color: #cf6679;
+}
+
+/* Other Components */
+.drive-card {
+    background-color: #2c2c2c;
+    color: #ffffff;
+}
+
+.directory-navigation {
+    background-color: #1e1e1e;
+    color: #ffffff;
+}
+
+.file-table thead th {
+    background-color: #2c2c2c;
+    color: #ffffff;
+}
+
+.breadcrumb {
+    background-color: transparent;
+    padding: 0;
+}

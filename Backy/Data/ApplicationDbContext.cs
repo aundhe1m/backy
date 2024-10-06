@@ -11,6 +11,7 @@ namespace Backy.Data
         public DbSet<StorageContent> StorageContents { get; set; }
         public DbSet<PoolGroup> PoolGroups { get; set; }
         public DbSet<PoolDrive> PoolDrives { get; set; }
+        public DbSet<Drive> Drives { get; set; } = null!;
         public DbSet<ProtectedDrive> ProtectedDrives { get; set; }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)

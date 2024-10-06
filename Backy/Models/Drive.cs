@@ -47,6 +47,14 @@ namespace Backy.Models
             new Dictionary<int, string>();
     }
 
+    public class RenamePoolRequest
+    {
+        public Guid PoolGroupGuid { get; set; }
+        public required string NewPoolLabel { get; set; }
+        public required Dictionary<int, string?> DriveLabels { get; set; }
+    }
+
+
     public class KillProcessesRequest
     {
         public Guid PoolGroupGuid { get; set; }

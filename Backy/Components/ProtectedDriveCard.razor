@@ -1,0 +1,35 @@
+﻿@using Backy.Models
+@using Microsoft.AspNetCore.Components
+
+<div class="card drive-card protected-drive-card mb-3">
+    <!-- Card Header -->
+    <div class="card-header d-flex justify-content-between align-items-center"
+        style="background-color: #ffeeba; color:black;">
+        <div class="d-flex align-items-center">
+            <img src="/icons/shield-lock.svg" alt="Protected Drive Icon" style="height: 24px; margin-right: 8px;" />
+            <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
+        </div>
+        <!-- Unprotect Button -->
+        <button type="button" class="btn btn-transparent unprotect-drive-button"
+            @onclick="() => UnprotectDrive(Model.Serial)" title="Remove Protection">
+            <img src="/icons/shield-slash.svg" alt="Unprotect Drive" style="height: 24px;" />
+        </button>
+    </div>
+    <!-- Drive Details -->
+    <div class="card-body">
+        <!-- Details Content -->
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public ProtectedDrive Model { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnUnprotect { get; set; }
+
+    private async Task UnprotectDrive(string serial)
+    {
+        await OnUnprotect.InvokeAsync(serial);
+    }
+}

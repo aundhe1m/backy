@@ -1,57 +1,61 @@
 using Backy.Data;
+using Backy.Models;
 using Backy.Services;
+using Blazored.Toast;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using Npgsql.EntityFrameworkCore.PostgreSQL;
+using Renci.SshNet;
+using Microsoft.Extensions.Logging;
 
-namespace Backy;
+var builder = WebApplication.CreateBuilder(args);
 
-public class Program
+// Add services to the container.
+builder.Services.AddRazorPages();
+builder.Services.AddServerSideBlazor();
+builder.Services.AddBlazoredToast();
+
+// Configure DbContext with PostgreSQL
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Register LoadingService
+builder.Services.AddSingleton<ILoadingService, LoadingService>();
+
+// Register DriveService
+builder.Services.AddScoped<IDriveService, DriveService>();
+
+// Add Data Protection
+builder.Services.AddDataProtection();
+
+// Register Application Services
+builder.Services.AddSingleton<IThemeService, ThemeService>();
+builder.Services.AddScoped<IIndexingQueue, IndexingQueue>();
+builder.Services.AddHostedService<FileIndexingService>();
+builder.Services.AddHostedService<StorageStatusService>();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (!app.Environment.IsDevelopment())
 {
-    public static void Main(string[] args)
-    {
-        var builder = WebApplication.CreateBuilder(args);
-
-        // Add services to the container.
-        builder.Services.AddRazorPages();
-
-        // Configure MySQL Database Context
-        var connectionString =
-            builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException(
-                "Connection string 'DefaultConnection' not found."
-            );
-        builder.Services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(connectionString)
-        );
-
-        // Add Data Protection Services
-        builder
-            .Services.AddDataProtection()
-            .PersistKeysToFileSystem(new DirectoryInfo("/mnt/backy/backy-keys/")); // Ensure this directory exists and is accessible
-
-        // Register the hosted service
-        builder.Services.AddHostedService<StorageStatusService>();
-        builder.Services.AddHostedService<FileIndexingService>();
-        builder.Services.AddSingleton<IIndexingQueue, IndexingQueue>();
-
-        var app = builder.Build();
-
-        // Configure the HTTP request pipeline.
-        if (!app.Environment.IsDevelopment())
-        {
-            app.UseExceptionHandler("/Error");
-        }
-        app.UseDefaultFiles();
-
-        app.UseStaticFiles();
-
-        app.UseRouting();
-
-        app.UseAuthorization();
-
-        app.MapRazorPages();
-
-        app.Run();
-    }
+    app.UseExceptionHandler("/Error");
+    // The default HSTS value is 30 days. You may want to change this for production scenarios.
+    app.UseHsts();
 }
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+
+app.UseRouting();
+
+app.MapBlazorHub();
+app.MapFallbackToPage("/_Host");
+
+// Apply pending migrations and ensure database is created
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
+}
+
+app.Run();
