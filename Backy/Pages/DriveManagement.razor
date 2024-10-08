@@ -5,13 +5,11 @@
 @using Backy.Models
 @using Backy.Services
 @using Backy.Components
-@using Blazored.Toast.Services
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationDbContext DbContext
-@inject IToastService ToastService
+@inject ICustomToastService ToastService
 @inject ILogger<DriveManagement> Logger
-@inject Modal Modal
 @inject ILoadingService LoadingService
 @inject IDriveService DriveService
 
@@ -28,9 +26,14 @@
 {
     @foreach (var pool in PoolGroups)
     {
-        <PoolGroupDriveCard Model="@pool" OnUnmountPool="@UnmountPool" OnRemovePoolGroup="@RemovePoolGroup"
-    OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup" />
+        <PoolGroupDriveCard Model="@pool" OnUnmountPool="@((pool) => UnmountPool(pool))"
+    OnRemovePoolGroup="@((pool) => RemovePoolGroup(pool))" OnMountPool="@((pool) => MountPool(pool))"
+    OnRenamePoolGroup="@((pool) => RenamePoolGroup(pool))" />
     }
+}
+else
+{
+    <p>No pool groups available.</p>
 }
 
 <!-- New Drives -->
@@ -46,6 +49,11 @@
         }
     </div>
 }
+else
+{
+    <p>No new drives found.</p>
+}
+
 
 <!-- Protected Drives -->
 @if (ProtectedDrives != null && ProtectedDrives.Any())
@@ -60,11 +68,15 @@
         }
     </div>
 }
+else
+{
+    <p>No protected drives.</p>
+}
 
 <!-- Create Pool Modal -->
 @if (isCreatePoolModalOpen)
 {
-    <Modal Title="Create Pool" Visible="isCreatePoolModalOpen" OnClose="CloseCreatePoolModal">
+    <Modal Title="Create Pool" @bind-Visible="isCreatePoolModalOpen">
     <EditForm Model="@CreatePoolRequest" OnValidSubmit="HandleCreatePool">
         <DataAnnotationsValidator />
         <ValidationSummary />
@@ -95,7 +107,7 @@
 <!-- Rename Pool Modal -->
 @if (isRenamePoolModalOpen)
 {
-    <Modal Title="Rename Pool" Visible="isRenamePoolModalOpen" VisibleChanged="@(v => isRenamePoolModalOpen = v)">
+    <Modal Title="Rename Pool" @bind-Visible="isRenamePoolModalOpen">
     <EditForm Model="@RenamePoolRequest" OnValidSubmit="HandleRenamePool">
         <DataAnnotationsValidator />
         <ValidationSummary />
@@ -135,8 +147,12 @@
         };
     private bool isCreatePoolModalOpen = false;
     private bool isRenamePoolModalOpen = false;
-    private PoolGroup? PoolToRename { get; set; }
-    private RenamePoolRequest? RenamePoolRequest { get; set; }
+    private PoolGroup PoolToRename { get; set; } = new PoolGroup();
+    private RenamePoolRequest RenamePoolRequest { get; set; } = new RenamePoolRequest
+        {
+            NewPoolLabel = string.Empty,
+            DriveLabels = new Dictionary<int, string?>()
+        };
 
     protected override async Task OnInitializedAsync()
     {
@@ -164,8 +180,13 @@
     private async Task OrganizeDrives()
     {
         var activeDrives = await DriveService.UpdateActiveDrivesAsync();
+        Logger.LogInformation($"Found {activeDrives.Count} active drives.");
+
         PoolGroups = await DbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
+        Logger.LogInformation($"Loaded {PoolGroups.Count} pool groups from the database.");
+
         ProtectedDrives = await DbContext.ProtectedDrives.ToListAsync();
+        Logger.LogInformation($"Loaded {ProtectedDrives.Count} protected drives from the database.");
 
         // Update connected status and properties for drives in pools
         foreach (var pool in PoolGroups)
@@ -274,16 +295,21 @@
 
     private async Task SelectDrive(string serial)
     {
-        var drive = NewDrives.FirstOrDefault(d => d.Serial == serial);
-        if (drive != null)
+        await Task.Run(() =>
         {
-            SelectedDrives.Add(drive);
-            OpenCreatePoolModal();
-        }
-        else
-        {
-            ToastService.ShowError("Drive not found.");
-        }
+            {
+                var drive = NewDrives.FirstOrDefault(d => d.Serial == serial);
+                if (drive != null)
+                {
+                    SelectedDrives.Add(drive);
+                    OpenCreatePoolModal();
+                }
+                else
+                {
+                    ToastService.ShowError("Drive not found.");
+                }
+            }
+        });
     }
 
     private void OpenCreatePoolModal()
@@ -307,7 +333,7 @@
     {
         try
         {
-            LoadingService.ShowLoading();
+            await LoadingService.ShowLoading();
             var result = await DriveService.CreatePoolAsync(CreatePoolRequest);
 
             if (result.Success)
@@ -329,7 +355,7 @@
         }
         finally
         {
-            LoadingService.HideLoading();
+            await LoadingService.HideLoading();
         }
     }
 
@@ -337,7 +363,7 @@
     {
         try
         {
-            LoadingService.ShowLoading();
+            await LoadingService.ShowLoading();
             var result = await DriveService.UnmountPoolAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
@@ -356,7 +382,7 @@
         }
         finally
         {
-            LoadingService.HideLoading();
+            await LoadingService.HideLoading();
         }
     }
 
@@ -410,32 +436,43 @@
         }
         finally
         {
-            LoadingService.HideLoading();
+            await LoadingService.HideLoading();
         }
     }
 
     private async Task RenamePoolGroup(PoolGroup poolGroup)
     {
-        // Open the rename modal
-        isRenamePoolModalOpen = true;
-        PoolToRename = poolGroup;
-        RenamePoolRequest = new RenamePoolRequest
-            {
-                PoolGroupGuid = poolGroup.PoolGroupGuid,
-                NewPoolLabel = poolGroup.GroupLabel,
-                DriveLabels = poolGroup.Drives.ToDictionary(d => d.Id, d => d.Label)
-            };
+        await Task.Run(() =>
+        {
+
+            // Open the rename modal
+            isRenamePoolModalOpen = true;
+            PoolToRename = poolGroup;
+            RenamePoolRequest = new RenamePoolRequest
+                {
+                    PoolGroupGuid = poolGroup.PoolGroupGuid,
+                    NewPoolLabel = poolGroup.GroupLabel,
+                    DriveLabels = poolGroup.Drives.ToDictionary(d => d.Id, d => (string?)d.Label)
+                };
+
+        });
     }
+
 
     private void CloseRenamePoolModal()
     {
         isRenamePoolModalOpen = false;
-        PoolToRename = null;
-        RenamePoolRequest = null;
+        PoolToRename = null!;
+        RenamePoolRequest = null!;
     }
 
     private async Task HandleRenamePool()
     {
+        if (RenamePoolRequest == null)
+        {
+            ToastService.ShowError("Invalid rename request.");
+            return;
+        }
         try
         {
             // Call the service to rename the pool

@@ -31,4 +31,5 @@ namespace Backy.Services
                 await OnThemeChanged.Invoke();
         }
     }
+
 }

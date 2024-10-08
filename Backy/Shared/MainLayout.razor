@@ -1,9 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @using Microsoft.AspNetCore.Components.Routing
 @using Backy.Services
-@using Blazored.Toast
-@using Blazored.Toast.Services
-@inject IToastService ToastService
+@using Backy.Components
 @inject ILoadingService LoadingService
 @implements IDisposable
 
@@ -55,8 +53,8 @@
         </div>
     }
 
-    <!-- Blazored Toast Notifications -->
-    <BlazoredToasts Position="Blazored.Toast.Configuration.ToastPosition.TopRight" />
+    <!-- Toast Notifications -->
+    <Toast />
 
     <footer class="border-top footer text-muted bg-dark text-light">
         <div class="container">

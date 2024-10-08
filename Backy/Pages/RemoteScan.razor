@@ -2,7 +2,6 @@
 @using Backy.Data
 @using Backy.Models
 @using Backy.Services
-@using Blazored.Toast.Services
 @using Microsoft.AspNetCore.DataProtection
 @using Microsoft.EntityFrameworkCore
 @using Renci.SshNet
@@ -12,7 +11,7 @@
 @inject IDataProtectionProvider DataProtectionProvider
 @inject IIndexingQueue IndexingQueue
 @inject ILoadingService LoadingService
-@inject IToastService ToastService
+@inject ICustomToastService ToastService
 
 <PageTitle>Remote Scan</PageTitle>
 

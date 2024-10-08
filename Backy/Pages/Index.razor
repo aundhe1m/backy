@@ -1,9 +1,8 @@
 ﻿@* @page "/"
 @using Backy.Data
 @using Backy.Models
-@using Blazored.Toast.Services
 @inject ApplicationDbContext DbContext
-@inject IToastService ToastService
+@inject ICustomToastService ToastService
 @inject ILogger<Index> Logger
 
 <PageTitle>Home - Backy</PageTitle>

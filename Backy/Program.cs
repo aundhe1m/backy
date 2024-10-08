@@ -1,7 +1,6 @@
 using Backy.Data;
 using Backy.Models;
 using Backy.Services;
-using Blazored.Toast;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Renci.SshNet;
@@ -12,7 +11,6 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
-builder.Services.AddBlazoredToast();
 
 // Configure DbContext with PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -23,6 +21,9 @@ builder.Services.AddSingleton<ILoadingService, LoadingService>();
 
 // Register DriveService
 builder.Services.AddScoped<IDriveService, DriveService>();
+
+// Register ProtectedDriveService
+builder.Services.AddSingleton<ICustomToastService, CustomToastService>();
 
 // Add Data Protection
 builder.Services.AddDataProtection();

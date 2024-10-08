@@ -1,26 +1,17 @@
 ﻿@using Backy.Models
 @using Microsoft.Extensions.Logging
-@using Blazored.Toast.Services
 @inject ILogger<NewDriveCard> Logger
-@inject IToastService ToastService
 @inject NavigationManager Navigation
 
-
-<div class="card drive-card new-drive-card mb-3" @attributes="DriveAttributes">
-    {
-    { "data-drive-serial", Model.Serial },
-    { "data-vendor", Model.Vendor },
-    { "data-model", Model.Model },
-    { "data-serial", Model.Serial },
-    { "data-search-text", $"{Model.Name} {Model.Label} {Model.Vendor} {Model.Model} {Model.Serial}" }
-    })>
+<div class="card drive-card new-drive-card mb-3">
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center"
         style="background-color: #343a40; color:white;">
         <div class="d-flex align-items-center">
             <!-- Expand/Collapse button -->
             <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
-                <img src="/icons/chevron-down.svg" alt="Expand Details" class="chevron-icon" style="height: 24px;" />
+                <img src="/icons/chevron-down.svg" alt="Expand Details"
+                    class="chevron-icon @(IsNewDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
             </button>
             <!-- Drive Icon -->
             <img src="/icons/device-hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
@@ -28,7 +19,6 @@
         </div>
         <!-- Drive Size -->
         <div>
-            <!-- Display drive size -->
             <div>
                 <span>@FormatSize(Model.Size)</span>
             </div>
@@ -48,9 +38,45 @@
         </div>
     </div>
     <!-- Collapsible Details -->
-    @if (isDetailsVisible)
+    @if (IsNewDriveDetailsVisible)
     {
-        <!-- Details Content -->
+        <div class="card-body">
+            <!-- Details Content -->
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <tbody>
+                        <tr>
+                            <th>Vendor</th>
+                            <td>@Model.Vendor</td>
+                        </tr>
+                        <tr>
+                            <th>Model</th>
+                            <td>@Model.Model</td>
+                        </tr>
+                        <tr>
+                            <th>Serial</th>
+                            <td>@Model.Serial</td>
+                        </tr>
+                        <tr>
+                            <th>Size</th>
+                            <td>@FormatSize(Model.Size)</td>
+                        </tr>
+                        @if (Model.Partitions != null && Model.Partitions.Any())
+                        {
+                            <tr>
+                                <th>Partitions</th>
+                                <td>
+                                    @foreach (var partition in Model.Partitions)
+                                    {
+                                        <div>@partition.Name - @partition.Fstype</div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
     }
 </div>
 
@@ -64,21 +90,12 @@
     [Parameter]
     public EventCallback<string> OnSelect { get; set; }
 
-    private Dictionary<string, object> DriveAttributes => new Dictionary<string, object>
-{
-{ "data-drive-serial", Model.Serial },
-{ "data-vendor", Model.Vendor },
-{ "data-model", Model.Model },
-{ "data-serial", Model.Serial },
-{ "data-search-text", $"{Model.Name} {Model.Label} {Model.Vendor} {Model.Model} {Model.Serial}" }
-};
-
-    private bool isDetailsVisible = false;
+    private bool IsNewDriveDetailsVisible { get; set; } = false;
     private HashSet<string> expandedPartitions = new HashSet<string>();
 
     private void ToggleDetails()
     {
-        isDetailsVisible = !isDetailsVisible;
+        IsNewDriveDetailsVisible = !IsNewDriveDetailsVisible;
     }
 
     private void TogglePartitionDetails(string partitionName)

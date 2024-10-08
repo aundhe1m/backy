@@ -1,10 +1,10 @@
 ﻿@using Backy.Models
 @using System.Net.Http.Json
+@using Backy.Services
 @using Microsoft.Extensions.Logging
-@using Blazored.Toast.Services
 @inject HttpClient Http
 @inject ILogger<FileExplorer> Logger
-@inject IToastService ToastService
+@inject ICustomToastService ToastService
 
 <div class="modal fade @(Visible ? "show d-block" : "d-none")" tabindex="-1" role="dialog" aria-labelledby="fileExplorerModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document" style="max-width: 90%;">

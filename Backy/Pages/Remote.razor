@@ -2,10 +2,9 @@
 @using Backy.Data
 @using Backy.Models
 @using Backy.Services
-@using Blazored.Toast.Services
 @using Microsoft.AspNetCore.DataProtection
 @inject ApplicationDbContext DbContext
-@inject IToastService ToastService
+@inject ICustomToastService ToastService
 @inject ILogger<Remote> Logger
 @inject IDataProtectionProvider DataProtectionProvider
 
