@@ -1,5 +1,9 @@
-﻿@using Backy.Models
+﻿@using Backy.Data
+@using Backy.Models
+@using Backy.Components
+@using Backy.Services
 @using Microsoft.Extensions.Logging
+@inject ICustomToastService ToastService
 @inject ILogger<NewDriveCard> Logger
 @inject NavigationManager Navigation
 
@@ -9,9 +13,13 @@
         style="background-color: #343a40; color:white;">
         <div class="d-flex align-items-center">
             <!-- Expand/Collapse button -->
-            <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
+            <button type="button" class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
                     class="chevron-icon @(IsNewDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
+            </button>
+            <h2>@headingValue</h2>
+            <button @onclick="UpdateHeading">
+                Update heading
             </button>
             <!-- Drive Icon -->
             <img src="/icons/device-hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
@@ -26,13 +34,13 @@
         <!-- Action Buttons -->
         <div class="btn-group">
             <!-- Protect Button -->
-            <button type="button" class="btn btn-transparent protect-drive-button"
-                @onclick="() => ProtectDrive(Model.Serial)" title="Protect Drive">
+            <button type="button" class="btn btn-secondary protect-drive-button" @onclick="ProtectDriveHandler"
+                title="Protect Drive">
                 <img src="/icons/shield-lock.svg" alt="Protect Drive" style="height: 24px;" />
             </button>
             <!-- Select Button -->
-            <button type="button" class="btn btn-transparent select-drive-button"
-                @onclick="() => SelectDrive(Model.Serial)" title="Select Drive">
+            <button type="button" class="btn btn-primary select-drive-button" @onclick="() => SelectDrive(Model.Serial)"
+                title="Select Drive">
                 <img src="/icons/plus-square.svg" alt="Select Drive" style="height: 24px;" />
             </button>
         </div>
@@ -93,8 +101,19 @@
     private bool IsNewDriveDetailsVisible { get; set; } = false;
     private HashSet<string> expandedPartitions = new HashSet<string>();
 
+    private string headingValue = "Initial heading";
+
+    private async Task UpdateHeading()
+    {
+        await Task.Delay(2000);
+
+        headingValue = $"New heading ({DateTime.Now})";
+    }
+
     private void ToggleDetails()
     {
+        ToastService.ShowInfo("Test button clicked.");
+        Logger.LogInformation($"Toggle button clicked for drive: {Model.Serial}");
         IsNewDriveDetailsVisible = !IsNewDriveDetailsVisible;
     }
 
@@ -106,13 +125,30 @@
             expandedPartitions.Add(partitionName);
     }
 
+    private async Task ProtectDriveHandler()
+    {
+        if (!string.IsNullOrEmpty(Model.Serial))
+        {
+            await ProtectDrive(Model.Serial);
+        }
+    }
     private async Task ProtectDrive(string serial)
     {
+        Logger.LogInformation($"Protect button clicked for drive: {serial}");
         await OnProtect.InvokeAsync(serial);
+    }
+
+    private async Task SelectDriveHandler()
+    {
+        if (!string.IsNullOrEmpty(Model.Serial))
+        {
+            await SelectDrive(Model.Serial);
+        }
     }
 
     private async Task SelectDrive(string serial)
     {
+        Logger.LogInformation($"Select button clicked for drive: {serial}");
         await OnSelect.InvokeAsync(serial);
     }
 

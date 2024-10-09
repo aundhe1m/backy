@@ -1,4 +1,4 @@
-﻿@using Backy.Models
+@using Backy.Models
 @using Microsoft.Extensions.Logging
 @using Backy.Services
 @inject ILogger<PoolGroupDriveCard> Logger
@@ -17,7 +17,7 @@
             <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
             <span>@Model.GroupLabel</span>
         </div>
-        <!-- Force Add Button -->
+        <!-- Action Buttons -->
         <div class="btn-group">
             <button class="btn btn-secondary" @onclick="UnmountPool">Unmount</button>
             <button class="btn btn-danger" @onclick="RemovePoolGroup">Remove</button>
@@ -84,6 +84,7 @@
 
     [Parameter]
     public EventCallback<PoolGroup> OnRenamePoolGroup { get; set; }
+
     private string HeaderBackgroundColor { get; set; } = "#343a40"; // Default dark
 
     private bool IsPoolDriveDetailsVisible { get; set; } = false;

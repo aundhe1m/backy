@@ -15,6 +15,14 @@
 
 <PageTitle>Drive Catalog - Backy</PageTitle>
 
+<h2>@headingValue</h2>
+
+<p>
+    <button @onclick="UpdateHeading">
+        Update heading
+    </button>
+</p>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Drive Catalog</h1>
     <!-- Refresh Button -->
@@ -26,9 +34,8 @@
 {
     @foreach (var pool in PoolGroups)
     {
-        <PoolGroupDriveCard Model="@pool" OnUnmountPool="@((pool) => UnmountPool(pool))"
-    OnRemovePoolGroup="@((pool) => RemovePoolGroup(pool))" OnMountPool="@((pool) => MountPool(pool))"
-    OnRenamePoolGroup="@((pool) => RenamePoolGroup(pool))" />
+        <PoolGroupDriveCard Model="@pool" OnUnmountPool="@UnmountPool" OnRemovePoolGroup="@RemovePoolGroup"
+    OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup" />
     }
 }
 else
@@ -53,7 +60,6 @@ else
 {
     <p>No new drives found.</p>
 }
-
 
 <!-- Protected Drives -->
 @if (ProtectedDrives != null && ProtectedDrives.Any())
@@ -136,6 +142,17 @@ else
 }
 
 @code {
+
+    private string headingValue = "Initial heading";
+
+    private async Task UpdateHeading()
+    {
+        await Task.Delay(2000);
+
+        headingValue = $"New heading ({DateTime.Now})";
+    }
+
+
     private List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>();
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
     private List<ProtectedDrive> ProtectedDrives { get; set; } = new List<ProtectedDrive>();
@@ -253,14 +270,17 @@ else
     {
         try
         {
+            Logger.LogInformation($"Attempting to protect drive with serial: {serial}");
             var result = await DriveService.ProtectDriveAsync(serial);
             if (result.Success)
             {
+                Logger.LogInformation($"Drive {serial} protected successfully.");
                 ToastService.ShowSuccess(result.Message);
                 await LoadDrives();
             }
             else
             {
+                Logger.LogWarning($"Failed to protect drive {serial}: {result.Message}");
                 ToastService.ShowWarning(result.Message);
             }
         }
@@ -275,14 +295,17 @@ else
     {
         try
         {
+            Logger.LogInformation($"Attempting to unprotect drive with serial: {serial}");
             var result = await DriveService.UnprotectDriveAsync(serial);
             if (result.Success)
             {
+                Logger.LogInformation($"Drive {serial} unprotected successfully.");
                 ToastService.ShowSuccess(result.Message);
                 await LoadDrives();
             }
             else
             {
+                Logger.LogWarning($"Failed to unprotect drive {serial}: {result.Message}");
                 ToastService.ShowWarning(result.Message);
             }
         }
@@ -295,21 +318,19 @@ else
 
     private async Task SelectDrive(string serial)
     {
-        await Task.Run(() =>
+        Logger.LogInformation($"Selecting drive with serial: {serial}");
+        var drive = NewDrives.FirstOrDefault(d => d.Serial == serial);
+        if (drive != null)
         {
-            {
-                var drive = NewDrives.FirstOrDefault(d => d.Serial == serial);
-                if (drive != null)
-                {
-                    SelectedDrives.Add(drive);
-                    OpenCreatePoolModal();
-                }
-                else
-                {
-                    ToastService.ShowError("Drive not found.");
-                }
-            }
-        });
+            SelectedDrives.Add(drive);
+            Logger.LogInformation($"Drive {serial} selected.");
+            OpenCreatePoolModal();
+        }
+        else
+        {
+            Logger.LogWarning($"Drive {serial} not found.");
+            ToastService.ShowError("Drive not found.");
+        }
     }
 
     private void OpenCreatePoolModal()
@@ -442,28 +463,26 @@ else
 
     private async Task RenamePoolGroup(PoolGroup poolGroup)
     {
-        await Task.Run(() =>
-        {
-
-            // Open the rename modal
-            isRenamePoolModalOpen = true;
-            PoolToRename = poolGroup;
-            RenamePoolRequest = new RenamePoolRequest
-                {
-                    PoolGroupGuid = poolGroup.PoolGroupGuid,
-                    NewPoolLabel = poolGroup.GroupLabel,
-                    DriveLabels = poolGroup.Drives.ToDictionary(d => d.Id, d => (string?)d.Label)
-                };
-
-        });
+        Logger.LogInformation($"Renaming pool group: {poolGroup.GroupLabel}");
+        isRenamePoolModalOpen = true;
+        PoolToRename = poolGroup;
+        RenamePoolRequest = new RenamePoolRequest
+            {
+                PoolGroupGuid = poolGroup.PoolGroupGuid,
+                NewPoolLabel = poolGroup.GroupLabel,
+                DriveLabels = poolGroup.Drives.ToDictionary(d => d.Id, d => (string?)d.Label)
+            };
     }
-
 
     private void CloseRenamePoolModal()
     {
         isRenamePoolModalOpen = false;
-        PoolToRename = null!;
-        RenamePoolRequest = null!;
+        PoolToRename = new PoolGroup(); // Initialize to avoid null reference
+        RenamePoolRequest = new RenamePoolRequest
+            {
+                NewPoolLabel = string.Empty,
+                DriveLabels = new Dictionary<int, string?>()
+            };
     }
 
     private async Task HandleRenamePool()

@@ -1,5 +1,5 @@
 using Backy.Data;
-using Backy.Models;
+using Backy.Components;
 using Backy.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +10,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
 builder.Services.AddServerSideBlazor();
 
 // Configure DbContext with PostgreSQL
@@ -46,6 +48,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.MapRazorComponents<Backy.App>();
 
 app.UseRouting();
 

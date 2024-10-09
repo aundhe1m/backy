@@ -1,4 +1,4 @@
-﻿namespace Backy.Models
+namespace Backy.Models
 {
     public class ToastMessage
     {
