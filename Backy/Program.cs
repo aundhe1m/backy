@@ -1,10 +1,7 @@
-using Backy.Data;
 using Backy.Components;
+using Backy.Data;
 using Backy.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using Renci.SshNet;
-using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,14 +43,16 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 app.UseStaticFiles();
-app.MapRazorComponents<Backy.App>();
+app.UseAntiforgery();
 
-app.UseRouting();
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
 
-app.MapBlazorHub();
-app.MapFallbackToPage("/_Host");
+// app.UseRouting();
+
+// app.MapBlazorHub();
 
 // Apply pending migrations and ensure database is created
 using (var scope = app.Services.CreateScope())

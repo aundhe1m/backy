@@ -1,0 +1,64 @@
+﻿@inherits LayoutComponentBase
+@inject ILoadingService LoadingService
+@implements IDisposable
+
+<div>
+    <header>
+        <NavMenu />
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @Body
+        </main>
+    </div>
+
+    <!-- Loading Spinner -->
+    @if (isLoading)
+    {
+        <div class="spinner-overlay">
+            <div class="spinner-border text-warning" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+
+    <!-- Toast Notifications -->
+    <Toast />
+
+    <footer class="border-top footer text-muted bg-dark text-light">
+        <div class="container">
+            &copy; 2024 - Backy - <a href="/Privacy">Privacy</a>
+        </div>
+    </footer>
+</div>
+
+@code {
+    private bool isLoading = false;
+
+    protected override void OnInitialized()
+    {
+        // Subscribe to loading events
+        LoadingService.OnShow += ShowLoading;
+        LoadingService.OnHide += HideLoading;
+    }
+
+    private Task ShowLoading()
+    {
+        isLoading = true;
+        InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    private Task HideLoading()
+    {
+        isLoading = false;
+        InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        LoadingService.OnShow -= ShowLoading;
+        LoadingService.OnHide -= HideLoading;
+    }
+}

@@ -17,10 +17,6 @@
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
                     class="chevron-icon @(IsNewDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
             </button>
-            <h2>@headingValue</h2>
-            <button @onclick="UpdateHeading">
-                Update heading
-            </button>
             <!-- Drive Icon -->
             <img src="/icons/device-hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
             <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
@@ -102,14 +98,6 @@
     private HashSet<string> expandedPartitions = new HashSet<string>();
 
     private string headingValue = "Initial heading";
-
-    private async Task UpdateHeading()
-    {
-        await Task.Delay(2000);
-
-        headingValue = $"New heading ({DateTime.Now})";
-    }
-
     private void ToggleDetails()
     {
         ToastService.ShowInfo("Test button clicked.");

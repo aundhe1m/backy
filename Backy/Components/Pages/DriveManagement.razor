@@ -1,47 +1,18 @@
 ﻿@page "/DriveManagement"
-@using Microsoft.AspNetCore.Components
-@using Microsoft.AspNetCore.Components.Web
-@using Backy.Data
-@using Backy.Models
-@using Backy.Services
-@using Backy.Components
-@using Microsoft.AspNetCore.Components.Forms
-@using Microsoft.EntityFrameworkCore
 @inject ApplicationDbContext DbContext
 @inject ICustomToastService ToastService
 @inject ILogger<DriveManagement> Logger
 @inject ILoadingService LoadingService
 @inject IDriveService DriveService
+@rendermode InteractiveServer
 
 <PageTitle>Drive Catalog - Backy</PageTitle>
-
-<h2>@headingValue</h2>
-
-<p>
-    <button @onclick="UpdateHeading">
-        Update heading
-    </button>
-</p>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Drive Catalog</h1>
     <!-- Refresh Button -->
     <button class="btn btn-secondary" @onclick="LoadDrives">Refresh</button>
 </div>
-
-<!-- Pool Groups -->
-@if (PoolGroups != null && PoolGroups.Any())
-{
-    @foreach (var pool in PoolGroups)
-    {
-        <PoolGroupDriveCard Model="@pool" OnUnmountPool="@UnmountPool" OnRemovePoolGroup="@RemovePoolGroup"
-    OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup" />
-    }
-}
-else
-{
-    <p>No pool groups available.</p>
-}
 
 <!-- New Drives -->
 @if (NewDrives != null && NewDrives.Any())
@@ -61,6 +32,16 @@ else
     <p>No new drives found.</p>
 }
 
+<!-- Pool Groups -->
+@if (PoolGroups != null && PoolGroups.Any())
+{
+    @foreach (var pool in PoolGroups)
+    {
+        <PoolGroupDriveCard Model="@pool" OnUnmountPool="@UnmountPool" OnRemovePoolGroup="@RemovePoolGroup"
+    OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup" />
+    }
+}
+
 <!-- Protected Drives -->
 @if (ProtectedDrives != null && ProtectedDrives.Any())
 {
@@ -73,10 +54,6 @@ else
             </div>
         }
     </div>
-}
-else
-{
-    <p>No protected drives.</p>
 }
 
 <!-- Create Pool Modal -->
@@ -142,16 +119,6 @@ else
 }
 
 @code {
-
-    private string headingValue = "Initial heading";
-
-    private async Task UpdateHeading()
-    {
-        await Task.Delay(2000);
-
-        headingValue = $"New heading ({DateTime.Now})";
-    }
-
 
     private List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>();
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
