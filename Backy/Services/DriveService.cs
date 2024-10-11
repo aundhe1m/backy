@@ -14,7 +14,7 @@ namespace Backy.Services
         (long Size, long Used, long Available, string UsePercent) GetMountPointSize(string mountPoint);
         Task<(bool Success, string Message)> ProtectDriveAsync(string serial);
         Task<(bool Success, string Message)> UnprotectDriveAsync(string serial);
-        Task<(bool Success, string Message)> CreatePoolAsync(CreatePoolRequest request);
+        Task<(bool Success, string Message, List<string> Outputs)> CreatePoolAsync(CreatePoolRequest request);
         Task<(bool Success, string Message)> UnmountPoolAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> RemovePoolGroupAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> MountPoolAsync(Guid poolGroupGuid);
@@ -267,11 +267,11 @@ namespace Backy.Services
             return (false, "Drive not found in protected list.");
         }
 
-        public async Task<(bool Success, string Message)> CreatePoolAsync(CreatePoolRequest request)
+        public async Task<(bool Success, string Message, List<string> Outputs)> CreatePoolAsync(CreatePoolRequest request)
         {
             if (string.IsNullOrEmpty(request.PoolLabel) || request.DriveSerials == null || request.DriveSerials.Count == 0)
             {
-                return (false, "Pool Label and at least one drive must be selected.");
+                return (false, "Pool Label and at least one drive must be selected.", new List<string>());
             }
 
             var activeDrives = await UpdateActiveDrivesAsync();
@@ -279,17 +279,19 @@ namespace Backy.Services
 
             if (!drives.Any())
             {
-                return (false, "No active drives found matching the provided serials.");
+                return (false, "No active drives found matching the provided serials.", new List<string>());
             }
 
             // Safety check to prevent operating on protected drives
             var protectedSerials = _context.ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
             if (drives.Any(d => protectedSerials.Contains(d.Serial)))
             {
-                return (false, "One or more selected drives are protected.");
+                return (false, "One or more selected drives are protected.", new List<string>());
             }
 
             using var transaction = await _context.Database.BeginTransactionAsync();
+
+            var commandOutputs = new List<string>();
 
             try
             {
@@ -361,8 +363,6 @@ namespace Backy.Services
 
                 await _context.SaveChangesAsync();
 
-                var commandOutputs = new List<string>();
-
                 // Build mdadm command
                 string mdadmCommand = $"mdadm --create /dev/md{poolGroupId} --level=1 --raid-devices={drives.Count} ";
                 mdadmCommand += string.Join(" ", drives.Select(d => d.IdLink));
@@ -372,7 +372,7 @@ namespace Backy.Services
                 if (!mdadmResult.success)
                 {
                     await transaction.RollbackAsync();
-                    return (false, mdadmResult.message);
+                    return (false, mdadmResult.message, commandOutputs);
                 }
 
                 // Format and mount the md device
@@ -382,7 +382,7 @@ namespace Backy.Services
                 {
                     ExecuteShellCommand($"mdadm --stop /dev/md{poolGroupId}", commandOutputs);
                     await transaction.RollbackAsync();
-                    return (false, mkfsResult.message);
+                    return (false, mkfsResult.message, commandOutputs);
                 }
 
                 // Mount the md device
@@ -394,7 +394,7 @@ namespace Backy.Services
                     ExecuteShellCommand($"umount {mountPath}", commandOutputs);
                     ExecuteShellCommand($"mdadm --stop /dev/md{poolGroupId}", commandOutputs);
                     await transaction.RollbackAsync();
-                    return (false, mountResult.message);
+                    return (false, mountResult.message, commandOutputs);
                 }
 
                 // Update MountPath
@@ -404,15 +404,16 @@ namespace Backy.Services
                 // Commit transaction
                 await transaction.CommitAsync();
 
-                return (true, $"Pool '{request.PoolLabel}' created successfully.");
+                return (true, $"Pool '{request.PoolLabel}' created successfully.", commandOutputs);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating pool.");
                 await transaction.RollbackAsync();
-                return (false, "An error occurred while creating the pool.");
+                return (false, "An error occurred while creating the pool.", commandOutputs);
             }
         }
+
 
         public async Task<(bool Success, string Message)> UnmountPoolAsync(Guid poolGroupGuid)
         {
@@ -655,5 +656,6 @@ namespace Backy.Services
                 return (false, "An error occurred while executing the command.");
             }
         }
+
     }
 }

@@ -2,14 +2,12 @@
 @using Backy.Models
 @using Backy.Components
 @using Backy.Services
-@using Microsoft.Extensions.Logging
 @inject ILogger<NewDriveCard> Logger
 @inject NavigationManager Navigation
 
 <div class="card drive-card new-drive-card mb-3">
     <!-- Card Header -->
-    <div class="card-header d-flex justify-content-between align-items-center"
-        style="background-color: #343a40; color:white;">
+    <div class="card-header d-flex justify-content-between align-items-center" style="@GetCardHeaderStyle()">
         <div class="d-flex align-items-center">
             <!-- Expand/Collapse button -->
             <button type="button" class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
@@ -36,7 +34,7 @@
             <!-- Select Button -->
             <button type="button" class="btn btn-primary select-drive-button" @onclick="() => SelectDrive(Model.Serial)"
                 title="Select Drive">
-                <img src="/icons/plus-square.svg" alt="Select Drive" style="height: 24px;" />
+                <img src="@GetSelectIcon()" alt="Select Drive" style="height: 24px;" />
             </button>
         </div>
     </div>
@@ -95,13 +93,14 @@
     [Parameter]
     public EventCallback<string> OnSelect { get; set; }
 
+    [Parameter]
+    public bool IsSelected { get; set; } = false;
+
     private bool IsNewDriveDetailsVisible { get; set; } = false;
     private HashSet<string> expandedPartitions = new HashSet<string>();
 
-    private string headingValue = "Initial heading";
     private void ToggleDetails()
     {
-
         Logger.LogInformation($"Toggle button clicked for drive: {Model.Serial}");
         IsNewDriveDetailsVisible = !IsNewDriveDetailsVisible;
     }
@@ -121,6 +120,7 @@
             await ProtectDrive(Model.Serial);
         }
     }
+
     private async Task ProtectDrive(string serial)
     {
         Logger.LogInformation($"Protect button clicked for drive: {serial}");
@@ -151,5 +151,24 @@
             return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
         else
             return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
+    }
+
+    private string GetCardHeaderStyle()
+    {
+        if (IsSelected)
+        {
+            // Slight blue tint for selected drives
+            return "background-color: #007bff; color:white;";
+        }
+        else
+        {
+            // Default style
+            return "background-color: #343a40; color:white;";
+        }
+    }
+
+    private string GetSelectIcon()
+    {
+        return IsSelected ? "/icons/plus-square-fill.svg" : "/icons/plus-square.svg";
     }
 }

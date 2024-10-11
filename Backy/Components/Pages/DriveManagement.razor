@@ -14,7 +14,7 @@
         <button class="btn btn-secondary" @onclick="LoadDrives">Refresh</button>
         @if (SelectedDrives != null && SelectedDrives.Any())
         {
-            <Button Color="ButtonColor.Primary"> Create Pool </Button>
+            <Button Color="ButtonColor.Primary" @onclick="OpenCreatePoolModal"> Create Pool </Button>
         }
         else
         {
@@ -22,8 +22,6 @@
         }
     </span>
 </div>
-
-
 
 <!-- New Drives -->
 @if (NewDrives != null && NewDrives.Any())
@@ -33,7 +31,8 @@
     @foreach (var drive in NewDrives)
         {
             <div class="col">
-                <NewDriveCard Model="@drive" OnProtect="@ProtectDrive" OnSelect="@SelectDrive" />
+                <NewDriveCard Model="@drive" OnProtect="@ProtectDrive" OnSelect="@SelectDrive"
+                    IsSelected="@IsDriveSelected(drive.Serial)" />
             </div>
         }
     </div>
@@ -71,31 +70,44 @@ else
 @if (isCreatePoolModalOpen)
 {
     <Modal Title="Create Pool" @bind-Visible="isCreatePoolModalOpen">
-    <EditForm Model="@CreatePoolRequest" OnValidSubmit="HandleCreatePool">
-        <DataAnnotationsValidator />
-        <ValidationSummary />
+    @if (!isCreatePoolResultVisible)
+        {
+            <EditForm Model="@CreatePoolRequest" OnValidSubmit="HandleCreatePool">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
 
-        <div class="mb-3">
-            <label for="poolLabel" class="form-label">Pool Label</label>
-            <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
-            <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
-        </div>
-
-        <!-- Drive Labels -->
-        @foreach (var drive in SelectedDrives)
-            {
                 <div class="mb-3">
-                    <label class="form-label">Drive Label (@drive.Serial)</label>
-                    <InputText class="form-control" @bind-Value="CreatePoolRequest.DriveLabels[drive.Serial]" />
+                    <label for="poolLabel" class="form-label">Pool Label</label>
+                    <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
+                    <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
                 </div>
-            }
 
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" @onclick="CloseCreatePoolModal">Close</button>
-                <button type="submit" class="btn btn-primary">Create Pool</button>
+                <!-- Drive Labels -->
+                @foreach (var drive in SelectedDrives)
+                {
+                    <div class="mb-3">
+                        <label class="form-label">Drive Label (@drive.Serial)</label>
+                        <InputText class="form-control" @bind-Value="CreatePoolRequest.DriveLabels[drive.Serial]" />
+                    </div>
+                }
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseCreatePoolModal">Close</button>
+                    <button type="submit" class="btn btn-primary">Create Pool</button>
+                </div>
+            </EditForm>
+        }
+        else
+        {
+            <div>
+                <h5>@CreatePoolResultMessage</h5>
+                <pre class="console-output">@string.Join("\n", CommandOutputs)</pre>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseCreatePoolModal">Close</button>
+                </div>
             </div>
-        </EditForm>
-    </Modal>
+        }
+        </Modal>
 }
 
 <!-- Rename Pool Modal -->
@@ -129,8 +141,6 @@ else
     </Modal>
 }
 
-
-
 @code {
     [Inject] protected ToastService ToastService { get; set; } = default!;
     private List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>();
@@ -140,9 +150,11 @@ else
     private CreatePoolRequest CreatePoolRequest { get; set; } = new CreatePoolRequest
         {
             PoolLabel = string.Empty,
-            DriveSerials = new List<string>()
+            DriveSerials = new List<string>(),
+            DriveLabels = new Dictionary<string, string?>()
         };
     private bool isCreatePoolModalOpen = false;
+    private bool isCreatePoolResultVisible = false; // New flag for displaying results
     private bool isRenamePoolModalOpen = false;
     private PoolGroup PoolToRename { get; set; } = new PoolGroup();
     private RenamePoolRequest RenamePoolRequest { get; set; } = new RenamePoolRequest
@@ -150,6 +162,8 @@ else
             NewPoolLabel = string.Empty,
             DriveLabels = new Dictionary<int, string?>()
         };
+    private List<string> CommandOutputs { get; set; } = new List<string>(); // To store command outputs
+    private string CreatePoolResultMessage { get; set; } = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -167,8 +181,6 @@ else
         {
             Logger.LogError(ex, "Error loading drives.");
             ToastService.Notify(new(ToastType.Danger, $"Error: {ex.Message}."));
-
-
         }
         finally
         {
@@ -304,17 +316,34 @@ else
         var drive = NewDrives.FirstOrDefault(d => d.Serial == serial);
         if (drive != null)
         {
-            SelectedDrives.Add(drive);
-            Logger.LogInformation($"Drive {serial} selected.");
-            OpenCreatePoolModal();
+            if (SelectedDrives.Any(d => d.Serial == serial))
+            {
+                // Deselect the drive
+                SelectedDrives.RemoveAll(d => d.Serial == serial);
+                Logger.LogInformation($"Drive {serial} deselected.");
+            }
+            else
+            {
+                // Select the drive
+                SelectedDrives.Add(drive);
+                Logger.LogInformation($"Drive {serial} selected.");
+            }
+            StateHasChanged(); // Update the UI
         }
         else
         {
             Logger.LogWarning($"Drive {serial} not found.");
             ToastService.Notify(new(ToastType.Danger, $"Drive {serial} not found."));
-
         }
     }
+
+    private bool IsDriveSelected(string? serial)
+    {
+        if (serial == null)
+            return false;
+        return SelectedDrives.Any(d => d.Serial == serial);
+    }
+
 
     private void OpenCreatePoolModal()
     {
@@ -330,7 +359,10 @@ else
     private void CloseCreatePoolModal()
     {
         isCreatePoolModalOpen = false;
+        isCreatePoolResultVisible = false;
         SelectedDrives.Clear();
+        CommandOutputs.Clear();
+        CreatePoolResultMessage = string.Empty;
     }
 
     private async Task HandleCreatePool()
@@ -338,25 +370,27 @@ else
         try
         {
             await LoadingService.ShowLoading();
-            var result = await DriveService.CreatePoolAsync(CreatePoolRequest);
+            var (success, message, outputs) = await DriveService.CreatePoolAsync(CreatePoolRequest);
 
-            if (result.Success)
+            if (success)
             {
-                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
-                isCreatePoolModalOpen = false;
-                SelectedDrives.Clear();
-                await LoadDrives();
+                // Display the command outputs in the modal
+                CommandOutputs = outputs;
+                CreatePoolResultMessage = message;
+                isCreatePoolResultVisible = true;
             }
             else
             {
-                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
+                // Display the error and outputs
+                CommandOutputs = outputs;
+                CreatePoolResultMessage = message;
+                isCreatePoolResultVisible = true;
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error creating pool.");
             ToastService.Notify(new(ToastType.Danger, $"Failed to create pool."));
-
         }
         finally
         {
@@ -372,7 +406,6 @@ else
             var result = await DriveService.UnmountPoolAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
-
                 ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
