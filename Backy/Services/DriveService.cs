@@ -657,5 +657,144 @@ namespace Backy.Services
             }
         }
 
+        public async Task<(bool Success, string Message)> ForceAddDriveAsync(int driveId, Guid poolGroupGuid, string devPath)
+        {
+            var poolGroup = await _context.PoolGroups.FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
+            if (poolGroup == null)
+            {
+                return (false, "Pool group not found.");
+            }
+
+            int poolGroupId = poolGroup.PoolGroupId;
+
+            string command = $"mdadm --manage /dev/md{poolGroupId} --add {devPath}";
+            var commandOutputs = new List<string>();
+            var (success, message) = ExecuteShellCommand(command, commandOutputs);
+
+            if (success)
+            {
+                // Optionally update the drive's status
+                var drive = await _context.PoolDrives.FirstOrDefaultAsync(d => d.Id == driveId);
+                if (drive != null)
+                {
+                    drive.IsMounted = true;
+                    await _context.SaveChangesAsync();
+                }
+
+                return (true, "Drive added to the pool successfully.");
+            }
+            else
+            {
+                return (false, message);
+            }
+        }
+
+        public async Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(KillProcessesRequest request)
+        {
+            if (request == null)
+            {
+                return (false, "Invalid request data.", new List<string>());
+            }
+
+            if (request.PoolGroupGuid == Guid.Empty)
+            {
+                return (false, "Invalid Pool Group GUID.", new List<string>());
+            }
+
+            var poolGroup = await _context
+            .PoolGroups.Include(pg => pg.Drives)
+            .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == request.PoolGroupGuid);
+
+            if (poolGroup == null)
+            {
+                return (false, "Pool group not found.", new List<string>());
+            }
+
+            int poolGroupId = poolGroup.PoolGroupId;
+
+            var commandOutputs = new List<string>();
+
+            // Kill the processes
+            foreach (var pid in request.Pids)
+            {
+                string killCommand = $"kill -9 {pid}";
+                var killResult = ExecuteShellCommand(killCommand, commandOutputs);
+                if (!killResult.success)
+                {
+                    return (false, $"Failed to kill process {pid}.", commandOutputs);
+                }
+            }
+
+            // After killing processes, perform actions based on Action
+            if (request.Action.Equals("UnmountPool", StringComparison.OrdinalIgnoreCase))
+            {
+                // Retry unmount and mdadm --stop
+                string mountPoint = $"/mnt/backy/md{poolGroupId}";
+                string unmountCommand = $"umount {mountPoint}";
+                var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
+                if (!unmountResult.success)
+                {
+                    return (false, unmountResult.message, commandOutputs);
+                }
+
+                string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
+                var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
+                if (!stopResult.success)
+                {
+                    return (false, stopResult.message, commandOutputs);
+                }
+
+                // Update drive statuses and pool
+                foreach (var drive in poolGroup.Drives)
+                {
+                    drive.IsMounted = false;
+                }
+
+                poolGroup.PoolEnabled = false;
+                await _context.SaveChangesAsync();
+
+                return (true, "Pool unmounted successfully after killing processes.", commandOutputs);
+            }
+            else if (request.Action.Equals("RemovePoolGroup", StringComparison.OrdinalIgnoreCase))
+            {
+                // Retry unmount and mdadm --stop
+                string mountPoint = poolGroup.MountPath;
+                string unmountCommand = $"umount {mountPoint}";
+                var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
+                if (!unmountResult.success)
+                {
+                    return (false, unmountResult.message, commandOutputs);
+                }
+
+                string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
+                var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
+                if (!stopResult.success)
+                {
+                    return (false, stopResult.message, commandOutputs);
+                }
+
+                // Wipe filesystem signatures
+                foreach (var drive in poolGroup.Drives)
+                {
+                    string wipeCommand = $"wipefs -a {drive.DevPath}";
+                    var wipeResult = ExecuteShellCommand(wipeCommand, commandOutputs);
+                    if (!wipeResult.success)
+                    {
+                        return (false, $"Failed to clean drive {drive.Serial}.", commandOutputs);
+                    }
+                }
+
+                // Remove the PoolGroup from the database
+                _context.PoolGroups.Remove(poolGroup);
+                await _context.SaveChangesAsync();
+
+                return (true, "Pool group removed successfully after killing processes.", commandOutputs);
+            }
+            else
+            {
+                return (false, "Unknown action for kill processes.", new List<string>());
+            }
+        }
+
     }
 }
