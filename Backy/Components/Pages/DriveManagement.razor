@@ -1,6 +1,5 @@
 ﻿@page "/DriveManagement"
 @inject ApplicationDbContext DbContext
-@inject ICustomToastService ToastService
 @inject ILogger<DriveManagement> Logger
 @inject ILoadingService LoadingService
 @inject IDriveService DriveService
@@ -119,7 +118,7 @@ else
 }
 
 @code {
-
+    [Inject] protected ToastService ToastService { get; set; } = default!;
     private List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>();
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
     private List<ProtectedDrive> ProtectedDrives { get; set; } = new List<ProtectedDrive>();
@@ -153,7 +152,9 @@ else
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading drives.");
-            ToastService.ShowError("Failed to load drives.");
+            ToastService.Notify(new(ToastType.Danger, $"Error: {ex.Message}."));
+
+
         }
         finally
         {
@@ -242,19 +243,19 @@ else
             if (result.Success)
             {
                 Logger.LogInformation($"Drive {serial} protected successfully.");
-                ToastService.ShowSuccess(result.Message);
+                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
             else
             {
                 Logger.LogWarning($"Failed to protect drive {serial}: {result.Message}");
-                ToastService.ShowWarning(result.Message);
+                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error protecting drive.");
-            ToastService.ShowError("Failed to protect drive.");
+            ToastService.Notify(new(ToastType.Warning, $"Error: {ex.Message}"));
         }
     }
 
@@ -267,19 +268,19 @@ else
             if (result.Success)
             {
                 Logger.LogInformation($"Drive {serial} unprotected successfully.");
-                ToastService.ShowSuccess(result.Message);
+                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
             else
             {
                 Logger.LogWarning($"Failed to unprotect drive {serial}: {result.Message}");
-                ToastService.ShowWarning(result.Message);
+                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error unprotecting drive.");
-            ToastService.ShowError("Failed to unprotect drive.");
+            ToastService.Notify(new(ToastType.Warning, $"Error: {ex.Message}"));
         }
     }
 
@@ -296,7 +297,8 @@ else
         else
         {
             Logger.LogWarning($"Drive {serial} not found.");
-            ToastService.ShowError("Drive not found.");
+            ToastService.Notify(new(ToastType.Danger, $"Drive {serial} not found."));
+
         }
     }
 
@@ -326,20 +328,21 @@ else
 
             if (result.Success)
             {
-                ToastService.ShowSuccess(result.Message);
+                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
                 isCreatePoolModalOpen = false;
                 SelectedDrives.Clear();
                 await LoadDrives();
             }
             else
             {
-                ToastService.ShowError(result.Message);
+                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error creating pool.");
-            ToastService.ShowError("Failed to create pool.");
+            ToastService.Notify(new(ToastType.Danger, $"Failed to create pool."));
+
         }
         finally
         {
@@ -355,18 +358,19 @@ else
             var result = await DriveService.UnmountPoolAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
-                ToastService.ShowSuccess(result.Message);
+
+                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
             else
             {
-                ToastService.ShowError(result.Message);
+                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Error unmounting pool '{poolGroup.GroupLabel}'.");
-            ToastService.ShowError("Failed to unmount pool.");
+            ToastService.Notify(new(ToastType.Danger, $"Failed to unmount pool."));
         }
         finally
         {
@@ -382,18 +386,18 @@ else
             var result = await DriveService.RemovePoolGroupAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
-                ToastService.ShowSuccess(result.Message);
+                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
             else
             {
-                ToastService.ShowError(result.Message);
+                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Error removing pool '{poolGroup.GroupLabel}'.");
-            ToastService.ShowError("Failed to remove pool.");
+            ToastService.Notify(new(ToastType.Danger, $"Failed to remove pool."));
         }
         finally
         {
@@ -409,18 +413,18 @@ else
             var result = await DriveService.MountPoolAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
-                ToastService.ShowSuccess(result.Message);
+                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
             else
             {
-                ToastService.ShowError(result.Message);
+                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Error mounting pool '{poolGroup.GroupLabel}'.");
-            ToastService.ShowError("Failed to mount pool.");
+            ToastService.Notify(new(ToastType.Danger, $"Failed to mount pool."));
         }
         finally
         {
@@ -456,7 +460,7 @@ else
     {
         if (RenamePoolRequest == null)
         {
-            ToastService.ShowError("Invalid rename request.");
+            ToastService.Notify(new(ToastType.Danger, $"Invalid rename request."));
             return;
         }
         try
@@ -466,19 +470,19 @@ else
 
             if (result.Success)
             {
-                ToastService.ShowSuccess(result.Message);
+                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
                 isRenamePoolModalOpen = false;
                 await LoadDrives();
             }
             else
             {
-                ToastService.ShowError(result.Message);
+                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error renaming pool.");
-            ToastService.ShowError("Failed to rename pool.");
+            ToastService.Notify(new(ToastType.Danger, $"Failed to rename pool."));
         }
     }
 }

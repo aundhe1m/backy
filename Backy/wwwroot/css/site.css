@@ -29,14 +29,3 @@ body {
   transform: rotate(180deg);
   transition: transform 0.2s;
 }
-
-.toast-container {
-  /* Ensure the toasts don't cover important content */
-  pointer-events: none;
-}
-
-.toast {
-  pointer-events: auto;
-  min-width: 250px;
-  margin-top: 10px;
-}

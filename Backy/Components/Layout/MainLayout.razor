@@ -22,15 +22,8 @@
         </div>
     }
 
-    <!-- Toast Notifications -->
-    <Toast />
-
-    <footer class="border-top footer text-muted bg-dark text-light">
-        <div class="container">
-            &copy; 2024 - Backy - <a href="/Privacy">Privacy</a>
-        </div>
-    </footer>
 </div>
+
 
 @code {
     private bool isLoading = false;
@@ -62,3 +55,5 @@
         LoadingService.OnHide -= HideLoading;
     }
 }
+
+<Toasts class="p-3" AutoHide="true" Delay="4000" Placement="ToastsPlacement.BottomRight" />

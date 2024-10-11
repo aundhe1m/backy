@@ -3,7 +3,6 @@
 @using Backy.Components
 @using Backy.Services
 @using Microsoft.Extensions.Logging
-@inject ICustomToastService ToastService
 @inject ILogger<NewDriveCard> Logger
 @inject NavigationManager Navigation
 
@@ -85,6 +84,8 @@
 </div>
 
 @code {
+    [Inject] protected ToastService ToastService { get; set; } = default!;
+
     [Parameter, EditorRequired]
     public Drive Model { get; set; } = default!;
 
@@ -100,7 +101,7 @@
     private string headingValue = "Initial heading";
     private void ToggleDetails()
     {
-        ToastService.ShowInfo("Test button clicked.");
+
         Logger.LogInformation($"Toggle button clicked for drive: {Model.Serial}");
         IsNewDriveDetailsVisible = !IsNewDriveDetailsVisible;
     }

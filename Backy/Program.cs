@@ -3,6 +3,7 @@ using Backy.Data;
 using Backy.Services;
 using Microsoft.EntityFrameworkCore;
 
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -10,6 +11,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddServerSideBlazor();
+builder.Services.AddBlazorBootstrap();
 
 // Configure DbContext with PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -20,9 +22,6 @@ builder.Services.AddSingleton<ILoadingService, LoadingService>();
 
 // Register DriveService
 builder.Services.AddScoped<IDriveService, DriveService>();
-
-// Register ProtectedDriveService
-builder.Services.AddSingleton<ICustomToastService, CustomToastService>();
 
 // Add Data Protection
 builder.Services.AddDataProtection();
