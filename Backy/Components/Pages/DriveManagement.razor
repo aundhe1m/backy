@@ -1,4 +1,7 @@
 ﻿@page "/DriveManagement"
+@using Backy.Components
+@using Backy.Models
+@using Backy.Data
 @inject ApplicationDbContext DbContext
 @inject ILogger<DriveManagement> Logger
 @inject ILoadingService LoadingService
@@ -27,12 +30,12 @@
 @if (NewDrives != null && NewDrives.Any())
 {
     <h2>New Drives</h2>
-    <div>
+    <div class="row">
     @foreach (var drive in NewDrives)
         {
-            <div class="col">
+            <div class="col-md-4">
                 <NewDriveCard Model="@drive" OnProtect="@ProtectDrive" OnSelect="@SelectDrive"
-                    IsSelected="@IsDriveSelected(drive.Serial)" />
+                    IsSelected="@IsDriveSelected(drive.Serial!)" />
             </div>
         }
     </div>
@@ -56,10 +59,10 @@ else
 @if (ProtectedDrives != null && ProtectedDrives.Any())
 {
     <h2>Protected Drives</h2>
-    <div>
+    <div class="row">
     @foreach (var drive in ProtectedDrives)
         {
-            <div class="col">
+            <div class="col-md-4">
                 <ProtectedDriveCard Model="@drive" OnUnprotect="@UnprotectDrive" />
             </div>
         }
@@ -67,81 +70,67 @@ else
 }
 
 <!-- Create Pool Modal -->
-@if (isCreatePoolModalOpen)
-{
-    <Modal Title="Create Pool" @bind-Visible="isCreatePoolModalOpen">
-    @if (!isCreatePoolResultVisible)
-        {
-            <EditForm Model="@CreatePoolRequest" OnValidSubmit="HandleCreatePool">
-                <DataAnnotationsValidator />
-                <ValidationSummary />
+<Modal @ref="createPoolModal" Title="Create Pool">
+    <BodyTemplate>
+        <EditForm id="createPoolForm" EditContext="@createPoolEditContext" OnValidSubmit="HandleCreatePool">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
 
-                <div class="mb-3">
-                    <label for="poolLabel" class="form-label">Pool Label</label>
-                    <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
-                    <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
-                </div>
-
-                <!-- Drive Labels -->
-                @foreach (var drive in SelectedDrives)
-                {
-                    <div class="mb-3">
-                        <label class="form-label">Drive Label (@drive.Serial)</label>
-                        <InputText class="form-control" @bind-Value="CreatePoolRequest.DriveLabels[drive.Serial]" />
-                    </div>
-                }
-
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseCreatePoolModal">Close</button>
-                    <button type="submit" class="btn btn-primary">Create Pool</button>
-                </div>
-            </EditForm>
-        }
-        else
-        {
-            <div>
-                <h5>@CreatePoolResultMessage</h5>
-                <pre class="console-output">@string.Join("\n", CommandOutputs)</pre>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseCreatePoolModal">Close</button>
-                </div>
+            <div class="mb-3">
+                <label for="poolLabel" class="form-label">Pool Label</label>
+                <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
+                <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
             </div>
-        }
-        </Modal>
-}
+
+            <!-- Drive Labels -->
+            @foreach (var drive in SelectedDrives ?? Enumerable.Empty<Drive>())
+            {
+                var driveSerial = drive.Serial!;
+                <div class="mb-3">
+                    <label class="form-label">Drive Label (@driveSerial)</label>
+                    <InputText class="form-control" @bind-Value="CreatePoolRequest.DriveLabels[driveSerial]" />
+                </div>
+            }
+        </EditForm>
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseCreatePoolModal">Close</Button>
+        <button type="submit" class="btn btn-primary" form="createPoolForm">Create Pool</button>
+    </FooterTemplate>
+</Modal>
 
 <!-- Rename Pool Modal -->
-@if (isRenamePoolModalOpen)
-{
-    <Modal Title="Rename Pool" @bind-Visible="isRenamePoolModalOpen">
-    <EditForm Model="@RenamePoolRequest" OnValidSubmit="HandleRenamePool">
-        <DataAnnotationsValidator />
-        <ValidationSummary />
+<Modal @ref="renamePoolModal" Title="Rename Pool">
+    <BodyTemplate>
+        <EditForm EditContext="@renamePoolEditContext" OnValidSubmit="HandleRenamePool">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
 
-        <div class="mb-3">
-            <label for="newPoolLabel" class="form-label">New Pool Label</label>
-            <InputText id="newPoolLabel" class="form-control" @bind-Value="RenamePoolRequest.NewPoolLabel" required />
-            <ValidationMessage For="@(() => RenamePoolRequest.NewPoolLabel)" />
-        </div>
+            <div class="mb-3">
+                <label for="newPoolLabel" class="form-label">New Pool Label</label>
+                <InputText id="newPoolLabel" class="form-control" @bind-Value="RenamePoolRequest.NewPoolLabel"
+                    required />
+                <ValidationMessage For="@(() => RenamePoolRequest.NewPoolLabel)" />
+            </div>
 
-        <!-- Drive Labels -->
-        @foreach (var drive in PoolToRename.Drives)
+            <!-- Drive Labels -->
+            @foreach (var drive in PoolToRename.Drives)
             {
                 <div class="mb-3">
-                    <label class="form-label">Drive Label (@drive.Serial)</label>
+                    <label class="form-label">Drive Label (@drive.Serial!)</label>
                     <InputText class="form-control" @bind-Value="RenamePoolRequest.DriveLabels[drive.Id]" />
                 </div>
             }
-
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" @onclick="CloseRenamePoolModal">Close</button>
-                <button type="submit" class="btn btn-primary">Rename Pool</button>
-            </div>
         </EditForm>
-    </Modal>
-}
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseRenamePoolModal">Close</Button>
+        <Button Color="ButtonColor.Primary" ButtonType="Submit" Form="editForm">Rename Pool</Button>
+    </FooterTemplate>
+</Modal>
 
 @code {
+    [Inject] ModalService ModalService { get; set; } = default!;
     [Inject] protected ToastService ToastService { get; set; } = default!;
     private List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>();
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
@@ -151,12 +140,11 @@ else
         {
             PoolLabel = string.Empty,
             DriveSerials = new List<string>(),
-            DriveLabels = new Dictionary<string, string?>()
+            DriveLabels = new Dictionary<string, string>()
         };
-    private bool isCreatePoolModalOpen = false;
-    private bool isCreatePoolResultVisible = false; // New flag for displaying results
-    private bool isRenamePoolModalOpen = false;
     private PoolGroup PoolToRename { get; set; } = new PoolGroup();
+    private EditContext? createPoolEditContext;
+    private EditContext? renamePoolEditContext;
     private RenamePoolRequest RenamePoolRequest { get; set; } = new RenamePoolRequest
         {
             NewPoolLabel = string.Empty,
@@ -165,8 +153,14 @@ else
     private List<string> CommandOutputs { get; set; } = new List<string>(); // To store command outputs
     private string CreatePoolResultMessage { get; set; } = string.Empty;
 
+    private Modal createPoolModal = default!;
+    private Modal renamePoolModal = default!;
+
     protected override async Task OnInitializedAsync()
     {
+        createPoolEditContext = new EditContext(CreatePoolRequest);
+        renamePoolEditContext = new EditContext(RenamePoolRequest);
+        Logger.LogInformation("Drive Management page initialized.");
         await LoadDrives();
     }
 
@@ -344,53 +338,66 @@ else
         return SelectedDrives.Any(d => d.Serial == serial);
     }
 
-
-    private void OpenCreatePoolModal()
+    private async Task OpenCreatePoolModal()
     {
+        Logger.LogInformation("Opening Create Pool modal.");
         CreatePoolRequest = new CreatePoolRequest
             {
                 PoolLabel = "",
-                DriveSerials = SelectedDrives.Select(d => d.Serial).ToList(),
-                DriveLabels = SelectedDrives.ToDictionary(d => d.Serial, d => d.Label ?? "")
+                DriveSerials = SelectedDrives.Select(d => d.Serial!).ToList(),
+                DriveLabels = SelectedDrives.ToDictionary(d => d.Serial!, d => d.Label ?? "")
             };
-        isCreatePoolModalOpen = true;
+        await createPoolModal.ShowAsync();
     }
 
-    private void CloseCreatePoolModal()
+    private async Task CloseCreatePoolModal()
     {
-        isCreatePoolModalOpen = false;
-        isCreatePoolResultVisible = false;
         SelectedDrives.Clear();
         CommandOutputs.Clear();
         CreatePoolResultMessage = string.Empty;
+        await createPoolModal.HideAsync();
     }
 
     private async Task HandleCreatePool()
     {
+        Logger.LogInformation("Creating pool...");
         try
         {
             await LoadingService.ShowLoading();
             var (success, message, outputs) = await DriveService.CreatePoolAsync(CreatePoolRequest);
-
             if (success)
             {
-                // Display the command outputs in the modal
-                CommandOutputs = outputs;
-                CreatePoolResultMessage = message;
-                isCreatePoolResultVisible = true;
+                Logger.LogInformation($"Pool created successfully: {message}");
+                var modalOption = new ModalOption
+                    {
+                        Title = "Create Pool",
+                        Message = "Pool created successfully.",
+                        Type = ModalType.Success
+                    };
+                await ModalService.ShowAsync(modalOption);
             }
             else
             {
-                // Display the error and outputs
-                CommandOutputs = outputs;
-                CreatePoolResultMessage = message;
-                isCreatePoolResultVisible = true;
+                Logger.LogWarning($"Pool creation failed: {message}");
+                var modalOption = new ModalOption
+                    {
+                        Title = "Create Pool",
+                        Message = $"Pool creation failed: {message}",
+                        Type = ModalType.Danger
+                    };
+                await ModalService.ShowAsync(modalOption);
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error creating pool.");
-            ToastService.Notify(new(ToastType.Danger, $"Failed to create pool."));
+            var modalOption = new ModalOption
+                {
+                    Title = "Create Pool",
+                    Message = $"Error: {ex.Message}.",
+                    Type = ModalType.Danger
+                };
+            await ModalService.ShowAsync(modalOption);
         }
         finally
         {
@@ -482,7 +489,6 @@ else
     private async Task RenamePoolGroup(PoolGroup poolGroup)
     {
         Logger.LogInformation($"Renaming pool group: {poolGroup.GroupLabel}");
-        isRenamePoolModalOpen = true;
         PoolToRename = poolGroup;
         RenamePoolRequest = new RenamePoolRequest
             {
@@ -490,46 +496,64 @@ else
                 NewPoolLabel = poolGroup.GroupLabel,
                 DriveLabels = poolGroup.Drives.ToDictionary(d => d.Id, d => (string?)d.Label)
             };
+        await renamePoolModal.ShowAsync();
     }
 
-    private void CloseRenamePoolModal()
+    private async Task CloseRenamePoolModal()
     {
-        isRenamePoolModalOpen = false;
         PoolToRename = new PoolGroup(); // Initialize to avoid null reference
         RenamePoolRequest = new RenamePoolRequest
             {
                 NewPoolLabel = string.Empty,
                 DriveLabels = new Dictionary<int, string?>()
             };
+        await renamePoolModal.HideAsync();
     }
 
     private async Task HandleRenamePool()
     {
-        if (RenamePoolRequest == null)
-        {
-            ToastService.Notify(new(ToastType.Danger, $"Invalid rename request."));
-            return;
-        }
+        Logger.LogInformation("Renaming pool...");
         try
         {
-            // Call the service to rename the pool
-            var result = await DriveService.RenamePoolGroupAsync(RenamePoolRequest);
-
-            if (result.Success)
+            await LoadingService.ShowLoading();
+            var (success, message) = await DriveService.RenamePoolGroupAsync(RenamePoolRequest);
+            if (success)
             {
-                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
-                isRenamePoolModalOpen = false;
-                await LoadDrives();
+                Logger.LogInformation($"Pool renamed successfully: {message}");
+                var modalOption = new ModalOption
+                    {
+                        Title = "Rename Pool",
+                        Message = "Pool renamed successfully.",
+                        Type = ModalType.Success
+                    };
+                await ModalService.ShowAsync(modalOption);
             }
             else
             {
-                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
+                Logger.LogWarning($"Pool renaming failed: {message}");
+                var modalOption = new ModalOption
+                    {
+                        Title = "Rename Pool",
+                        Message = $"Pool renaming failed: {message}",
+                        Type = ModalType.Danger
+                    };
+                await ModalService.ShowAsync(modalOption);
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error renaming pool.");
-            ToastService.Notify(new(ToastType.Danger, $"Failed to rename pool."));
+            var modalOption = new ModalOption
+                {
+                    Title = "Rename Pool",
+                    Message = $"Error: {ex.Message}.",
+                    Type = ModalType.Danger
+                };
+            await ModalService.ShowAsync(modalOption);
+        }
+        finally
+        {
+            await LoadingService.HideLoading();
         }
     }
 }
