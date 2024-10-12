@@ -19,6 +19,8 @@ namespace Backy.Services
         Task<(bool Success, string Message)> RemovePoolGroupAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> MountPoolAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> RenamePoolGroupAsync(RenamePoolRequest request);
+        Task<(bool Success, string Message, string Output)> GetPoolDetailAsync(Guid poolGroupGuid);
+        Task<(bool Success, string Message)> ForceAddDriveAsync(int driveId, Guid poolGroupGuid, string devPath);
     }
 
     public class DriveService : IDriveService
@@ -557,6 +559,31 @@ namespace Backy.Services
                 return (true, "Pool group removed successfully.");
             }
         }
+
+        public async Task<(bool Success, string Message, string Output)> GetPoolDetailAsync(Guid poolGroupGuid)
+        {
+            var poolGroup = await _context.PoolGroups.FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
+            if (poolGroup == null)
+            {
+                return (false, "Pool group not found.", string.Empty);
+            }
+
+            int poolGroupId = poolGroup.PoolGroupId;
+
+            string statusCommand = $"mdadm --detail /dev/md{poolGroupId}";
+            var commandOutputs = new List<string>();
+            var statusResult = ExecuteShellCommand(statusCommand, commandOutputs);
+
+            if (statusResult.success)
+            {
+                return (true, string.Empty, statusResult.message);
+            }
+            else
+            {
+                return (false, statusResult.message, string.Empty);
+            }
+        }
+
 
         public async Task<(bool Success, string Message)> MountPoolAsync(Guid poolGroupGuid)
         {

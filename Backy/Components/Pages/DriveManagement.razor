@@ -53,7 +53,6 @@ else
 {
     <p>No new drives found.</p>
 }
-
 <!-- Pool Groups -->
 @if (FilteredPoolGroups != null && FilteredPoolGroups.Any())
 {
@@ -87,8 +86,15 @@ else
         }
         else if (CreatePoolResultMessage != null)
         {
-            <p>@CreatePoolResultMessage</p>
-            <pre>@string.Join("\n", CommandOutputs)</pre>
+            <pre
+                style="background-color: #1e1e1e; color: #ffffff; padding: 10px; border-radius: 5px; font-family: monospace;">
+                @CreatePoolResultMessage
+
+                @foreach (var output in CommandOutputs)
+                {
+                    @output
+                }
+                                                </pre>
         }
         else
         {
@@ -184,7 +190,7 @@ else
             DriveLabels = new Dictionary<int, string?>()
         };
     private List<string> CommandOutputs { get; set; } = new List<string>(); // To store command outputs
-    private string CreatePoolResultMessage { get; set; } = string.Empty;
+    private string? CreatePoolResultMessage { get; set; } = null;
 
     private Modal createPoolModal = default!;
     private Modal renamePoolModal = default!;
@@ -208,14 +214,22 @@ else
     private bool IsDriveMatch(Drive drive)
     {
         if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            Logger.LogInformation($"IsDriveMatch: searchQuery is empty. Drive {drive.Serial} matches.");
             return true;
+        }
+
         var query = searchQuery.ToLowerInvariant();
-        return (drive.Name?.ToLowerInvariant().Contains(query) ?? false)
+        bool match = (drive.Name?.ToLowerInvariant().Contains(query) ?? false)
         || (drive.Label?.ToLowerInvariant().Contains(query) ?? false)
         || (drive.Vendor?.ToLowerInvariant().Contains(query) ?? false)
         || (drive.Model?.ToLowerInvariant().Contains(query) ?? false)
         || (drive.Serial?.ToLowerInvariant().Contains(query) ?? false);
+
+        Logger.LogInformation($"IsDriveMatch: Drive {drive.Serial} match status: {match}");
+        return match;
     }
+
 
     private bool IsPoolGroupMatch(PoolGroup poolGroup)
     {
@@ -328,6 +342,8 @@ else
         var protectedSerials = ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
         NewDrives = activeDrives.Where(d => !pooledDriveSerials.Contains(d.Serial) &&
         !protectedSerials.Contains(d.Serial)).ToList();
+
+        Logger.LogInformation($"NewDrives Count after filtering: {NewDrives.Count}");
     }
 
     private async Task ProtectDrive(string serial)
@@ -380,7 +396,7 @@ else
         }
     }
 
-    private async Task SelectDrive(string serial)
+    private void SelectDrive(string serial)
     {
         Logger.LogInformation($"Selecting drive with serial: {serial}");
         var drive = NewDrives.FirstOrDefault(d => d.Serial == serial);
@@ -561,6 +577,42 @@ else
             };
         await renamePoolModal.ShowAsync();
     }
+
+    private async Task ForceAddDrive(PoolDrive drive)
+    {
+        try
+        {
+            await LoadingService.ShowLoading();
+            if (drive.PoolGroup != null && drive.DevPath != null)
+            {
+                var result = await DriveService.ForceAddDriveAsync(drive.Id, drive.PoolGroup.PoolGroupGuid, drive.DevPath);
+                if (result.Success)
+                {
+                    ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
+                    await LoadDrives();
+                }
+                else
+                {
+                    ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
+                }
+            }
+            else
+            {
+                Logger.LogWarning("Drive PoolGroup or DevPath is null.");
+                ToastService.Notify(new(ToastType.Danger, "Failed to force add drive due to missing information."));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error force adding drive '{drive.Label}'.");
+            ToastService.Notify(new(ToastType.Danger, $"Failed to force add drive."));
+        }
+        finally
+        {
+            await LoadingService.HideLoading();
+        }
+    }
+
 
     private async Task CloseRenamePoolModal()
     {

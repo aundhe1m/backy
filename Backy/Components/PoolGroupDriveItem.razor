@@ -18,8 +18,9 @@
         <!-- Force Add Button -->
         @if (!Model.IsMounted)
         {
-            <button type="button" class="btn btn-transparent" @onclick="ForceAddDrive" title="Force Add Drive"></button>
-            <img src="/icons/plus-circle-dotted.svg" alt="Force Add Drive" style="height: 24px;" />
+            <Tooltip Title="Force Add Drive" @onclick="ForceAddDrive" role="button">
+                <img src="/icons/plus-circle-dotted.svg" alt="Force Add Drive" style="height: 24px;" />
+            </Tooltip>
 
         }
     </div>
