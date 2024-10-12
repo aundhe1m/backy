@@ -5,81 +5,86 @@
 @inject ILogger<NewDriveCard> Logger
 @inject NavigationManager Navigation
 
-<div class="card drive-card new-drive-card mb-3">
-    <!-- Card Header -->
-    <div class="card-header d-flex justify-content-between align-items-center" style="@GetCardHeaderStyle()">
-        <div class="d-flex align-items-center">
-            <!-- Expand/Collapse button -->
-            <button type="button" class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
-                <img src="/icons/chevron-down.svg" alt="Expand Details"
-                    class="chevron-icon @(IsNewDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
-            </button>
-            <!-- Drive Icon -->
-            <img src="/icons/device-hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
-            <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
-        </div>
-        <!-- Drive Size -->
-        <div>
-            <div>
-                <span>@FormatSize(Model.Size)</span>
-            </div>
-        </div>
-        <!-- Action Buttons -->
-        <div class="btn-group">
-            <!-- Protect Button -->
-            <button type="button" class="btn btn-secondary protect-drive-button" @onclick="ProtectDriveHandler"
-                title="Protect Drive">
-                <img src="/icons/shield-lock.svg" alt="Protect Drive" style="height: 24px;" />
-            </button>
-            <!-- Select Button -->
-            <button type="button" class="btn btn-primary select-drive-button" @onclick="() => SelectDrive(Model.Serial)"
-                title="Select Drive">
-                <img src="@GetSelectIcon()" alt="Select Drive" style="height: 24px;" />
-            </button>
-        </div>
+@if (IsNewDriveDetailsVisible)
+{
+    <div class="card-body">
+    <!-- Details Content -->
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <tbody>
+                <tr>
+                    <th>Vendor</th>
+                    <td>@Model.Vendor</td>
+                </tr>
+                <tr>
+                    <th>Model</th>
+                    <td>@Model.Model</td>
+                </tr>
+                <tr>
+                    <th>Serial</th>
+                    <td>@Model.Serial</td>
+                </tr>
+                <tr>
+                    <th>Size</th>
+                    <td>@FormatSize(Model.Size)</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
-    <!-- Collapsible Details -->
-    @if (IsNewDriveDetailsVisible)
-    {
-        <div class="card-body">
-            <!-- Details Content -->
-            <div class="table-responsive">
-                <table class="table table-striped">
-                    <tbody>
-                        <tr>
-                            <th>Vendor</th>
-                            <td>@Model.Vendor</td>
-                        </tr>
-                        <tr>
-                            <th>Model</th>
-                            <td>@Model.Model</td>
-                        </tr>
-                        <tr>
-                            <th>Serial</th>
-                            <td>@Model.Serial</td>
-                        </tr>
-                        <tr>
-                            <th>Size</th>
-                            <td>@FormatSize(Model.Size)</td>
-                        </tr>
-                        @if (Model.Partitions != null && Model.Partitions.Any())
-                        {
-                            <tr>
-                                <th>Partitions</th>
-                                <td>
-                                    @foreach (var partition in Model.Partitions)
-                                    {
-                                        <div>@partition.Name - @partition.Fstype</div>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    }
-</div>
+    @if (Model.Partitions != null && Model.Partitions.Any())
+        {
+            @foreach (var partition in Model.Partitions)
+            {
+                <div class="card partition-card mb-2">
+                    <!-- Card Header -->
+                    <div class="card-header d-flex justify-content-between align-items-center" style="background-color: #01686b36;">
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-link p-0 me-2 chevron-button"
+                                @onclick="() => TogglePartitionDetails(partition.Name!)">
+                                <img src="/icons/chevron-down.svg" alt="Expand Details"
+                                    class="chevron-icon @(IsPartitionDetailsVisible(partition.Name!) ? "rotated" : "")"
+                                    style="height: 24px;" />
+                            </button>
+                            <!-- Partition Icon -->
+                            <img src="/icons/pie-chart.svg" alt="Partition" style="height: 24px; margin-right: 8px;" />
+                            <span>@partition.Name</span>
+                        </div>
+                    </div>
+                    <!-- Collapsible Details -->
+                    @if (IsPartitionDetailsVisible(partition.Name!))
+                    {
+                        <div class="card-body">
+                            <!-- Partition Details Table -->
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <tbody>
+                                        <tr>
+                                            <th>Partition Name</th>
+                                            <td>@partition.Name</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Mountpoint</th>
+                                            <td>@partition.MountPoint</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Partition UUID</th>
+                                            <td>@partition.UUID</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Filesystem</th>
+                                            <td>@partition.Fstype</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+
 
 @code {
     [Inject] protected ToastService ToastService { get; set; } = default!;
@@ -111,6 +116,11 @@
             expandedPartitions.Remove(partitionName);
         else
             expandedPartitions.Add(partitionName);
+    }
+
+    private bool IsPartitionDetailsVisible(string partitionName)
+    {
+        return expandedPartitions.Contains(partitionName);
     }
 
     private async Task ProtectDriveHandler()

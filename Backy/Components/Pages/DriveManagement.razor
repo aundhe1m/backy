@@ -12,6 +12,13 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Drive Catalog</h1>
+    <!-- Search Bar -->
+    <div class="input-group" style="max-width: 400px;">
+        <input type="text" class="form-control search-bar" placeholder="Search drives..." @bind="searchQuery">
+        <span class="input-group-text">
+            <img src="/icons/search.svg" alt="Search Icon" class="search-icon search-bar">
+        </span>
+    </div>
     <!-- Refresh Button / Create Pool -->
     <span>
         <button class="btn btn-secondary" @onclick="LoadDrives">Refresh</button>
@@ -26,12 +33,14 @@
     </span>
 </div>
 
+
+
 <!-- New Drives -->
-@if (NewDrives != null && NewDrives.Any())
+@if (FilteredNewDrives != null && FilteredNewDrives.Any())
 {
     <h2>New Drives</h2>
     <div class="row">
-    @foreach (var drive in NewDrives)
+    @foreach (var drive in FilteredNewDrives)
         {
             <div class="col-md-4">
                 <NewDriveCard Model="@drive" OnProtect="@ProtectDrive" OnSelect="@SelectDrive"
@@ -46,12 +55,12 @@ else
 }
 
 <!-- Pool Groups -->
-@if (PoolGroups != null && PoolGroups.Any())
+@if (FilteredPoolGroups != null && FilteredPoolGroups.Any())
 {
-    @foreach (var pool in PoolGroups)
+    @foreach (var pool in FilteredPoolGroups)
     {
         <PoolGroupDriveCard Model="@pool" OnUnmountPool="@UnmountPool" OnRemovePoolGroup="@RemovePoolGroup"
-    OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup" />
+    OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup" OnForceAddDrive="@ForceAddDrive" />
     }
 }
 
@@ -72,32 +81,56 @@ else
 <!-- Create Pool Modal -->
 <Modal @ref="createPoolModal" Title="Create Pool">
     <BodyTemplate>
-        <EditForm id="createPoolForm" EditContext="@createPoolEditContext" OnValidSubmit="HandleCreatePool">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
+        @if (IsPoolCreationInProgress)
+        {
+            <p>Creating pool...</p>
+        }
+        else if (CreatePoolResultMessage != null)
+        {
+            <p>@CreatePoolResultMessage</p>
+            <pre>@string.Join("\n", CommandOutputs)</pre>
+        }
+        else
+        {
+            <EditForm id="createPoolForm" EditContext="@createPoolEditContext" OnValidSubmit="HandleCreatePool">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
 
-            <div class="mb-3">
-                <label for="poolLabel" class="form-label">Pool Label</label>
-                <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
-                <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
-            </div>
-
-            <!-- Drive Labels -->
-            @foreach (var drive in SelectedDrives ?? Enumerable.Empty<Drive>())
-            {
-                var driveSerial = drive.Serial!;
                 <div class="mb-3">
-                    <label class="form-label">Drive Label (@driveSerial)</label>
-                    <InputText class="form-control" @bind-Value="CreatePoolRequest.DriveLabels[driveSerial]" />
+                    <label for="poolLabel" class="form-label">Pool Label</label>
+                    <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
+                    <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
                 </div>
-            }
-        </EditForm>
+
+                <!-- Drive Labels -->
+                @foreach (var drive in SelectedDrives ?? Enumerable.Empty<Drive>())
+                {
+                    var driveSerial = drive.Serial!;
+                    <div class="mb-3">
+                        <label class="form-label">Drive Label (@driveSerial)</label>
+                        <InputText class="form-control" @bind-Value="CreatePoolRequest.DriveLabels[driveSerial]" />
+                    </div>
+                }
+            </EditForm>
+        }
     </BodyTemplate>
     <FooterTemplate>
-        <Button Color="ButtonColor.Secondary" @onclick="CloseCreatePoolModal">Close</Button>
-        <button type="submit" class="btn btn-primary" form="createPoolForm">Create Pool</button>
+        @if (IsPoolCreationInProgress)
+        {
+            <Button Color="ButtonColor.Secondary" Disabled="true">Please wait...</Button>
+        }
+        else if (CreatePoolResultMessage != null)
+        {
+            <Button Color="ButtonColor.Secondary" @onclick="CloseCreatePoolModal">Close</Button>
+        }
+        else
+        {
+            <Button Color="ButtonColor.Secondary" @onclick="CloseCreatePoolModal">Cancel</Button>
+            <button type="submit" class="btn btn-primary" form="createPoolForm">Create Pool</button>
+        }
     </FooterTemplate>
 </Modal>
+
 
 <!-- Rename Pool Modal -->
 <Modal @ref="renamePoolModal" Title="Rename Pool">
@@ -155,6 +188,49 @@ else
 
     private Modal createPoolModal = default!;
     private Modal renamePoolModal = default!;
+    private bool IsPoolCreationInProgress { get; set; } = false;
+
+    private string searchQuery = string.Empty;
+
+    private IEnumerable<Drive> FilteredNewDrives => NewDrives.Where(d => IsDriveMatch(d));
+
+    private IEnumerable<PoolGroup> FilteredPoolGroups => PoolGroups.Where(pg => IsPoolGroupMatch(pg));
+
+    private IEnumerable<ProtectedDrive> FilteredProtectedDrives => ProtectedDrives.Where(pd => IsDriveMatch(new Drive
+        {
+            Name = pd.Name,
+            Label = pd.Label,
+            Vendor = pd.Vendor,
+            Model = pd.Model,
+            Serial = pd.Serial
+        }));
+
+    private bool IsDriveMatch(Drive drive)
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+            return true;
+        var query = searchQuery.ToLowerInvariant();
+        return (drive.Name?.ToLowerInvariant().Contains(query) ?? false)
+        || (drive.Label?.ToLowerInvariant().Contains(query) ?? false)
+        || (drive.Vendor?.ToLowerInvariant().Contains(query) ?? false)
+        || (drive.Model?.ToLowerInvariant().Contains(query) ?? false)
+        || (drive.Serial?.ToLowerInvariant().Contains(query) ?? false);
+    }
+
+    private bool IsPoolGroupMatch(PoolGroup poolGroup)
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+            return true;
+        var query = searchQuery.ToLowerInvariant();
+        return (poolGroup.GroupLabel?.ToLowerInvariant().Contains(query) ?? false)
+        || poolGroup.Drives.Any(d => IsDriveMatch(new Drive
+            {
+                Label = d.Label,
+                Vendor = d.Vendor,
+                Model = d.Model,
+                Serial = d.Serial
+            }));
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -354,8 +430,9 @@ else
     {
         SelectedDrives.Clear();
         CommandOutputs.Clear();
-        CreatePoolResultMessage = string.Empty;
+        CreatePoolResultMessage = null;
         await createPoolModal.HideAsync();
+        await LoadDrives();
     }
 
     private async Task HandleCreatePool()
@@ -363,45 +440,31 @@ else
         Logger.LogInformation("Creating pool...");
         try
         {
-            await LoadingService.ShowLoading();
+            IsPoolCreationInProgress = true;
+            CommandOutputs.Clear();
+            CreatePoolResultMessage = null;
             var (success, message, outputs) = await DriveService.CreatePoolAsync(CreatePoolRequest);
+            CommandOutputs.AddRange(outputs);
             if (success)
             {
                 Logger.LogInformation($"Pool created successfully: {message}");
-                var modalOption = new ModalOption
-                    {
-                        Title = "Create Pool",
-                        Message = "Pool created successfully.",
-                        Type = ModalType.Success
-                    };
-                await ModalService.ShowAsync(modalOption);
+                CreatePoolResultMessage = "Pool created successfully.";
             }
             else
             {
                 Logger.LogWarning($"Pool creation failed: {message}");
-                var modalOption = new ModalOption
-                    {
-                        Title = "Create Pool",
-                        Message = $"Pool creation failed: {message}",
-                        Type = ModalType.Danger
-                    };
-                await ModalService.ShowAsync(modalOption);
+                CreatePoolResultMessage = $"Pool creation failed: {message}";
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error creating pool.");
-            var modalOption = new ModalOption
-                {
-                    Title = "Create Pool",
-                    Message = $"Error: {ex.Message}.",
-                    Type = ModalType.Danger
-                };
-            await ModalService.ShowAsync(modalOption);
+            CreatePoolResultMessage = $"Error: {ex.Message}.";
         }
         finally
         {
-            await LoadingService.HideLoading();
+            IsPoolCreationInProgress = false;
+            StateHasChanged();
         }
     }
 

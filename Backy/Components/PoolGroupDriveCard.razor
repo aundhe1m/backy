@@ -1,6 +1,4 @@
 @using Backy.Models
-@using Microsoft.Extensions.Logging
-@using Backy.Services
 @inject ILogger<PoolGroupDriveCard> Logger
 @inject NavigationManager Navigation
 
@@ -23,6 +21,7 @@
             <button class="btn btn-danger" @onclick="RemovePoolGroup">Remove</button>
             <button class="btn btn-primary" @onclick="MountPool">Mount</button>
             <button class="btn btn-info" @onclick="RenamePoolGroup">Rename</button>
+            <button class="btn btn-secondary" @onclick="ShowPoolStatus">Status</button>
         </div>
     </div>
 
@@ -48,15 +47,15 @@
                         </tr>
                         <tr>
                             <th>Size</th>
-                            <td>@Model.Size</td>
+                            <td>@FormatSize(Model.Size)</td>
                         </tr>
                         <tr>
                             <th>Used</th>
-                            <td>@Model.Used</td>
+                            <td>@FormatSize(Model.Used)</td>
                         </tr>
                         <tr>
                             <th>Available</th>
-                            <td>@Model.Available</td>
+                            <td>@FormatSize(Model.Available)</td>
                         </tr>
                         <tr>
                             <th>Use Percent</th>
@@ -65,8 +64,24 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Pool Drives -->
+            @foreach (var drive in Model.Drives)
+            {
+                <PoolGroupDriveItem Model="@drive" OnForceAdd="@ForceAddDrive" />
+            }
         </div>
     }
+
+    <!-- Status Modal -->
+    <Modal @ref="statusModal" Title="Pool Status">
+        <BodyTemplate>
+            <pre>@PoolStatusOutput</pre>
+        </BodyTemplate>
+        <FooterTemplate>
+            <Button Color="ButtonColor.Secondary" @onclick="CloseStatusModal">Close</Button>
+        </FooterTemplate>
+    </Modal>
 </div>
 
 @code {
@@ -85,9 +100,21 @@
     [Parameter]
     public EventCallback<PoolGroup> OnRenamePoolGroup { get; set; }
 
+    [Parameter]
+    public EventCallback<PoolDrive> OnForceAddDrive { get; set; }
+
+    [Inject]
+    protected ToastService ToastService { get; set; } = default!;
+
+    [Inject]
+    IDriveService DriveService { get; set; } = default!;
+
     private string HeaderBackgroundColor { get; set; } = "#343a40"; // Default dark
 
     private bool IsPoolDriveDetailsVisible { get; set; } = false;
+
+    private Modal statusModal = default!;
+    private string PoolStatusOutput { get; set; } = string.Empty;
 
     private void ToggleDetails()
     {
@@ -112,5 +139,41 @@
     private async Task RenamePoolGroup()
     {
         await OnRenamePoolGroup.InvokeAsync(Model);
+    }
+
+    private async Task ForceAddDrive(PoolDrive drive)
+    {
+        await OnForceAddDrive.InvokeAsync(drive);
+    }
+
+    private async Task ShowPoolStatus()
+    {
+        var result = await DriveService.GetPoolDetailAsync(Model.PoolGroupGuid);
+        if (result.Success)
+        {
+            PoolStatusOutput = result.Output;
+            await statusModal.ShowAsync();
+        }
+        else
+        {
+            ToastService.Notify(new ToastMessage(ToastType.Danger, $"Failed to get pool status: {result.Message}"));
+        }
+    }
+
+    private async Task CloseStatusModal()
+    {
+        await statusModal.HideAsync();
+    }
+
+    private string FormatSize(long sizeInBytes)
+    {
+        if (sizeInBytes < 1024)
+            return $"{sizeInBytes} B";
+        else if (sizeInBytes < 1024 * 1024)
+            return $"{(sizeInBytes / 1024.0):F2} KB";
+        else if (sizeInBytes < 1024 * 1024 * 1024)
+            return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
+        else
+            return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
     }
 }
