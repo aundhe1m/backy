@@ -27,7 +27,7 @@ builder.Services.AddScoped<IDriveService, DriveService>();
 builder.Services.AddDataProtection();
 
 // Register Application Services
-builder.Services.AddSingleton<IThemeService, ThemeService>();
+builder.Services.AddSingleton<ThemeService, ThemeService>();
 builder.Services.AddSingleton<IIndexingQueue, IndexingQueue>();
 builder.Services.AddHostedService<FileIndexingService>();
 builder.Services.AddHostedService<StorageStatusService>();

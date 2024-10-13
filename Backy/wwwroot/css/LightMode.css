@@ -1,0 +1,55 @@
+.light-mode {
+    /* ====== Backgrounds ====== */
+    --bg-color: #ffffff;
+    --card-bg: #f1f1f1;
+    --card-header-bg: #f8f9fa;
+    --modal-bg-color: #ffffff;
+
+    /* ====== Text Colors ====== */
+    --text-color: #000000;
+    --header-color: #000000;
+
+    /* ====== Buttons ====== */
+    --btn-primary-bg: #007bff;
+    --btn-primary-border: #007bff;
+    --btn-primary-text: #ffffff;
+    --btn-primary-hover-bg: #0056b3;
+    --btn-primary-hover-border: #0056b3;
+
+    --btn-secondary-bg: #6c757d;
+    --btn-secondary-border: #6c757d;
+    --btn-secondary-text: #ffffff;
+    --btn-secondary-hover-bg: #5a6268;
+    --btn-secondary-hover-border: #545b62;
+
+    --btn-danger-bg: #dc3545;
+    --btn-danger-border: #dc3545;
+    --btn-danger-text: #ffffff;
+    --btn-danger-hover-bg: #c82333;
+    --btn-danger-hover-border: #bd2130;
+
+    --btn-info-bg: #17a2b8;
+    --btn-info-border: #17a2b8;
+    --btn-info-text: #ffffff;
+    --btn-info-hover-bg: #117a8b;
+    --btn-info-hover-border: #10707f;
+
+    /* ====== Search ====== */
+    --search-btn-bg-color: #e0e0e0;
+
+    /* ====== Tables ====== */
+    --table-bg: #e7e7e7;
+    --table-bg-odd: rgba(0, 0, 0, 0.05);
+    --table-text-color: var(--text-color);
+    --table-border-color: #dee2e6;
+    --table-hover-bg: rgba(0, 0, 0, 0.075);
+    --table-active-bg: rgba(0, 0, 0, 0.1);
+
+    /* ====== Input Groups ====== */
+    --input-group-text-bg: #6496c9;
+
+    /* ====== Other ====== */
+    --h-color: var(--header-color);
+    --protected-drive-header-bg: #ffeeba;
+    --protected-drive-header-text: #000000;
+}

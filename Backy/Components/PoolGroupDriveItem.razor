@@ -3,8 +3,7 @@
 
 <div class="card drive-card mb-3">
     <!-- Card Header -->
-    <div class="card-header d-flex justify-content-between align-items-center"
-        style="background-color:@GetHeaderBackgroundColor(); color:black;">
+    <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center">
             <!-- Expand/Collapse button -->
             <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
@@ -21,7 +20,6 @@
             <Tooltip Title="Force Add Drive" @onclick="ForceAddDrive" role="button">
                 <img src="/icons/plus-circle-dotted.svg" alt="Force Add Drive" style="height: 24px;" />
             </Tooltip>
-
         }
     </div>
 
@@ -77,16 +75,6 @@
     private async Task ForceAddDrive()
     {
         await OnForceAdd.InvokeAsync(Model);
-    }
-
-    private string GetHeaderBackgroundColor()
-    {
-        if (!Model.IsConnected)
-            return "#d3d3d3"; // Light gray
-        else if (Model.IsConnected && !Model.IsMounted)
-            return "#add8e6"; // Light blue
-        else
-            return "#90ee90"; // Light green
     }
 
     private string FormatSize(long sizeInBytes)

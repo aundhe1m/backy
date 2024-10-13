@@ -8,6 +8,26 @@ html {
   }
 }
 
+:root {
+  --bs-body-bg: var(--bg-color);
+}
+
+body {
+  --bs-body-color: var(--text-color);
+  margin-bottom: 60px;
+  position: relative;
+  min-height: 100%;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--h-color);
+}
+
 .btn:focus,
 .btn:active:focus,
 .btn-link.nav-link:focus,
@@ -16,16 +36,210 @@ html {
   box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }
 
-html {
-  position: relative;
-  min-height: 100%;
-}
-
-body {
-  margin-bottom: 60px;
-}
-
 .chevron-icon.rotated {
   transform: rotate(180deg);
   transition: transform 0.2s;
+}
+
+.spinner-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(139, 139, 139, 0.247);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+}
+
+.unprotect-drive-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* ====== Navbar ====== */
+
+.navbar {
+  background-color: rgb(21, 70, 119) !important;
+  --bs-bg-opacity: 1;
+  --text-color: #ffffff;
+  --header-color: #ffffff;
+}
+
+.nav-link {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.navbar-nav .nav-link.active,
+.navbar-nav .nav-link.show {
+  color: #ffffff;
+  ;
+}
+
+.navbar-brand {
+  color: #ffffff !important;
+}
+
+.navbar-brand:hover {
+  color: #ffffffcc !important;
+}
+
+/* ====== Buttons ====== */
+
+.btn-primary {
+  background-color: var(--btn-primary-bg);
+  border-color: var(--btn-primary-border);
+  color: var(--btn-primary-text);
+}
+
+.btn-primary:hover {
+  background-color: var(--btn-primary-hover-bg);
+  border-color: var(--btn-primary-hover-border);
+}
+
+.btn-secondary {
+  background-color: var(--btn-secondary-bg);
+  border-color: var(--btn-secondary-border);
+  color: var(--btn-secondary-text);
+}
+
+.btn-secondary:hover {
+  background-color: var(--btn-secondary-hover-bg);
+  border-color: var(--btn-secondary-hover-border);
+}
+
+.btn-danger {
+  background-color: var(--btn-danger-bg);
+  border-color: var(--btn-danger-border);
+  color: var(--btn-danger-text);
+}
+
+.btn-danger:hover {
+  background-color: var(--btn-danger-hover-bg);
+  border-color: var(--btn-danger-hover-border);
+}
+
+.btn-info {
+  background-color: var(--btn-info-bg);
+  border-color: var(--btn-info-border);
+  color: var(--btn-info-text);
+}
+
+.btn-info:hover {
+  background-color: var(--btn-info-hover-bg);
+  border-color: var(--btn-info-hover-border);
+}
+
+/* ====== Search ====== */
+
+.input-group-text {
+  background-color: var(--search-btn-bg-color);
+  color: var(--text-color);
+  border: var(--bs-border-width) solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+}
+
+/* ====== Tables ====== */
+
+.table {
+  color: var(--table-text-color);
+  border-color: var(--table-border-color);
+  --bs-table-bg: var(--table-bg);
+  --bs-table-color: var(--text-color);
+  --bs-table-striped-color: var(--text-color);
+  --bs-table-striped-bg: var(--table-bg-odd);
+}
+
+.table th,
+.table td {
+  border-color: var(--table-border-color);
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: var(--table-bg-odd);
+}
+
+.table-hover tbody tr:hover {
+  background-color: var(--table-hover-bg);
+}
+
+.table-active,
+.table-active>th,
+.table-active>td {
+  background-color: var(--table-active-bg);
+}
+
+/* ====== Cards ====== */
+
+.card {
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  border: 1px solid var(--card-header-border);
+}
+
+.card-header {
+  background-color: var(--card-header-bg) !important;
+  color: var(--header-color);
+  border-bottom: var(--bs-card-border-width) solid var(--card-header-border);
+}
+
+.partition-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--table-border-color);
+}
+
+.dark-mode .partition-card {
+  background-color: #2c2c2c;
+  border: 1px solid #444444;
+}
+
+/* ====== Modals ====== */
+
+.modal-content {
+  background-color: var(--modal-bg-color);
+  color: var(--text-color);
+}
+
+.modal-header,
+.modal-footer {
+  border-color: var(--modal-header-footer-border);
+}
+
+/* ====== Protected Drives ====== */
+
+.protected-drive-card .card-header {
+  background-color: var(--protected-drive-header-bg);
+  color: var(--protected-drive-header-text);
+  border-bottom: var(--bs-card-border-width) solid var(--card-header-border);
+}
+
+/* ====== Additional Styles ====== */
+
+/* Pool Result Message */
+.pool-result-message {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  padding: 10px;
+  border-radius: 5px;
+  font-family: monospace;
+}
+
+.light-mode .pool-result-message {
+  background-color: #f8f9fa;
+  color: #000000;
+}
+
+.dark-mode .pool-result-message {
+  background-color: #1e1e1e;
+  color: #ffffff;
+}
+
+/* Tooltip (Assuming custom or third-party component) */
+.tooltip-inner {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--table-border-color);
 }

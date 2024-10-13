@@ -1,35 +1,41 @@
+
 using System;
 using System.Threading.Tasks;
 
 namespace Backy.Services
 {
-    public interface IThemeService
+    public enum Theme
     {
-        event Func<Task> OnThemeChanged;
-        Task ToggleTheme();
-        Task SetDarkMode(bool isDark);
-        bool IsDarkMode { get; }
+        Dark,
+        Light
     }
 
-    public class ThemeService : IThemeService
+    public class ThemeService
     {
-        public event Func<Task>? OnThemeChanged;
+        private Theme _currentTheme = Theme.Dark; // Default theme
 
-        public bool IsDarkMode { get; private set; } = false;
+        public Theme CurrentTheme => _currentTheme;
 
-        public async Task ToggleTheme()
+        public event Action? OnThemeChanged;
+
+        public void ToggleTheme()
         {
-            IsDarkMode = !IsDarkMode;
-            if (OnThemeChanged != null)
-                await OnThemeChanged.Invoke();
+            _currentTheme = _currentTheme == Theme.Dark ? Theme.Light : Theme.Dark;
+            NotifyThemeChanged();
         }
 
-        public async Task SetDarkMode(bool isDark)
+        public void SetTheme(Theme theme)
         {
-            IsDarkMode = isDark;
-            if (OnThemeChanged != null)
-                await OnThemeChanged.Invoke();
+            if (_currentTheme != theme)
+            {
+                _currentTheme = theme;
+                NotifyThemeChanged();
+            }
+        }
+
+        private void NotifyThemeChanged()
+        {
+            OnThemeChanged?.Invoke();
         }
     }
-
 }

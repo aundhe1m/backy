@@ -1,11 +1,8 @@
-@using Backy.Models
-@inject ILogger<PoolGroupDriveCard> Logger
-@inject NavigationManager Navigation
+<!-- Backy/Components/PoolGroupDriveCard.razor -->
 
 <div class="card drive-card mb-3">
     <!-- Card Header -->
-    <div class="card-header d-flex justify-content-between align-items-center"
-        style="background-color:@HeaderBackgroundColor; color:black;">
+    <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center">
             <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
@@ -108,8 +105,6 @@
 
     [Inject]
     IDriveService DriveService { get; set; } = default!;
-
-    private string HeaderBackgroundColor { get; set; } = "#343a40"; // Default dark
 
     private bool IsPoolDriveDetailsVisible { get; set; } = false;
 

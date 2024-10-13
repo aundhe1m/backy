@@ -1,8 +1,9 @@
 ﻿@inherits LayoutComponentBase
 @inject ILoadingService LoadingService
+@inject ThemeService ThemeService
 @implements IDisposable
 
-<div>
+<div class="@CurrentThemeClass">
     <header>
         <NavMenu />
     </header>
@@ -22,8 +23,9 @@
         </div>
     }
 
+    <Toasts class="p-3" AutoHide="true" Delay="4000" Placement="ToastsPlacement.BottomRight" />
+    <Modal IsServiceModal="true" />
 </div>
-
 
 @code {
     private bool isLoading = false;
@@ -33,7 +35,12 @@
         // Subscribe to loading events
         LoadingService.OnShow += ShowLoading;
         LoadingService.OnHide += HideLoading;
+
+        // Subscribe to theme changes
+        ThemeService.OnThemeChanged += StateHasChanged;
     }
+
+    private string CurrentThemeClass => ThemeService.CurrentTheme == Theme.Dark ? "dark-mode" : "light-mode";
 
     private Task ShowLoading()
     {
@@ -53,6 +60,7 @@
     {
         LoadingService.OnShow -= ShowLoading;
         LoadingService.OnHide -= HideLoading;
+        ThemeService.OnThemeChanged -= StateHasChanged;
     }
 }
 

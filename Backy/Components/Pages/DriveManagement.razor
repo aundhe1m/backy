@@ -85,15 +85,14 @@ else
         }
         else if (CreatePoolResultMessage != null)
         {
-            <pre
-                style="background-color: #1e1e1e; color: #ffffff; padding: 10px; border-radius: 5px; font-family: monospace;">
+            <pre class="pool-result-message">
                 @CreatePoolResultMessage
 
                 @foreach (var output in CommandOutputs)
                 {
                     @output
                 }
-                                                                                </pre>
+                    </pre>
         }
         else
         {
