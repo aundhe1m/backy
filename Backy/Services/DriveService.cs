@@ -476,11 +476,12 @@ namespace Backy.Services
                 poolGroup.GroupLabel = request.NewPoolLabel;
 
                 // Update drive labels
-                foreach (var drive in poolGroup.Drives)
+                foreach (var driveLabel in request.DriveLabels)
                 {
-                    if (request.DriveLabels.TryGetValue(drive.Id, out string? newLabel))
+                    var drive = poolGroup.Drives.FirstOrDefault(d => d.Id == driveLabel.DriveId);
+                    if (drive != null)
                     {
-                        drive.Label = newLabel?.Trim() ?? drive.Label;
+                        drive.Label = driveLabel.Label?.Trim() ?? drive.Label;
                     }
                 }
 
@@ -496,6 +497,7 @@ namespace Backy.Services
                 return (false, "An error occurred while renaming the pool.");
             }
         }
+
 
 
         public async Task<(bool Success, string Message)> RemovePoolGroupAsync(Guid poolGroupGuid)

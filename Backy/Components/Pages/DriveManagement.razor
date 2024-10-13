@@ -93,7 +93,7 @@ else
                 {
                     @output
                 }
-                                                                        </pre>
+                                                                                </pre>
         }
         else
         {
@@ -151,11 +151,12 @@ else
             </div>
 
             <!-- Drive Labels -->
-            @foreach (var drive in PoolToRename.Drives)
+            @foreach (var driveLabel in RenamePoolRequest.DriveLabels)
             {
                 <div class="mb-3">
-                    <label class="form-label">Drive Label (@drive.Serial!)</label>
-                    <InputText class="form-control" @bind-Value="RenamePoolRequest.DriveLabels[drive.Id]" />
+                    <label class="form-label">Drive Label (@driveLabel.DriveId)</label>
+                    <InputText class="form-control" @bind-Value="driveLabel.Label" />
+                    <ValidationMessage For="@(() => driveLabel.Label)" />
                 </div>
             }
         </EditForm>
@@ -183,7 +184,7 @@ else
     private RenamePoolRequest RenamePoolRequest { get; set; } = new RenamePoolRequest
         {
             NewPoolLabel = string.Empty,
-            DriveLabels = new Dictionary<int, string?>()
+            DriveLabels = new List<Backy.Models.DriveLabel>()
         };
     private List<string> CommandOutputs { get; set; } = new List<string>(); // To store command outputs
     private string? CreatePoolResultMessage { get; set; } = null;
@@ -619,10 +620,16 @@ else
             {
                 PoolGroupGuid = poolGroup.PoolGroupGuid,
                 NewPoolLabel = poolGroup.GroupLabel,
-                DriveLabels = poolGroup.Drives.ToDictionary(d => d.Id, d => (string?)d.Label)
+                DriveLabels = poolGroup.Drives.Select(d => new DriveLabel
+                {
+                    DriveId = d.Id,
+                    Label = d.Label
+                }).ToList()
             };
+        renamePoolEditContext = new EditContext(RenamePoolRequest); // Reinitialize EditContext
         await renamePoolModal.ShowAsync();
     }
+
 
     private async Task ForceAddDrive(PoolDrive drive)
     {
@@ -666,7 +673,7 @@ else
         RenamePoolRequest = new RenamePoolRequest
             {
                 NewPoolLabel = string.Empty,
-                DriveLabels = new Dictionary<int, string?>()
+                DriveLabels = new List<Backy.Models.DriveLabel>()
             };
         await renamePoolModal.HideAsync();
     }
@@ -688,6 +695,7 @@ else
                         Type = ModalType.Success
                     };
                 await ModalService.ShowAsync(modalOption);
+                await LoadDrives(); // Refresh the data
             }
             else
             {
@@ -717,4 +725,5 @@ else
             await LoadingService.HideLoading();
         }
     }
+
 }

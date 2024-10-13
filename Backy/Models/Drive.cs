@@ -51,8 +51,15 @@ namespace Backy.Models
     {
         public Guid PoolGroupGuid { get; set; }
         public required string NewPoolLabel { get; set; }
-        public required Dictionary<int, string?> DriveLabels { get; set; }
+        public required List<DriveLabel> DriveLabels { get; set; }
     }
+
+    public class DriveLabel
+    {
+        public int DriveId { get; set; }
+        public string? Label { get; set; }
+    }
+
 
     public class KillProcessesRequest
     {
