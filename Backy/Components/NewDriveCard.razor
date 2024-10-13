@@ -11,20 +11,29 @@
         <div class="d-flex align-items-center">
             <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
-                    class="chevron-icon @(IsNewDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
+                    class="theme-icon chevron-icon @(IsNewDriveDetailsVisible ? "rotated" : "")"
+                    style="height: 24px;" />
             </button>
             <!-- Drive Icon -->
-            <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
+            <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" class="theme-icon" />
             <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
         </div>
         <!-- Action Buttons -->
         <div>
-            <button type="button" class="btn btn-secondary me-2" @onclick="ProtectDriveHandler" title="Protect Drive">
-                <img src="/icons/shield-lock.svg" alt="Protect Drive" style="height: 24px;" />
-            </button>
-            <button type="button" class="btn btn-primary" @onclick="SelectDriveHandler" title="Select Drive">
-                <img src="@GetSelectIcon()" alt="Select Drive" style="height: 24px;" />
-            </button>
+            <!-- Protect Drive Button with Tooltip -->
+            <Tooltip Title="Protect Drive" Color="TooltipColor.Info">
+                <button type="button" class="btn btn-secondary me-2" @onclick="ProtectDriveHandler"
+                    title="Protect Drive">
+                    <img src="/icons/shield-lock.svg" alt="Protect Drive" style="height: 24px;" class="theme-icon" />
+                </button>
+            </Tooltip>
+
+            <!-- Select Drive Button with Tooltip -->
+            <Tooltip Title="Select Drive" Color="TooltipColor.Info">
+                <button type="button" class="btn btn-primary" @onclick="SelectDriveHandler" title="Select Drive">
+                    <img src="@GetSelectIcon()" alt="Select Drive" style="height: 24px;" class="theme-icon" />
+                </button>
+            </Tooltip>
         </div>
     </div>
 
@@ -67,11 +76,12 @@
                                 <button class="btn btn-link p-0 me-2 chevron-button"
                                     @onclick="() => TogglePartitionDetails(partition.Name!)">
                                     <img src="/icons/chevron-down.svg" alt="Expand Details"
-                                        class="chevron-icon @(IsPartitionDetailsVisible(partition.Name!) ? "rotated" : "")"
+                                        class="theme-icon chevron-icon @(IsPartitionDetailsVisible(partition.Name!) ? "rotated" : "")"
                                         style="height: 24px;" />
                                 </button>
                                 <!-- Partition Icon -->
-                                <img src="/icons/pie-chart.svg" alt="Partition" style="height: 24px; margin-right: 8px;" />
+                                <img src="/icons/pie-chart.svg" alt="Partition" style="height: 24px; margin-right: 8px;"
+                                    class="theme-icon" />
                                 <span>@partition.Name</span>
                             </div>
                         </div>

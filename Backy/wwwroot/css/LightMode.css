@@ -4,9 +4,15 @@
     --card-bg: #f1f1f1;
     --card-header-bg: #f8f9fa;
     --modal-bg-color: #ffffff;
+    --modal-header-color: #dbdbdb;
+    --spinner-bg: #f7f7f786;
+
+    /* ====== Icon Colors ====== */
+    --icon-filter: invert(0);
 
     /* ====== Text Colors ====== */
     --text-color: #000000;
+    --muted-text-color: #575757;
     --header-color: #000000;
 
     /* ====== Buttons ====== */
@@ -34,6 +40,12 @@
     --btn-info-hover-bg: #117a8b;
     --btn-info-hover-border: #10707f;
 
+    /* ====== Tooltips ====== */
+    --tooltip-bg-color: #ffffff;
+    --tooltip-text-color: #000000;
+    --tooltip-border-color: #000000;
+    --tooltip-arrow-color: #000000;
+
     /* ====== Search ====== */
     --search-btn-bg-color: #e0e0e0;
 
@@ -47,6 +59,10 @@
 
     /* ====== Input Groups ====== */
     --input-group-text-bg: #6496c9;
+
+    /* ====== Bootstrap Variables ====== */
+    --bs-body-bg: var(--bg-color);
+    --bs-table-bg: var(--table-bg);
 
     /* ====== Other ====== */
     --h-color: var(--header-color);

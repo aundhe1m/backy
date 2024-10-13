@@ -8,17 +8,17 @@
             <!-- Expand/Collapse button -->
             <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
-                    class="chevron-icon @(IsDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
+                    class="theme-icon chevron-icon @(IsDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
             </button>
             <!-- Drive Icon -->
-            <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" />
+            <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" class="theme-icon" />
             <span>@(string.IsNullOrEmpty(Model.Label) ? "Unnamed Drive" : Model.Label)</span>
         </div>
         <!-- Force Add Button -->
         @if (!Model.IsMounted)
         {
             <Tooltip Title="Force Add Drive" @onclick="ForceAddDrive" role="button">
-                <img src="/icons/plus-circle-dotted.svg" alt="Force Add Drive" style="height: 24px;" />
+                <img src="/icons/plus-circle-dotted.svg" alt="Force Add Drive" style="height: 24px;" class="theme-icon" />
             </Tooltip>
         }
     </div>

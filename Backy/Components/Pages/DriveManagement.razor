@@ -16,7 +16,7 @@
     <div class="input-group" style="max-width: 400px;">
         <input type="text" class="form-control search-bar" placeholder="Search drives..." @bind="searchQuery">
         <span class="input-group-text">
-            <img src="/icons/search.svg" alt="Search Icon" class="search-icon search-bar">
+            <img src="/icons/search.svg" alt="Search Icon" class="search-icon search-bar theme-icon">
         </span>
     </div>
     <!-- Refresh Button / Create Pool -->
@@ -40,7 +40,7 @@
     <div class="row">
     @foreach (var drive in FilteredNewDrives)
         {
-            <div class="col-md-4">
+            <div class="col-md-12">
                 <NewDriveCard Model="@drive" OnProtect="@ProtectDrive" OnSelect="@SelectDrive"
                     IsSelected="@IsDriveSelected(drive.Serial!)" />
             </div>
@@ -54,12 +54,15 @@ else
 <!-- Pool Groups -->
 @if (FilteredPoolGroups != null && FilteredPoolGroups.Any())
 {
+    <h2>Pool Groups</h2>
+    <div class="row">
     @foreach (var pool in FilteredPoolGroups)
-    {
-        <PoolGroupDriveCard @key="pool.PoolGroupId" Model="@pool" OnUnmountPool="@UnmountPool"
-    OnRemovePoolGroup="@RemovePoolGroup" OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup"
-    OnForceAddDrive="@ForceAddDrive" />
-    }
+        {
+            <PoolGroupDriveCard @key="pool.PoolGroupId" Model="@pool" OnUnmountPool="@UnmountPool"
+                OnRemovePoolGroup="@RemovePoolGroup" OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup"
+                OnForceAddDrive="@ForceAddDrive" />
+        }
+    </div>
 }
 
 <!-- Protected Drives -->
@@ -69,7 +72,7 @@ else
     <div class="row">
     @foreach (var drive in ProtectedDrives)
         {
-            <div class="col-md-4">
+            <div class="col-md-12">
                 <ProtectedDriveCard Model="@drive" OnUnprotect="@UnprotectDrive" />
             </div>
         }
@@ -92,7 +95,7 @@ else
                 {
                     @output
                 }
-                    </pre>
+                                </pre>
         }
         else
         {

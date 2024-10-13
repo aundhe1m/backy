@@ -4,9 +4,15 @@
     --card-bg: #363636;
     --card-header-bg: #1f1f1f;
     --modal-bg-color: #1e1e1e;
+    --modal-header-color: #202020;
+    --spinner-bg: #00000065;
+
+    /* ====== Icon Colors ====== */
+    --icon-filter: invert(1);
 
     /* ====== Text Colors ====== */
     --text-color: #ffffff;
+    --muted-text-color: #aaaaaa;
     --header-color: #ffffff;
 
     /* ====== Buttons ====== */
@@ -33,6 +39,12 @@
     --btn-info-text: #000000;
     --btn-info-hover-bg: #005f73;
     --btn-info-hover-border: #005f73;
+
+    /* ====== Tooltips ====== */
+    --tooltip-bg-color: #000000;
+    --tooltip-text-color: #ffffff;
+    --tooltip-border-color: #ffffff;
+    --tooltip-arrow-color: #ffffff;
 
     /* ====== Search ====== */
     --search-btn-bg-color: #353535;
