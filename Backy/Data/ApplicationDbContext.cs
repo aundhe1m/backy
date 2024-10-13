@@ -25,6 +25,14 @@ namespace Backy.Data
                 .IsUnique()
                 .HasFilter("\"IsDeleted\" = false");
 
+            modelBuilder.Entity<PoolDrive>()
+                .HasIndex(d => d.Id)
+                .IsUnique();
+
+            modelBuilder.Entity<PoolDrive>()
+                .HasIndex(d => d.DriveGuid)
+                .IsUnique();
+
             modelBuilder
                 .Entity<PoolGroup>()
                 .HasMany(pg => pg.Drives)

@@ -8,3 +8,7 @@ dotnet ef migrations add InitialCreate && \
 dotnet ef database update && \
 sudo dotnet run
 ```
+
+```shell
+sudo umount /mnt/backy/md1 && sudo mdadm --stop /dev/md1
+```

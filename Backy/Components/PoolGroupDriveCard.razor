@@ -68,7 +68,7 @@
             <!-- Pool Drives -->
             @foreach (var drive in Model.Drives)
             {
-                <PoolGroupDriveItem Model="@drive" OnForceAdd="@ForceAddDrive" />
+                <PoolGroupDriveItem @key="drive.Id" Model="@drive" OnForceAdd="@ForceAddDrive" />
             }
         </div>
     }
