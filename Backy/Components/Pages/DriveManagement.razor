@@ -95,7 +95,7 @@ else
                 {
                     @output
                 }
-                                </pre>
+                                    </pre>
         }
         else
         {
@@ -282,10 +282,11 @@ else
         ProtectedDrives = await DbContext.ProtectedDrives.ToListAsync();
         Logger.LogInformation($"Loaded {ProtectedDrives.Count} protected drives from the database.");
 
+        bool changesMade = false; // Flag to track if any changes are made
+
         // Update connected status and properties for drives in pools
         foreach (var pool in PoolGroups)
         {
-
             var duplicateDriveIds = pool.Drives
             .GroupBy(d => d.Id)
             .Where(g => g.Count() > 1)
@@ -301,6 +302,7 @@ else
                 .GroupBy(d => d.Id)
                 .Select(g => g.First())
                 .ToList();
+                changesMade = true;
             }
 
             bool allConnected = true;
@@ -311,16 +313,26 @@ else
                 if (activeDrive != null)
                 {
                     // Update properties
-                    drive.IsConnected = true;
-                    drive.Vendor = activeDrive.Vendor;
-                    drive.Model = activeDrive.Model;
-                    drive.IsMounted = activeDrive.IsMounted;
-                    drive.DevPath = activeDrive.IdLink;
-                    drive.Size = activeDrive.Size;
+                    if (!drive.IsConnected || drive.Vendor != activeDrive.Vendor || drive.Model != activeDrive.Model ||
+                    drive.IsMounted != activeDrive.IsMounted || drive.DevPath != activeDrive.IdLink ||
+                    drive.Size != activeDrive.Size)
+                    {
+                        drive.IsConnected = true;
+                        drive.Vendor = activeDrive.Vendor;
+                        drive.Model = activeDrive.Model;
+                        drive.IsMounted = activeDrive.IsMounted;
+                        drive.DevPath = activeDrive.IdLink;
+                        drive.Size = activeDrive.Size;
+                        changesMade = true;
+                    }
                 }
                 else
                 {
-                    drive.IsConnected = false;
+                    if (drive.IsConnected)
+                    {
+                        drive.IsConnected = false;
+                        changesMade = true;
+                    }
                     allConnected = false;
                 }
             }
@@ -335,20 +347,21 @@ else
                 if (pool.PoolStatus != status)
                 {
                     pool.PoolStatus = status;
-                    await DbContext.SaveChangesAsync();
+                    changesMade = true;
                 }
 
                 if (!string.IsNullOrEmpty(pool.MountPath))
                 {
                     var (size, used, available, usePercent) = DriveService.GetMountPointSize(pool.MountPath);
 
-                    if (size > 0)
+                    if (size > 0 && (pool.Size != size || pool.Used != used || pool.Available != available || pool.UsePercent !=
+                    usePercent))
                     {
                         pool.Size = size;
                         pool.Used = used;
                         pool.Available = available;
                         pool.UsePercent = usePercent;
-                        await DbContext.SaveChangesAsync();
+                        changesMade = true;
                     }
                 }
             }
@@ -366,7 +379,14 @@ else
         .ToList();
 
         Logger.LogInformation($"NewDrives Count after filtering: {NewDrives.Count}");
+
+        if (changesMade)
+        {
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("Changes saved to the database.");
+        }
     }
+
 
     private async Task ProtectDrive(string serial)
     {
