@@ -1,8 +1,9 @@
 .light-mode {
     /* ====== Backgrounds ====== */
     --bg-color: #ffffff;
-    --card-bg: #f1f1f1;
-    --card-header-bg: #f8f9fa;
+    --card-bg: #e0e0e0;
+    --card-header-bg: #efefef;
+    --container-bg: #fafafa;
     --modal-bg-color: #ffffff;
     --modal-header-color: #dbdbdb;
     --spinner-bg: #f7f7f786;

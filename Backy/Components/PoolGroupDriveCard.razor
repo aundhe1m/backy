@@ -109,16 +109,17 @@
         </div>
     }
 
-    <!-- Status Modal -->
-    <Modal @ref="statusModal" Title="Pool Status">
-        <BodyTemplate>
-            <pre>@PoolStatusOutput</pre>
-        </BodyTemplate>
-        <FooterTemplate>
-            <Button Color="ButtonColor.Secondary" @onclick="CloseStatusModal">Close</Button>
-        </FooterTemplate>
-    </Modal>
 </div>
+
+<!-- Status Modal -->
+<Modal @ref="statusModal" Title="Pool Status">
+    <BodyTemplate>
+        <pre>@PoolStatusOutput</pre>
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseStatusModal">Close</Button>
+    </FooterTemplate>
+</Modal>
 
 @code {
     [Parameter, EditorRequired]

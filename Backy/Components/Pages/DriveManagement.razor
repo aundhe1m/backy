@@ -34,50 +34,58 @@
 </div>
 
 <!-- New Drives -->
-@if (FilteredNewDrives != null && FilteredNewDrives.Any())
-{
-    <h2>New Drives</h2>
-    <div class="row">
-    @foreach (var drive in FilteredNewDrives)
-        {
-            <div class="col-md-12">
-                <NewDriveCard Model="@drive" OnProtect="@ProtectDrive" OnSelect="@SelectDrive"
-                    IsSelected="@IsDriveSelected(drive.Serial!)" />
-            </div>
-        }
-    </div>
-}
-else
-{
-    <p>No new drives found.</p>
-}
+<div class="drive-management-container">
+    <h2 class="section-title">New Drives</h2>
+    @if (FilteredNewDrives != null && FilteredNewDrives.Any())
+    {
+        <div class="row">
+            @foreach (var drive in FilteredNewDrives)
+            {
+                <div class="col-md-12">
+                    <NewDriveCard Model="@drive" OnProtect="@ProtectDrive" OnSelect="@SelectDrive"
+                        IsSelected="@IsDriveSelected(drive.Serial!)" />
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <p>No new drives found.</p>
+    }
+</div>
+
 <!-- Pool Groups -->
-@if (FilteredPoolGroups != null && FilteredPoolGroups.Any())
-{
-    <h2>Pool Groups</h2>
-    <div class="row">
-    @foreach (var pool in FilteredPoolGroups)
-        {
-            <PoolGroupDriveCard @key="pool.PoolGroupId" Model="@pool" OnUnmountPool="@UnmountPool"
-                OnRemovePoolGroup="@RemovePoolGroup" OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup"
-                OnForceAddDrive="@ForceAddDrive" />
-        }
-    </div>
-}
+<div class="drive-management-container">
+    <h2 class="section-title">Pool Groups</h2>
+
+    @if (FilteredPoolGroups != null && FilteredPoolGroups.Any())
+    {
+        <div class="row">
+            @foreach (var pool in FilteredPoolGroups)
+            {
+                <PoolGroupDriveCard @key="pool.PoolGroupId" Model="@pool" OnUnmountPool="@UnmountPool"
+                    OnRemovePoolGroup="@RemovePoolGroup" OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup"
+                    OnForceAddDrive="@ForceAddDrive" />
+            }
+        </div>
+    }
+</div>
 
 <!-- Protected Drives -->
-@if (ProtectedDrives != null && ProtectedDrives.Any())
-{
-    <h2>Protected Drives</h2>
-    <div class="row">
-    @foreach (var drive in ProtectedDrives)
-        {
-            <div class="col-md-12">
-                <ProtectedDriveCard Model="@drive" OnUnprotect="@UnprotectDrive" />
-            </div>
-        }
-    </div>
-}
+<div class="drive-management-container">
+    <h2 class="section-title">Protected Drives</h2>
+    @if (ProtectedDrives != null && ProtectedDrives.Any())
+    {
+        <div class="row">
+            @foreach (var drive in ProtectedDrives)
+            {
+                <div class="col-md-12">
+                    <ProtectedDriveCard Model="@drive" OnUnprotect="@UnprotectDrive" />
+                </div>
+            }
+        </div>
+    }
+</div>
 
 <!-- Create Pool Modal -->
 <Modal @ref="createPoolModal" Title="Create Pool">
@@ -95,7 +103,7 @@ else
                 {
                     @output
                 }
-                                            </pre>
+                                                                            </pre>
         }
         else
         {

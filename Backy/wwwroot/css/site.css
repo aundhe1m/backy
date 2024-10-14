@@ -156,27 +156,49 @@ h6 {
   border-color: var(--btn-info-hover-border);
 }
 
-/* ====== Tooltip ====== */
+/* ====== Drive Container ====== */
 
-/* .tooltip {
-  --bs-tooltip-bg: var(--tooltip-bg);
-  --bs-tooltip-color: var(--tooltip-text-color);
+.drive-management-container {
+  background-color: var(--container-bg);
+  border-radius: 15px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+  padding-left: 35px;
+  padding-right: 35px;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
 
-} */
+.section-title {
+  position: relative;
+  text-align: center;
+  margin: 0 0 20px 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
 
-/* Tooltip Arrow */
-/* .bs-tooltip-top .tooltip-arrow::before,
-.bs-tooltip-bottom .tooltip-arrow::before,
-.bs-tooltip-left .tooltip-arrow::before,
-.bs-tooltip-right .tooltip-arrow::before {
-  border-color: var(--tooltip-arrow-color);
-} */
+.section-title::before,
+.section-title::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 40%;
+  height: 2px;
+  background-color: var(--text-color);
+  opacity: 0.25;
+  /* 25% transparency */
+}
 
-/* Ensure tooltip transitions are smooth */
-/* .tooltip,
-.tooltip-arrow::before {
-  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, border-top-color 0.3s ease;
-} */
+.section-title::before {
+  left: 0;
+  background: linear-gradient(to right, var(--text-color) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.section-title::after {
+  right: 0;
+  background: linear-gradient(to left, var(--text-color) 0%, rgba(255, 255, 255, 0) 100%);
+}
 
 /* ====== Search ====== */
 
