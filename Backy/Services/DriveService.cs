@@ -91,6 +91,8 @@ namespace Backy.Services
                                         Fstype = partition.Fstype ?? "Unknown",
                                         MountPoint = partition.Mountpoint ?? "Not Mounted",
                                         Size = partition.Size ?? 0,
+                                        Type = partition.Type ?? "Unknown", // Assuming Type is provided
+                                        Path = partition.Path ?? string.Empty, // Populate Path
                                     };
 
                                     if (!string.IsNullOrEmpty(partition.Mountpoint))
@@ -114,6 +116,7 @@ namespace Backy.Services
 
             return activeDrives;
         }
+
 
         public string FetchPoolStatus(int poolGroupId)
         {
@@ -598,34 +601,78 @@ namespace Backy.Services
 
             int poolGroupId = poolGroup.PoolGroupId;
 
+            // Step 1: Fetch active drives to identify existing RAID devices
+            var activeDrives = await UpdateActiveDrivesAsync();
+
+            // Step 2: Identify RAID devices associated with the pool group's drives
+            var existingMdPaths = new HashSet<string>();
+
+            foreach (var drive in poolGroup.Drives)
+            {
+                var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == drive.Serial);
+                if (activeDrive != null && activeDrive.Partitions != null)
+                {
+                    foreach (var partition in activeDrive.Partitions)
+                    {
+                        if (partition.Type?.ToLower() == "raid1" && !string.IsNullOrEmpty(partition.Path))
+                        {
+                            existingMdPaths.Add(partition.Path);
+                        }
+                    }
+                }
+            }
+
+            // Step 3: Stop existing RAID devices to avoid conflicts
+            foreach (var mdPath in existingMdPaths)
+            {
+                string stopCommand = $"mdadm --stop {mdPath}";
+                var stopResult = ExecuteShellCommand(stopCommand, null);
+                if (!stopResult.success)
+                {
+                    _logger.LogWarning($"Failed to stop existing RAID device {mdPath}: {stopResult.message}");
+                    // Optionally, decide whether to return failure or continue
+                    // For this implementation, we'll continue
+                }
+            }
+
             var commandOutputs = new List<string>();
+
+            // Step 4: Assemble the RAID pool
             string assembleCommand = $"mdadm --assemble /dev/md{poolGroupId} ";
             assembleCommand += string.Join(" ", poolGroup.Drives.Select(d => d.DevPath));
 
-            // Execute the assemble command
             var assembleResult = ExecuteShellCommand(assembleCommand, commandOutputs);
+            if (!assembleResult.success)
+            {
+                _logger.LogError($"Failed to assemble pool: {assembleResult.message}");
+                return (false, $"Failed to assemble pool: {assembleResult.message}");
+            }
 
-            // Attempt to mount regardless of assemble result
+            // Step 5: Mount the assembled RAID pool
             string mountPath = $"/mnt/backy/md{poolGroupId}";
             string mountCommand = $"mkdir -p {mountPath} && mount /dev/md{poolGroupId} {mountPath}";
             var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
 
             if (!mountResult.success)
             {
-                return (false, mountResult.message);
+                _logger.LogError($"Failed to mount pool: {mountResult.message}");
+                return (false, $"Failed to mount pool: {mountResult.message}");
             }
 
-            // Update the database to reflect the mounted drives and enabled pool
+            // Step 6: Update the database to reflect the mounted drives and enabled pool
             foreach (var drive in poolGroup.Drives)
             {
                 drive.IsMounted = true;
             }
 
             poolGroup.PoolEnabled = true;
+            poolGroup.MountPath = mountPath; // Ensure MountPath is updated
             await _context.SaveChangesAsync();
 
-            return (true, "Pool mounted successfully.");
+            _logger.LogInformation($"Pool '/dev/md{poolGroupId}' mounted successfully at '{mountPath}'.");
+            return (true, $"Pool '/dev/md{poolGroupId}' mounted successfully at '{mountPath}'.");
         }
+
 
         private (bool success, string message) ExecuteShellCommand(string command, List<string>? outputList = null)
         {

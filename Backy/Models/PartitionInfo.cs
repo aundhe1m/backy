@@ -1,17 +1,21 @@
-// File: Backy/Models/PartitionInfo.cs
+using System.Text.Json.Serialization;
 
 namespace Backy.Models
 {
     public class PartitionInfo
     {
-        public string Name { get; set; } = string.Empty;
+        public string? Name { get; set; }
 
-        public string UUID { get; set; } = "No UUID";
+        public string? UUID { get; set; }
 
-        public string MountPoint { get; set; } = "Not Mounted";
+        public string? Fstype { get; set; }
 
-        public long Size { get; set; } = 0;
+        public string? MountPoint { get; set; }
 
-        public string Fstype { get; set; } = "Unknown";
+        public long Size { get; set; }
+
+        public string? Type { get; set; }
+
+        public string? Path { get; set; }
     }
 }
