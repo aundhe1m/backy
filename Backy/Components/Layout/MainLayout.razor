@@ -27,6 +27,15 @@
     <Modal IsServiceModal="true" />
 </div>
 
+
+<style>
+    :root {
+        --bs-body-bg:
+    @(GetBackgroundColor())
+        ;
+    }
+</style>
+
 @code {
     private bool isLoading = false;
 
@@ -41,6 +50,11 @@
     }
 
     private string CurrentThemeClass => ThemeService.CurrentTheme == Theme.Dark ? "dark-mode" : "light-mode";
+
+    private string GetBackgroundColor()
+    {
+        return ThemeService.CurrentTheme == Theme.Dark ? "#121212" : "#ffffff";
+    }
 
     private Task ShowLoading()
     {
