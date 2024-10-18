@@ -5,10 +5,9 @@
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center">
-            <button type="button" class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleNewPoolDriveDetails">
+            <button type="button" class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDriveDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
-                    class="theme-icon chevron-icon @(IsNewPoolDriveDetailsVisible ? "rotated" : "")"
-                    style="height: 24px;" />
+                    class="theme-icon chevron-icon @(IsDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
             </button>
             <!-- Drive Icon -->
             <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" class="theme-icon" />
@@ -21,8 +20,8 @@
         </div>
     </div>
 
-    <!-- Optional Drive Details (currently not needed) -->
-    @if (IsNewPoolDriveDetailsVisible)
+    <!-- Optional Drive Details -->
+    @if (IsDriveDetailsVisible)
     {
         <div class="card-body">
             <!-- Drive Details Table -->
@@ -43,7 +42,7 @@
                         </tr>
                         <tr>
                             <th>Size</th>
-                            <td>@Model.Size</td>
+                            <td>@FormatSize(Model.Size)</td>
                         </tr>
                     </tbody>
                 </table>
@@ -62,15 +61,27 @@
     [Parameter]
     public EventCallback<string> OnLabelChangedCallback { get; set; }
 
-    private bool IsNewPoolDriveDetailsVisible { get; set; } = false;
+    private bool IsDriveDetailsVisible { get; set; } = false;
 
-    private void ToggleNewPoolDriveDetails()
+    private void ToggleDriveDetails()
     {
-        IsNewPoolDriveDetailsVisible = !IsNewPoolDriveDetailsVisible;
+        IsDriveDetailsVisible = !IsDriveDetailsVisible;
     }
 
     private async Task HandleLabelChanged()
     {
         await OnLabelChangedCallback.InvokeAsync(DriveLabel);
+    }
+
+    private string FormatSize(long sizeInBytes)
+    {
+        if (sizeInBytes < 1024)
+            return $"{sizeInBytes} B";
+        else if (sizeInBytes < 1024 * 1024)
+            return $"{(sizeInBytes / 1024.0):F2} KB";
+        else if (sizeInBytes < 1024 * 1024 * 1024)
+            return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
+        else
+            return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
     }
 }
