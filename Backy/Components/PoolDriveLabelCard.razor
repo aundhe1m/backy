@@ -1,0 +1,76 @@
+@using Backy.Models
+@inject ILogger<PoolDriveLabelCard> Logger
+
+<div class="card drive-label-card mb-3">
+    <!-- Card Header -->
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center">
+            <button type="button" class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleNewPoolDriveDetails">
+                <img src="/icons/chevron-down.svg" alt="Expand Details"
+                    class="theme-icon chevron-icon @(IsNewPoolDriveDetailsVisible ? "rotated" : "")"
+                    style="height: 24px;" />
+            </button>
+            <!-- Drive Icon -->
+            <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" class="theme-icon" />
+            <span>@Model.Name</span>
+        </div>
+        <!-- Label Input Field -->
+        <div class="flex-grow-1 ms-3">
+            <InputText class="form-control" @bind-Value="DriveLabel" @onblur="HandleLabelChanged"
+                placeholder="Optional drive label" />
+        </div>
+    </div>
+
+    <!-- Optional Drive Details (currently not needed) -->
+    @if (IsNewPoolDriveDetailsVisible)
+    {
+        <div class="card-body">
+            <!-- Drive Details Table -->
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <tbody>
+                        <tr>
+                            <th>Vendor</th>
+                            <td>@Model.Vendor</td>
+                        </tr>
+                        <tr>
+                            <th>Model</th>
+                            <td>@Model.Model</td>
+                        </tr>
+                        <tr>
+                            <th>Serial</th>
+                            <td>@Model.Serial</td>
+                        </tr>
+                        <tr>
+                            <th>Size</th>
+                            <td>@Model.Size</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Drive Model { get; set; } = default!;
+
+    [Parameter]
+    public string DriveLabel { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> OnLabelChangedCallback { get; set; }
+
+    private bool IsNewPoolDriveDetailsVisible { get; set; } = false;
+
+    private void ToggleNewPoolDriveDetails()
+    {
+        IsNewPoolDriveDetailsVisible = !IsNewPoolDriveDetailsVisible;
+    }
+
+    private async Task HandleLabelChanged()
+    {
+        await OnLabelChangedCallback.InvokeAsync(DriveLabel);
+    }
+}

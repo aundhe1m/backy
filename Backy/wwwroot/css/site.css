@@ -284,6 +284,7 @@ h6 {
 .form-control {
   background-color: var(--bg-color);
   color: var(--text-color);
+  --bs-body-color: var(--text-color);
 }
 
 /* ====== Alert Color ====== */

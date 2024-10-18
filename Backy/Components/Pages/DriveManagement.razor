@@ -106,7 +106,7 @@
             {
                 <Alert Color="AlertColor.Success">
                     <span style="display: flex;">
-                        <img src="/icons/check-circle-fill-green.svg" alt="Drive Icon"
+                        <img src="/icons/check-circle-fill-green.svg" alt="Success Icon"
                             style="height: 24px; margin-right: 8px;" />
                         <h5 style="margin: 0;">Success</h5>
                     </span>
@@ -120,7 +120,7 @@
             {
                 <Alert Color="AlertColor.Danger">
                     <span style="display: flex;">
-                        <img src="/icons/exclamation-triangle-fill-red.svg" alt="Drive Icon"
+                        <img src="/icons/exclamation-triangle-fill-red.svg" alt="Error Icon"
                             style="height: 24px; margin-right: 8px;" />
                         <h5>Error</h5>
                     </span>
@@ -137,21 +137,31 @@
                 <DataAnnotationsValidator />
                 <ValidationSummary />
 
+                <!-- Pool Label Input with Icon -->
                 <div class="mb-3">
-                    <label for="poolLabel" class="form-label">Pool Label</label>
-                    <InputText id="poolLabel" class="form-control" @bind-Value="CreatePoolRequest.PoolLabel" required />
-                    <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
+                    <h5>Drive Labels</h5>
+                    <div class="d-flex align-items-center">
+                        <img src="/icons/hdd-rack.svg" alt="Pool Icon" style="height: 24px; margin-right: 8px;"
+                            class="theme-icon" />
+                        <div class="flex-grow-1 d-flex align-items-center">
+                            <label for="poolLabel" class="form-label me-2"></label>
+                            <InputText placeholder="Enter pool label" id="poolLabel" class="form-control flex-grow-1"
+                                @bind-Value="CreatePoolRequest.PoolLabel" required @oninput="HandlePoolLabelChanged" />
+                            <ValidationMessage For="@(() => CreatePoolRequest.PoolLabel)" />
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Drive Labels -->
-                @foreach (var drive in SelectedDrives ?? Enumerable.Empty<Drive>())
-                {
-                    var driveSerial = drive.Serial!;
-                    <div class="mb-3">
-                        <label class="form-label">Drive Label (@driveSerial)</label>
-                        <InputText class="form-control" @bind-Value="CreatePoolRequest.DriveLabels[driveSerial]" />
-                    </div>
-                }
+                <!-- Drive Labels using PoolDriveLabelCard -->
+                <div class="drive-labels-section">
+                    <h5>Drive Labels</h5>
+                    @foreach (var drive in SelectedDrives ?? Enumerable.Empty<Drive>())
+                    {
+                        var driveSerial = drive.Serial!;
+                        <PoolDriveLabelCard Model="@drive" DriveLabel="@CreatePoolRequest.DriveLabels[driveSerial]"
+                            OnLabelChangedCallback="@(async (newLabel) => await OnDriveLabelChanged(driveSerial, newLabel))" />
+                    }
+                </div>
             </EditForm>
         }
     </BodyTemplate>
@@ -160,6 +170,7 @@
         {
             <Button Color="ButtonColor.Secondary" Disabled="true">
                 <Spinner Type="SpinnerType.Dots" Class="me-3" Color="SpinnerColor.Light" />
+                Creating...
             </Button>
         }
         else if (CreatePoolResultMessage != null)
@@ -173,7 +184,6 @@
         }
     </FooterTemplate>
 </Modal>
-
 
 <!-- Rename Pool Modal -->
 <Modal @ref="renamePoolModal" Title="Rename Pool">
@@ -210,12 +220,17 @@
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
     private List<ProtectedDrive> ProtectedDrives { get; set; } = new List<ProtectedDrive>();
     private List<Drive> SelectedDrives { get; set; } = new List<Drive>();
+
+    // Updated CreatePoolRequest to initialize DriveLabels
     private CreatePoolRequest CreatePoolRequest { get; set; } = new CreatePoolRequest
         {
             PoolLabel = string.Empty,
             DriveSerials = new List<string>(),
             DriveLabels = new Dictionary<string, string>()
         };
+
+    private HashSet<string> CustomDriveLabels { get; set; } = new HashSet<string>();
+
     private PoolGroup PoolToRename { get; set; } = new PoolGroup();
     private EditContext? createPoolEditContext;
     private EditContext? renamePoolEditContext;
@@ -235,9 +250,7 @@
     private string searchQuery = string.Empty;
 
     private IEnumerable<Drive> FilteredNewDrives => NewDrives.Where(d => IsDriveMatch(d));
-
     private IEnumerable<PoolGroup> FilteredPoolGroups => PoolGroups.Where(pg => IsPoolGroupMatch(pg));
-
     private IEnumerable<ProtectedDrive> FilteredProtectedDrives => ProtectedDrives.Where(pd => IsDriveMatch(new Drive
         {
             Name = pd.Name,
@@ -265,7 +278,6 @@
         Logger.LogInformation($"IsDriveMatch: Drive {drive.Serial} match status: {match}");
         return match;
     }
-
 
     private bool IsPoolGroupMatch(PoolGroup poolGroup)
     {
@@ -424,7 +436,6 @@
         }
     }
 
-
     private async Task ProtectDrive(string serial)
     {
         try
@@ -520,6 +531,12 @@
                 DriveSerials = SelectedDrives.Select(d => d.Serial!).ToList(),
                 DriveLabels = SelectedDrives.ToDictionary(d => d.Serial!, d => d.Label ?? "")
             };
+
+        // Initialize CustomDriveLabels as empty since labels are pre-populated
+        CustomDriveLabels.Clear();
+
+        // Pre-populate drive labels with "PoolLabel-n"
+        UpdateDriveLabelsBasedOnPoolLabel();
 
         // Reassign the EditContext to the new CreatePoolRequest instance
         createPoolEditContext = new EditContext(CreatePoolRequest);
@@ -692,7 +709,6 @@
         await renamePoolModal.ShowAsync();
     }
 
-
     private async Task ForceAddDrive(PoolDrive drive)
     {
         try
@@ -727,7 +743,6 @@
             await LoadingService.HideLoading();
         }
     }
-
 
     private async Task CloseRenamePoolModal()
     {
@@ -788,4 +803,59 @@
         }
     }
 
+    /// <summary>
+    /// Updates drive labels based on the current pool label.
+    /// Only updates labels that have not been manually set.
+    /// </summary>
+    private void UpdateDriveLabelsBasedOnPoolLabel()
+    {
+        if (string.IsNullOrWhiteSpace(CreatePoolRequest.PoolLabel))
+            return;
+
+        int counter = 1;
+        foreach (var serial in CreatePoolRequest.DriveSerials)
+        {
+            if (!CustomDriveLabels.Contains(serial))
+            {
+                CreatePoolRequest.DriveLabels[serial] = $"{CreatePoolRequest.PoolLabel}-{counter}";
+                counter++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Event handler when the pool label is changed.
+    /// Updates drive labels accordingly.
+    /// </summary>
+    private async Task HandlePoolLabelChanged(ChangeEventArgs e)
+    {
+        string newPoolLabel = e.Value?.ToString() ?? string.Empty;
+        CreatePoolRequest.PoolLabel = newPoolLabel;
+        UpdateDriveLabelsBasedOnPoolLabel();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Event handler when a drive label is changed manually.
+    /// Marks the drive label as custom to prevent automatic overrides.
+    /// </summary>
+    private Task OnDriveLabelChanged(string serial, string newLabel)
+    {
+        if (!string.IsNullOrWhiteSpace(newLabel))
+        {
+            CustomDriveLabels.Add(serial);
+            CreatePoolRequest.DriveLabels[serial] = newLabel;
+        }
+        else
+        {
+            CustomDriveLabels.Remove(serial);
+            // Re-populate with default if pool label exists
+            if (!string.IsNullOrWhiteSpace(CreatePoolRequest.PoolLabel))
+            {
+                int driveIndex = CreatePoolRequest.DriveSerials.IndexOf(serial) + 1;
+                CreatePoolRequest.DriveLabels[serial] = $"{CreatePoolRequest.PoolLabel}-{driveIndex}";
+            }
+        }
+        return Task.CompletedTask;
+    }
 }
