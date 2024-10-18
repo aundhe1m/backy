@@ -278,6 +278,57 @@
     </FooterTemplate>
 </Modal>
 
+<!-- Process List Modal -->
+<Modal @ref="processListModal" Title="Processes Preventing Unmount" Size="ModalSize.Large">
+    <BodyTemplate>
+        @if (ProcessList == null)
+        {
+            <p>Loading processes...</p>
+        }
+        else if (!ProcessList.Any())
+        {
+            <p>No processes are currently using the mount point.</p>
+        }
+        else
+        {
+            <p>The following processes are preventing the pool from being unmounted:</p>
+            <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>PID</th>
+                    <th>Command</th>
+                    <th>User</th>
+                    <th>Name</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var process in ProcessList)
+                    {
+                        <tr>
+                            <td>@process.PID</td>
+                            <td>@process.Command</td>
+                            <td>@process.User</td>
+                            <td>@process.Name</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <p>Do you want to kill these processes and retry unmounting the pool?</p>
+        }
+    </BodyTemplate>
+    <FooterTemplate>
+        @if (ProcessList != null && ProcessList.Any())
+        {
+            <Button Color="ButtonColor.Danger" @onclick="KillProcesses">Kill Processes</Button>
+            <Button Color="ButtonColor.Secondary" @onclick="CloseProcessListModal">Cancel</Button>
+        }
+        else
+        {
+            <Button Color="ButtonColor.Secondary" @onclick="CloseProcessListModal">Close</Button>
+        }
+    </FooterTemplate>
+</Modal>
+
 @code {
     private List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>();
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
@@ -308,6 +359,10 @@
 
     private Modal createPoolModal = default!;
     private Modal renamePoolModal = default!;
+
+    private Modal processListModal = default!;
+    private List<ProcessInfo>? ProcessList { get; set; } = null;
+    private Guid? currentPoolGroupGuidForUnmount = null;
 
     private bool IsRenameInProgress { get; set; } = false;
     private string? RenameResultMessage { get; set; } = null;
@@ -698,23 +753,93 @@
             var result = await DriveService.UnmountPoolAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
-                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
+                ToastService.Notify(new ToastMessage(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
             else
             {
-                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
+                if (result.Message.Contains("target is busy", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Fetch processes using mount point
+                    currentPoolGroupGuidForUnmount = poolGroup.PoolGroupGuid;
+                    var mountPoint = poolGroup.MountPath;
+                    ProcessList = await DriveService.GetProcessesUsingMountPointAsync(mountPoint);
+                    await processListModal.ShowAsync();
+                }
+                else
+                {
+                    ToastService.Notify(new ToastMessage(ToastType.Warning, $"{result.Message}"));
+                }
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Error unmounting pool '{poolGroup.GroupLabel}'.");
-            ToastService.Notify(new(ToastType.Danger, $"Failed to unmount pool."));
+            ToastService.Notify(new ToastMessage(ToastType.Danger, $"Failed to unmount pool."));
         }
         finally
         {
             await LoadingService.HideLoading();
         }
+    }
+
+    private async Task KillProcesses()
+    {
+        if (currentPoolGroupGuidForUnmount == null)
+        {
+            ToastService.Notify(new ToastMessage(ToastType.Warning, "No pool group selected for unmounting."));
+            return;
+        }
+
+        try
+        {
+            await LoadingService.ShowLoading();
+
+            var pids = ProcessList?.Select(p => p.PID).ToList() ?? new List<int>();
+            if (!pids.Any())
+            {
+                ToastService.Notify(new ToastMessage(ToastType.Warning, "No processes to kill."));
+                await processListModal.HideAsync();
+                return;
+            }
+
+            var request = new KillProcessesRequest
+                {
+                    PoolGroupGuid = currentPoolGroupGuidForUnmount.Value,
+                    Pids = pids,
+                    Action = "UnmountPool"
+                };
+
+            var killResult = await DriveService.KillProcessesAsync(request);
+
+            if (killResult.Success)
+            {
+                ToastService.Notify(new ToastMessage(ToastType.Success, killResult.Message));
+                await processListModal.HideAsync();
+                await LoadDrives();
+            }
+            else
+            {
+                ToastService.Notify(new ToastMessage(ToastType.Warning, killResult.Message));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error killing processes.");
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "Failed to kill processes."));
+        }
+        finally
+        {
+            await LoadingService.HideLoading();
+            currentPoolGroupGuidForUnmount = null;
+        }
+    }
+
+    private async Task CloseProcessListModal()
+    {
+        await processListModal.HideAsync();
+        ProcessList = null;
+        currentPoolGroupGuidForUnmount = null;
     }
 
     private async Task RemovePoolGroup(PoolGroup poolGroup)

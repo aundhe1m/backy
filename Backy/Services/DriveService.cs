@@ -21,6 +21,8 @@ namespace Backy.Services
         Task<(bool Success, string Message)> RenamePoolGroupAsync(RenamePoolRequest request);
         Task<(bool Success, string Message, string Output)> GetPoolDetailAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> ForceAddDriveAsync(int driveId, Guid poolGroupGuid, string devPath);
+        Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(KillProcessesRequest request);
+        Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint);
     }
 
     public class DriveService : IDriveService
@@ -673,6 +675,96 @@ namespace Backy.Services
             return (true, $"Pool '/dev/md{poolGroupId}' mounted successfully at '{mountPath}'.");
         }
 
+        /// <summary>
+        /// Retrieves a list of processes using the specified mount point by executing the 'lsof' command.
+        /// </summary>
+        /// <param name="mountPoint">The mount point to inspect.</param>
+        /// <returns>A list of ProcessInfo objects representing the processes.</returns>
+        public async Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint)
+        {
+            return await Task.Run(() =>
+            {
+                var command = $"lsof +f -- {mountPoint}";
+                var commandOutputs = new List<string>();
+                var (success, message) = ExecuteShellCommand(command, commandOutputs);
+                if (!success)
+                {
+                    _logger.LogWarning($"Failed to execute lsof command: {message}");
+                    return new List<ProcessInfo>();
+                }
+
+                // Parse the output
+                return ParseLsofOutput(message);
+            });
+        }
+
+        /// <summary>
+        /// Parses the output of the 'lsof' command to extract process information.
+        /// </summary>
+        /// <param name="lsofOutput">The raw output string from the 'lsof' command.</param>
+        /// <returns>A list of ProcessInfo objects.</returns>
+        private List<ProcessInfo> ParseLsofOutput(string lsofOutput)
+        {
+            var processes = new List<ProcessInfo>();
+            var lines = lsofOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length < 2)
+                return processes; // No processes found
+
+            // The first line is the header
+            var headers = Regex.Split(lines[0].Trim(), @"\s+");
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                var columns = Regex.Split(line.Trim(), @"\s+");
+                if (columns.Length < headers.Length)
+                {
+                    _logger.LogWarning($"Line {i + 1} has fewer columns than headers. Skipping line.");
+                    continue; // Skip lines that don't have enough columns
+                }
+
+                var process = new ProcessInfo();
+                for (int j = 0; j < headers.Length && j < columns.Length; j++)
+                {
+                    try
+                    {
+                        switch (headers[j].ToUpper())
+                        {
+                            case "COMMAND":
+                                process.Command = columns[j];
+                                break;
+                            case "PID":
+                                if (int.TryParse(columns[j], out int pid))
+                                {
+                                    process.PID = pid;
+                                }
+                                else
+                                {
+                                    _logger.LogWarning($"Invalid PID value '{columns[j]}' at line {i + 1}.");
+                                    process.PID = 0;
+                                }
+                                break;
+                            case "USER":
+                                process.User = columns[j];
+                                break;
+                            case "NAME":
+                                process.Name = columns[j];
+                                break;
+                            default:
+                                // Ignore unhandled headers (FD, TYPE, DEVICE, SIZE/OFF, NODE)
+                                break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error parsing column {j + 1} ('{headers[j]}') at line {i + 1}: {ex.Message}");
+                    }
+                }
+                processes.Add(process);
+            }
+            return processes;
+        }
 
         private (bool success, string message) ExecuteShellCommand(string command, List<string>? outputList = null)
         {
@@ -769,20 +861,23 @@ namespace Backy.Services
         {
             if (request == null)
             {
+                await Task.CompletedTask; // Ensure an await exists
                 return (false, "Invalid request data.", new List<string>());
             }
 
             if (request.PoolGroupGuid == Guid.Empty)
             {
+                await Task.CompletedTask; // Ensure an await exists
                 return (false, "Invalid Pool Group GUID.", new List<string>());
             }
 
             var poolGroup = await _context
-            .PoolGroups.Include(pg => pg.Drives)
-            .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == request.PoolGroupGuid);
+                .PoolGroups.Include(pg => pg.Drives)
+                .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == request.PoolGroupGuid);
 
             if (poolGroup == null)
             {
+                await Task.CompletedTask; // Ensure an await exists
                 return (false, "Pool group not found.", new List<string>());
             }
 
@@ -797,6 +892,7 @@ namespace Backy.Services
                 var killResult = ExecuteShellCommand(killCommand, commandOutputs);
                 if (!killResult.success)
                 {
+                    await Task.CompletedTask; // Ensure an await exists
                     return (false, $"Failed to kill process {pid}.", commandOutputs);
                 }
             }
@@ -810,6 +906,7 @@ namespace Backy.Services
                 var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
                 if (!unmountResult.success)
                 {
+                    await Task.CompletedTask; // Ensure an await exists
                     return (false, unmountResult.message, commandOutputs);
                 }
 
@@ -817,6 +914,7 @@ namespace Backy.Services
                 var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
                 if (!stopResult.success)
                 {
+                    await Task.CompletedTask; // Ensure an await exists
                     return (false, stopResult.message, commandOutputs);
                 }
 
@@ -826,7 +924,9 @@ namespace Backy.Services
                     drive.IsMounted = false;
                 }
 
+                // Set PoolEnabled to false
                 poolGroup.PoolEnabled = false;
+
                 await _context.SaveChangesAsync();
 
                 return (true, "Pool unmounted successfully after killing processes.", commandOutputs);
@@ -839,6 +939,7 @@ namespace Backy.Services
                 var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
                 if (!unmountResult.success)
                 {
+                    await Task.CompletedTask; // Ensure an await exists
                     return (false, unmountResult.message, commandOutputs);
                 }
 
@@ -846,6 +947,7 @@ namespace Backy.Services
                 var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
                 if (!stopResult.success)
                 {
+                    await Task.CompletedTask; // Ensure an await exists
                     return (false, stopResult.message, commandOutputs);
                 }
 
@@ -856,6 +958,7 @@ namespace Backy.Services
                     var wipeResult = ExecuteShellCommand(wipeCommand, commandOutputs);
                     if (!wipeResult.success)
                     {
+                        await Task.CompletedTask; // Ensure an await exists
                         return (false, $"Failed to clean drive {drive.Serial}.", commandOutputs);
                     }
                 }
@@ -868,6 +971,7 @@ namespace Backy.Services
             }
             else
             {
+                await Task.CompletedTask; // Ensure an await exists
                 return (false, "Unknown action for kill processes.", new List<string>());
             }
         }
