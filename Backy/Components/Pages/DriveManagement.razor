@@ -88,22 +88,46 @@
 </div>
 
 <!-- Create Pool Modal -->
-<Modal @ref="createPoolModal" Title="Create Pool">
+<Modal @ref="createPoolModal" Title="Create Pool" Size="ModalSize.Large">
     <BodyTemplate>
         @if (IsPoolCreationInProgress)
         {
-            <p>Creating pool...</p>
+            <h3>Creating pool...</h3>
         }
         else if (CreatePoolResultMessage != null)
         {
-            <pre class="pool-result-message">
-                @CreatePoolResultMessage
-
-                @foreach (var output in CommandOutputs)
-                {
-                    @output
-                }
-                                                                            </pre>
+            <div class="pool-result-message">
+                <pre>@string.Join("\n", CommandOutputs)<br></pre>
+            </div>
+            <br>
+            @if (CreatePoolResultSuccess == true)
+            {
+                <Alert Color="AlertColor.Success">
+                    <span style="display: flex;">
+                        <img src="/icons/check-circle-fill-green.svg" alt="Drive Icon"
+                            style="height: 24px; margin-right: 8px;" />
+                        <h5 style="margin: 0;">Success</h5>
+                    </span>
+                    <hr style="border: 1px solid gray; margin-top: 8px; margin-bottom: 8px;" />
+                    <div>
+                        @CreatePoolResultMessage
+                    </div>
+                </Alert>
+            }
+            else
+            {
+                <Alert Color="AlertColor.Danger">
+                    <span style="display: flex;">
+                        <img src="/icons/exclamation-triangle-fill-red.svg" alt="Drive Icon"
+                            style="height: 24px; margin-right: 8px;" />
+                        <h5>Error</h5>
+                    </span>
+                    <hr style="border: 1px solid gray; margin-top: 8px; margin-bottom: 8px;" />
+                    <div>
+                        @CreatePoolResultMessage
+                    </div>
+                </Alert>
+            }
         }
         else
         {
@@ -132,7 +156,9 @@
     <FooterTemplate>
         @if (IsPoolCreationInProgress)
         {
-            <Button Color="ButtonColor.Secondary" Disabled="true">Please wait...</Button>
+            <Button Color="ButtonColor.Secondary" Disabled="true">
+                <Spinner Type="SpinnerType.Dots" Class="me-3" Color="SpinnerColor.Light" />
+            </Button>
         }
         else if (CreatePoolResultMessage != null)
         {
@@ -198,6 +224,7 @@
         };
     private List<string> CommandOutputs { get; set; } = new List<string>(); // To store command outputs
     private string? CreatePoolResultMessage { get; set; } = null;
+    private bool? CreatePoolResultSuccess { get; set; } = null;
 
     private Modal createPoolModal = default!;
     private Modal renamePoolModal = default!;
@@ -536,23 +563,26 @@
             IsPoolCreationInProgress = true;
             CommandOutputs.Clear();
             CreatePoolResultMessage = null;
+            CreatePoolResultSuccess = null;
             var (success, message, outputs) = await DriveService.CreatePoolAsync(CreatePoolRequest);
             CommandOutputs.AddRange(outputs);
+            CreatePoolResultMessage = $"{message}";
             if (success)
             {
                 Logger.LogInformation($"Pool created successfully: {message}");
-                CreatePoolResultMessage = "Pool created successfully.";
+                CreatePoolResultSuccess = true;
             }
             else
             {
                 Logger.LogWarning($"Pool creation failed: {message}");
-                CreatePoolResultMessage = $"Pool creation failed: {message}";
+                CreatePoolResultSuccess = false;
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error creating pool.");
-            CreatePoolResultMessage = $"Error: {ex.Message}.";
+            CreatePoolResultSuccess = false;
+            CreatePoolResultMessage = $"{ex.Message}";
         }
         finally
         {

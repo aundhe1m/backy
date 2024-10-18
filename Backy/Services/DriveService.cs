@@ -392,7 +392,7 @@ namespace Backy.Services
 
                 // Mount the md device
                 string mountPath = $"/mnt/backy/md{poolGroupId}";
-                string mountCommand = $"mkdir -p {mountPath} && mount /dev/md{poolGroupId} {mountPath}";
+                string mountCommand = $"mkdir -p {mountPath} && mount -v /dev/md{poolGroupId} {mountPath}";
                 var mountResult = ExecuteShellCommand(mountCommand, commandOutputs);
                 if (!mountResult.success)
                 {
@@ -415,7 +415,7 @@ namespace Backy.Services
             {
                 _logger.LogError(ex, "Error creating pool.");
                 await transaction.RollbackAsync();
-                return (false, "An error occurred while creating the pool.", commandOutputs);
+                return (false, "Error:", commandOutputs);
             }
         }
 

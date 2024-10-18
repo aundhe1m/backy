@@ -277,8 +277,8 @@ h6 {
 } */
 
 .modal-header {
-  background-color: var(--modal-header-color);
-  color: var(--header-color);
+  background-color: var(--modal-header-color) !important;
+  color: var(--header-color) !important;
 }
 
 .form-control {
@@ -286,6 +286,19 @@ h6 {
   color: var(--text-color);
 }
 
+/* ====== Alert Color ====== */
+
+.alert-success {
+  --bs-alert-bg: #0080001a;
+  --bs-alert-color: var(--text-color);
+  --bs-alert-border-color: #008000;
+}
+
+.alert-danger {
+  --bs-alert-bg: #ff000024;
+  --bs-alert-color: var(--text-color);
+  --bs-alert-border-color: #ff0000;
+}
 
 /* ====== Protected Drives ====== */
 
@@ -299,26 +312,12 @@ h6 {
 
 /* Pool Result Message */
 .pool-result-message {
-  background-color: var(--bg-color);
-  color: var(--text-color);
+  background-color: #000000;
+  color: #ffffff;
   padding: 10px;
   border-radius: 5px;
   font-family: monospace;
+  overflow: auto;
+  scrollbar-color: #c9c9c9 #111111;
+  scrollbar-width: thin;
 }
-
-.light-mode .pool-result-message {
-  background-color: #f8f9fa;
-  color: #000000;
-}
-
-.dark-mode .pool-result-message {
-  background-color: #1e1e1e;
-  color: #ffffff;
-}
-
-/* Tooltip (Assuming custom or third-party component) */
-/* .tooltip-inner {
-  background-color: var(--bg-color);
-  color: var(--text-color);
-  border: 1px solid var(--table-border-color);
-} */
