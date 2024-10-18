@@ -3,62 +3,76 @@
 <div class="card drive-card mb-3">
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center">
-        <div class="d-flex align-items-center">
-            <button class="btn btn-link p-0 me-2 chevron-button theme-icon" @onclick="ToggleDetails">
-                <img src="/icons/chevron-down.svg" alt="Expand Details"
-                    class="chevron-icon @(IsPoolDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
-            </button>
-            <!-- Drive Icon -->
-            <img src="/icons/hdd-rack.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;"
-                class="theme-icon" />
-            <span>@Model.GroupLabel</span>
-        </div>
-        <!-- Action Buttons -->
-        <div class="btn-group">
-
-            <button class="btn btn-danger" @onclick="RemovePoolGroup">
-                <Tooltip Title="Remove Pool" Color="TooltipColor.Info">
-                    <img src="/icons/trash.svg" alt="Remove Pool" style="height: 24px;" class="theme-icon" />
-                </Tooltip>
-            </button>
-
-            <button class="btn btn-secondary" @onclick="RenamePoolGroup">
-                <Tooltip Title="Rename Pool" Color="TooltipColor.Info">
-                    <img src="/icons/pencil-square.svg" alt="Rename Pool" style="height: 24px;" class="theme-icon" />
-                </Tooltip>
-            </button>
-
-            <button class="btn btn-info" @onclick="ShowPoolStatus">
-                <Tooltip Title="Pool Status" Color="TooltipColor.Info">
-                    <img src="/icons/heart-pulse.svg" alt="Pool Status" style="height: 24px;" class="theme-icon" />
-                </Tooltip>
-            </button>
-
-            @if (!Model.PoolEnabled && Model.AllDrivesConnected)
-            {
-                <button class="btn btn-primary" @onclick="MountPool">
-                    <Tooltip Title="Mount Pool" Color="TooltipColor.Info">
-                        <img src="/icons/play.svg" alt="Mount Pool" style="height: 24px;" class="theme-icon" />
-                    </Tooltip>
-                </button>
-            }
-            else if (!Model.AllDrivesConnected)
-            {
-                <button class="btn btn-primary" disabled>
-                    <Tooltip Title="Connect all drives to mount" Color="TooltipColor.Info">
-                        <img src="/icons/play.svg" alt="Connect all drives to mount" style="height: 24px;"
+        <div class="container">
+            <div class="row">
+                <!-- Left Section: Toggle Button, Drive Icon, and Group Label -->
+                <div class="col">
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-link p-0 me-2 chevron-button theme-icon" @onclick="ToggleDetails">
+                            <img src="/icons/chevron-down.svg" alt="Expand Details"
+                                class="chevron-icon @(IsPoolDriveDetailsVisible ? "rotated" : "")"
+                                style="height: 24px;" />
+                        </button>
+                        <!-- Drive Icon -->
+                        <img src="/icons/hdd-rack.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;"
                             class="theme-icon" />
+                        <span>@Model.GroupLabel</span>
+                    </div>
+                </div>
+                <!-- Center Section: Size Information and Progress Bar -->
+                <div class="col">
+                    <div class="text-center mx-4">
+                        <div>@FormatSize(Model.Used) / @FormatSize(Model.Size)</div>
+                        <Progress Class="mb-0 mt-1" Height="5">
+                            <ProgressBar Width="@UsePercentNumeric" />
+                        </Progress>
+                    </div>
+                </div>
+                <!-- Right Section: Action Buttons -->
+                <div class="col">
+                    <Tooltip Title="Remove Pool" Color="TooltipColor.Info">
+                        <button class="btn btn-danger" @onclick="RemovePoolGroup">
+                            <img src="/icons/trash.svg" alt="Remove Pool" style="height: 24px;" class="theme-icon" />
+                        </button>
                     </Tooltip>
-                </button>
-            }
-            else
-            {
-                <button class="btn btn-warning" @onclick="UnmountPool">
-                    <Tooltip Title="Unmount Pool" Color="TooltipColor.Info">
-                        <img src="/icons/eject.svg" alt="Unmount Pool" style="height: 24px;" class="theme-icon" />
+
+                    <Tooltip Title="Rename Pool" Color="TooltipColor.Info">
+                        <button class="btn btn-secondary" @onclick="RenamePoolGroup">
+                            <img src="/icons/pencil-square.svg" alt="Rename Pool" style="height: 24px;"
+                                class="theme-icon" />
+                        </button>
                     </Tooltip>
-                </button>
-            }
+
+                    <Tooltip Title="Pool Status" Color="TooltipColor.Info">
+                        <button class="btn btn-info" @onclick="ShowPoolStatus">
+                            <img src="/icons/heart-pulse.svg" alt="Pool Status" style="height: 24px;"
+                                class="theme-icon" />
+                        </button>
+                    </Tooltip>
+
+                    <Tooltip Title="Mount Pool" Color="TooltipColor.Info">
+                        @if (!Model.PoolEnabled && Model.AllDrivesConnected)
+                        {
+                            <button class="btn btn-primary" @onclick="MountPool">
+                                <img src="/icons/play.svg" alt="Mount Pool" style="height: 24px;" class="theme-icon" />
+                            </button>
+                        }
+                        else if (!Model.AllDrivesConnected)
+                        {
+                            <button class="btn btn-primary" disabled>
+                                <img src="/icons/play.svg" alt="Connect all drives to mount" style="height: 24px;"
+                                    class="theme-icon" />
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-warning" @onclick="UnmountPool">
+                                <img src="/icons/eject.svg" alt="Unmount Pool" style="height: 24px;" class="theme-icon" />
+                            </button>
+                        }
+                    </Tooltip>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -151,6 +165,20 @@
 
     private Modal statusModal = default!;
     private string PoolStatusOutput { get; set; } = string.Empty;
+
+    // Computed property to parse UsePercent string into integer
+    private int UsePercentNumeric
+    {
+        get
+        {
+            if (int.TryParse(Model.UsePercent.TrimEnd('%'), out int percent))
+            {
+                // Ensure the percentage is within 0-100
+                return Math.Clamp(percent, 0, 100);
+            }
+            return 0;
+        }
+    }
 
     private void ToggleDetails()
     {
