@@ -63,9 +63,11 @@
         <div class="row">
             @foreach (var pool in FilteredPoolGroups)
             {
-                <PoolGroupDriveCard @key="pool.PoolGroupId" Model="@pool" OnUnmountPool="@UnmountPool"
-                    OnRemovePoolGroup="@RemovePoolGroup" OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup"
-                    OnForceAddDrive="@ForceAddDrive" />
+                <div class="col-md-12">
+                    <PoolGroupDriveCard @key="pool.PoolGroupId" Model="@pool" OnUnmountPool="@UnmountPool"
+                        OnRemovePoolGroup="@RemovePoolGroup" OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup"
+                        OnForceAddDrive="@ForceAddDrive" />
+                </div>
             }
         </div>
     }
