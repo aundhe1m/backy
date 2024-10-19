@@ -21,16 +21,15 @@
         <!-- Action Buttons -->
         <div>
             <!-- Protect Drive Button with Tooltip -->
-            <Tooltip Title="Protect Drive" Color="TooltipColor.Info">
-                <button type="button" class="btn btn-secondary me-2" @onclick="ProtectDriveHandler"
-                    title="Protect Drive">
+            <Tooltip Title="Protect Drive" Color="TooltipColor.Dark">
+                <button type="button" class="btn btn-warning me-2" @onclick="ProtectDriveHandler" title="Protect Drive">
                     <img src="/icons/shield-lock.svg" alt="Protect Drive" style="height: 24px;" class="theme-icon" />
                 </button>
             </Tooltip>
 
             <!-- Select Drive Button with Tooltip -->
-            <Tooltip Title="Select Drive" Color="TooltipColor.Info">
-                <button type="button" class="btn btn-primary" @onclick="SelectDriveHandler" title="Select Drive">
+            <Tooltip Title="Select Drive" Color="TooltipColor.Dark">
+                <button type="button" class="btn btn-success" @onclick="SelectDriveHandler" title="Select Drive">
                     <img src="@GetSelectIcon()" alt="Select Drive" style="height: 24px;" class="theme-icon" />
                 </button>
             </Tooltip>

@@ -6,8 +6,8 @@
         <div class="container">
             <div class="row">
                 <!-- Left Section: Toggle Button, Drive Icon, and Group Label -->
-                <div class="col">
-                    <div class="d-flex align-items-center">
+                <div class="col d-flex align-items-center" style="padding-left: 0px;">
+                    <div>
                         <button class="btn btn-link p-0 me-2 chevron-button theme-icon" @onclick="ToggleDetails">
                             <img src="/icons/chevron-down.svg" alt="Expand Details"
                                 class="chevron-icon @(IsPoolDriveDetailsVisible ? "rotated" : "")"
@@ -29,28 +29,31 @@
                     </div>
                 </div>
                 <!-- Right Section: Action Buttons -->
-                <div class="col">
-                    <Tooltip Title="Remove Pool" Color="TooltipColor.Info">
+                <div class="col d-inline-flex align-items-center justify-content-end" style="padding-right: 0px;">
+                    <Tooltip Title="Remove Pool" Color="TooltipColor.Dark" style="padding-left: 12px;">
                         <button class="btn btn-danger" @onclick="RemovePoolGroup">
                             <img src="/icons/trash.svg" alt="Remove Pool" style="height: 24px;" class="theme-icon" />
                         </button>
                     </Tooltip>
 
-                    <Tooltip Title="Rename Pool" Color="TooltipColor.Info">
-                        <button class="btn btn-secondary" @onclick="RenamePoolGroup">
-                            <img src="/icons/pencil-square.svg" alt="Rename Pool" style="height: 24px;"
-                                class="theme-icon" />
-                        </button>
+                    <Tooltip Title="Pool Status" Color="TooltipColor.Dark" style="padding-left: 12px;">
+                        @if (!Model.PoolEnabled)
+                        {
+                            <button class="btn btn-info" disabled>
+                                <img src="/icons/heart-pulse.svg" alt="Pool Status" style="height: 24px;"
+                                    class="theme-icon" />
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-info" @onclick="ShowPoolStatus">
+                                <img src="/icons/heart-pulse.svg" alt="Pool Status" style="height: 24px;"
+                                    class="theme-icon" />
+                            </button>
+                        }
                     </Tooltip>
 
-                    <Tooltip Title="Pool Status" Color="TooltipColor.Info">
-                        <button class="btn btn-info" @onclick="ShowPoolStatus">
-                            <img src="/icons/heart-pulse.svg" alt="Pool Status" style="height: 24px;"
-                                class="theme-icon" />
-                        </button>
-                    </Tooltip>
-
-                    <Tooltip Title="Mount Pool" Color="TooltipColor.Info">
+                    <Tooltip Title="Mount Pool" Color="TooltipColor.Dark" style="padding-left: 12px;">
                         @if (!Model.PoolEnabled && Model.AllDrivesConnected)
                         {
                             <button class="btn btn-primary" @onclick="MountPool">
@@ -66,7 +69,7 @@
                         }
                         else
                         {
-                            <button class="btn btn-warning" @onclick="UnmountPool">
+                            <button class="btn btn-secondary" @onclick="UnmountPool">
                                 <img src="/icons/eject.svg" alt="Unmount Pool" style="height: 24px;" class="theme-icon" />
                             </button>
                         }
@@ -80,10 +83,29 @@
     @if (IsPoolDriveDetailsVisible)
     {
         <div class="card-body">
+            <!-- Pool Drives -->
+            @foreach (var drive in Model.Drives)
+            {
+                <PoolGroupDriveItem @key="drive.Id" Model="@drive" OnForceAdd="@ForceAddDrive" />
+            }
+
             <!-- Drive Details Table -->
             <div class="table-responsive">
                 <table class="table table-striped">
                     <tbody>
+                        <tr>
+                            <th>Pool Name</th>
+                            <td>
+                                <span>
+                                    @Model.GroupLabel
+                                    <Tooltip Title="Rename Pool" Color="TooltipColor.Dark" @onclick="RenamePoolGroup"
+                                        role="button">
+                                        <img src="/icons/pencil-square.svg" alt="Rename Pool" style="height: 20px;"
+                                            class="theme-icon" />
+                                    </Tooltip>
+                                </span>
+                            </td>
+                        </tr>
                         <tr>
                             <th>State</th>
                             <td>@(Model.PoolEnabled ? "Enabled" : "Disabled")</td>
@@ -115,12 +137,6 @@
                     </tbody>
                 </table>
             </div>
-
-            <!-- Pool Drives -->
-            @foreach (var drive in Model.Drives)
-            {
-                <PoolGroupDriveItem @key="drive.Id" Model="@drive" OnForceAdd="@ForceAddDrive" />
-            }
         </div>
     }
 
