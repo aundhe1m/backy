@@ -56,7 +56,7 @@
                         </tr>
                         <tr>
                             <th>Size</th>
-                            <td>@FormatSize(Model.Size)</td>
+                            <td>@SizeFormatter.FormatSize(Model.Size)</td>
                         </tr>
                     </tbody>
                 </table>
@@ -100,26 +100,5 @@
     private async Task ForceAddDrive()
     {
         await OnForceAdd.InvokeAsync(Model);
-    }
-
-    // ---------------------------
-    // Helper Methods
-    // ---------------------------
-
-    /// <summary>
-    /// Formats the size from bytes to a human-readable string.
-    /// </summary>
-    /// <param name="sizeInBytes">Size in bytes.</param>
-    /// <returns>Formatted size string.</returns>
-    private string FormatSize(long sizeInBytes)
-    {
-        if (sizeInBytes < 1024)
-            return $"{sizeInBytes} B";
-        else if (sizeInBytes < 1024 * 1024)
-            return $"{(sizeInBytes / 1024.0):F2} KB";
-        else if (sizeInBytes < 1024 * 1024 * 1024)
-            return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
-        else
-            return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
     }
 }

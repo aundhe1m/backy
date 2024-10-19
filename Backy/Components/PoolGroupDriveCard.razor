@@ -25,7 +25,7 @@
                 <!-- Center Section: Size Information and Progress Bar -->
                 <div class="col">
                     <div class="text-center mx-4">
-                        <div>@FormatSize(Model.Used) / @FormatSize(Model.Size)</div>
+                        <div>@SizeFormatter.FormatSize(Model.Used) / @SizeFormatter.FormatSize(Model.Size)</div>
                         <Progress Class="mb-0 mt-1" Height="5">
                             <ProgressBar Width="@UsePercentNumeric" />
                         </Progress>
@@ -126,15 +126,15 @@
                         </tr>
                         <tr>
                             <th>Size</th>
-                            <td>@FormatSize(Model.Size)</td>
+                            <td>@SizeFormatter.FormatSize(Model.Size)</td>
                         </tr>
                         <tr>
                             <th>Used</th>
-                            <td>@FormatSize(Model.Used)</td>
+                            <td>@SizeFormatter.FormatSize(Model.Used)</td>
                         </tr>
                         <tr>
                             <th>Available</th>
-                            <td>@FormatSize(Model.Available)</td>
+                            <td>@SizeFormatter.FormatSize(Model.Available)</td>
                         </tr>
                         <tr>
                             <th>Use Percent</th>
@@ -297,26 +297,5 @@
     private async Task CloseStatusModal()
     {
         await statusModal.HideAsync();
-    }
-
-    // ---------------------------
-    // Helper Methods
-    // ---------------------------
-
-    /// <summary>
-    /// Formats the size from bytes to a human-readable string.
-    /// </summary>
-    /// <param name="sizeInBytes">Size in bytes.</param>
-    /// <returns>Formatted size string.</returns>
-    private string FormatSize(long sizeInBytes)
-    {
-        if (sizeInBytes < 1024)
-            return $"{sizeInBytes} B";
-        else if (sizeInBytes < 1024 * 1024)
-            return $"{(sizeInBytes / 1024.0):F2} KB";
-        else if (sizeInBytes < 1024 * 1024 * 1024)
-            return $"{(sizeInBytes / (1024.0 * 1024.0)):F2} MB";
-        else
-            return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
     }
 }
