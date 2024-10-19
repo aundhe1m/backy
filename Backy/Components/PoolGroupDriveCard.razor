@@ -143,9 +143,11 @@
 </div>
 
 <!-- Status Modal -->
-<Modal @ref="statusModal" Title="Pool Status">
+<Modal @ref="statusModal" Title="Pool Status" Size="ModalSize.Large">
     <BodyTemplate>
-        <pre>@PoolStatusOutput</pre>
+        <div class="console-output">
+            <pre>@string.Join("\n", PoolStatusOutput)<br></pre>
+        </div>
     </BodyTemplate>
     <FooterTemplate>
         <Button Color="ButtonColor.Secondary" @onclick="CloseStatusModal">Close</Button>
