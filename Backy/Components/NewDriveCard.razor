@@ -5,16 +5,22 @@
 @inject ILogger<NewDriveCard> Logger
 @inject NavigationManager Navigation
 
+<!-- 
+    NewDriveCard Component
+    Represents a card displaying information about a new drive, with options to protect or select the drive.
+-->
+
 <div class="card drive-card mb-3">
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center">
+            <!-- Toggle Details Button -->
             <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
                     class="theme-icon chevron-icon @(IsNewDriveDetailsVisible ? "rotated" : "")"
                     style="height: 24px;" />
             </button>
-            <!-- Drive Icon -->
+            <!-- Drive Icon and Name -->
             <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" class="theme-icon" />
             <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
         </div>
@@ -36,7 +42,7 @@
         </div>
     </div>
 
-    <!-- Drive Details -->
+    <!-- Drive Details Section -->
     @if (IsNewDriveDetailsVisible)
     {
         <div class="card-body">
@@ -63,6 +69,8 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Partitions Section -->
             @if (Model.Partitions != null && Model.Partitions.Any())
             {
                 <h5>Partitions</h5>
@@ -72,18 +80,20 @@
                         <!-- Partition Card Header -->
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <div class="d-flex align-items-center">
+                                <!-- Toggle Partition Details Button -->
                                 <button class="btn btn-link p-0 me-2 chevron-button"
                                     @onclick="() => TogglePartitionDetails(partition.Name!)">
                                     <img src="/icons/chevron-down.svg" alt="Expand Details"
                                         class="theme-icon chevron-icon @(IsPartitionDetailsVisible(partition.Name!) ? "rotated" : "")"
                                         style="height: 24px;" />
                                 </button>
-                                <!-- Partition Icon -->
+                                <!-- Partition Icon and Name -->
                                 <img src="/icons/pie-chart.svg" alt="Partition" style="height: 24px; margin-right: 8px;"
                                     class="theme-icon" />
                                 <span>@partition.Name</span>
                             </div>
                         </div>
+
                         <!-- Partition Details -->
                         @if (IsPartitionDetailsVisible(partition.Name!))
                         {
@@ -119,9 +129,10 @@
     }
 </div>
 
-
 @code {
-    [Inject] protected ToastService ToastService { get; set; } = default!;
+    // ---------------------------
+    // Parameters
+    // ---------------------------
 
     [Parameter, EditorRequired]
     public Drive Model { get; set; } = default!;
@@ -135,15 +146,37 @@
     [Parameter]
     public bool IsSelected { get; set; } = false;
 
+    // ---------------------------
+    // Injected Services
+    // ---------------------------
+
+    [Inject]
+    protected ToastService ToastService { get; set; } = default!;
+
+    // ---------------------------
+    // Private Fields
+    // ---------------------------
+
     private bool IsNewDriveDetailsVisible { get; set; } = false;
     private HashSet<string> expandedPartitions = new HashSet<string>();
 
+    // ---------------------------
+    // Event Handlers
+    // ---------------------------
+
+    /// <summary>
+    /// Toggles the visibility of the drive details section.
+    /// </summary>
     private void ToggleDetails()
     {
         Logger.LogInformation($"Toggle button clicked for drive: {Model.Serial}");
         IsNewDriveDetailsVisible = !IsNewDriveDetailsVisible;
     }
 
+    /// <summary>
+    /// Toggles the visibility of the partition details section.
+    /// </summary>
+    /// <param name="partitionName">The name of the partition to toggle.</param>
     private void TogglePartitionDetails(string partitionName)
     {
         if (expandedPartitions.Contains(partitionName))
@@ -152,11 +185,19 @@
             expandedPartitions.Add(partitionName);
     }
 
+    /// <summary>
+    /// Checks if the partition details are visible.
+    /// </summary>
+    /// <param name="partitionName">The name of the partition.</param>
+    /// <returns>True if visible; otherwise, false.</returns>
     private bool IsPartitionDetailsVisible(string partitionName)
     {
         return expandedPartitions.Contains(partitionName);
     }
 
+    /// <summary>
+    /// Handles the Protect Drive button click event.
+    /// </summary>
     private async Task ProtectDriveHandler()
     {
         if (!string.IsNullOrEmpty(Model.Serial))
@@ -165,12 +206,19 @@
         }
     }
 
+    /// <summary>
+    /// Invokes the OnProtect callback to protect the drive.
+    /// </summary>
+    /// <param name="serial">The serial number of the drive.</param>
     private async Task ProtectDrive(string serial)
     {
         Logger.LogInformation($"Protect button clicked for drive: {serial}");
         await OnProtect.InvokeAsync(serial);
     }
 
+    /// <summary>
+    /// Handles the Select Drive button click event.
+    /// </summary>
     private async Task SelectDriveHandler()
     {
         if (!string.IsNullOrEmpty(Model.Serial))
@@ -179,12 +227,25 @@
         }
     }
 
+    /// <summary>
+    /// Invokes the OnSelect callback to select or deselect the drive.
+    /// </summary>
+    /// <param name="serial">The serial number of the drive.</param>
     private async Task SelectDrive(string serial)
     {
         Logger.LogInformation($"Select button clicked for drive: {serial}");
         await OnSelect.InvokeAsync(serial);
     }
 
+    // ---------------------------
+    // Helper Methods
+    // ---------------------------
+
+    /// <summary>
+    /// Formats the size from bytes to a human-readable string.
+    /// </summary>
+    /// <param name="sizeInBytes">Size in bytes.</param>
+    /// <returns>Formatted size string.</returns>
     private string FormatSize(long sizeInBytes)
     {
         if (sizeInBytes < 1024)
@@ -197,20 +258,10 @@
             return $"{(sizeInBytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
     }
 
-    private string GetCardHeaderStyle()
-    {
-        if (IsSelected)
-        {
-            // Slight blue tint for selected drives
-            return "background-color: #007bff; color:white;";
-        }
-        else
-        {
-            // Default style
-            return "background-color: #343a40; color:white;";
-        }
-    }
-
+    /// <summary>
+    /// Determines the icon to display based on the selection state.
+    /// </summary>
+    /// <returns>Path to the select icon.</returns>
     private string GetSelectIcon()
     {
         return IsSelected ? "/icons/plus-square-fill.svg" : "/icons/plus-square.svg";

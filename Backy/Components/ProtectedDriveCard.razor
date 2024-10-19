@@ -1,28 +1,38 @@
 @using Backy.Models
 @using Microsoft.AspNetCore.Components
 
+<!-- 
+    ProtectedDriveCard Component
+    Represents a card displaying information about a protected drive, with options to unprotect the drive.
+-->
 <div class="card drive-card protected-drive-card mb-3">
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center">
+            <!-- Protected Drive Icon and Label -->
             <img src="/icons/shield-lock.svg" alt="Protected Drive Icon" style="height: 24px; margin-right: 8px;"
                 class="theme-icon" />
             <span>@(string.IsNullOrEmpty(Model.Name) ? "Unnamed Drive" : Model.Name)</span>
         </div>
-        <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
-            <img src="/icons/chevron-down.svg" alt="Expand Details"
-                class="theme-icon chevron-icon @(IsProtectedDriveDetailsVisible ? "rotated" : "")"
-                style="height: 24px;" />
-        </button>
-        <!-- Unprotect Button -->
-        <Tooltip Title="Unprotect Drive" Color="TooltipColor.Dark">
-            <button type="button" class="btn btn-primary" @onclick="() => UnprotectDrive(Model.Serial)"
-                title="Unprotect Drive">
-                <img src="/icons/shield-slash.svg" alt="Unprotect Drive" style="height: 24px;" class="theme-icon" />
+        <!-- Expand/Collapse Button and Unprotect Button -->
+        <div class="d-flex align-items-center">
+            <!-- Expand/Collapse Button -->
+            <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
+                <img src="/icons/chevron-down.svg" alt="Expand Details"
+                    class="theme-icon chevron-icon @(IsProtectedDriveDetailsVisible ? "rotated" : "")"
+                    style="height: 24px;" />
             </button>
-        </Tooltip>
+            <!-- Unprotect Drive Button with Tooltip -->
+            <Tooltip Title="Unprotect Drive" Color="TooltipColor.Dark">
+                <button type="button" class="btn btn-primary" @onclick="() => UnprotectDrive(Model.Serial)"
+                    title="Unprotect Drive">
+                    <img src="/icons/shield-slash.svg" alt="Unprotect Drive" style="height: 24px;" class="theme-icon" />
+                </button>
+            </Tooltip>
+        </div>
     </div>
-    <!-- Drive Details -->
+
+    <!-- Drive Details Section -->
     @if (IsProtectedDriveDetailsVisible)
     {
         <div class="card-body">
@@ -50,19 +60,38 @@
 </div>
 
 @code {
+    // ---------------------------
+    // Parameters
+    // ---------------------------
+
     [Parameter, EditorRequired]
     public ProtectedDrive Model { get; set; } = default!;
-
-    private bool IsProtectedDriveDetailsVisible { get; set; } = false;
 
     [Parameter]
     public EventCallback<string> OnUnprotect { get; set; }
 
+    // ---------------------------
+    // Private Fields
+    // ---------------------------
+
+    private bool IsProtectedDriveDetailsVisible { get; set; } = false;
+
+    // ---------------------------
+    // Event Handlers
+    // ---------------------------
+
+    /// <summary>
+    /// Toggles the visibility of the protected drive details section.
+    /// </summary>
     private void ToggleDetails()
     {
         IsProtectedDriveDetailsVisible = !IsProtectedDriveDetailsVisible;
     }
 
+    /// <summary>
+    /// Handles the Unprotect Drive button click event.
+    /// </summary>
+    /// <param name="serial">The serial number of the drive to unprotect.</param>
     private async Task UnprotectDrive(string serial)
     {
         await OnUnprotect.InvokeAsync(serial);

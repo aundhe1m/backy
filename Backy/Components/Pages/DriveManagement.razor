@@ -10,8 +10,10 @@
 
 <PageTitle>Drive Management - Backy</PageTitle>
 
+<!-- Header Section: Contains the page title, search bar, and action buttons (Refresh and Create Pool Group) -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Drive Management</h1>
+
     <!-- Search Bar -->
     <div class="input-group" style="max-width: 400px;">
         <input type="text" class="form-control search-bar" placeholder="Search drives..." @bind="searchQuery">
@@ -19,14 +21,17 @@
             <img src="/icons/search.svg" alt="Search Icon" class="search-icon search-bar theme-icon">
         </span>
     </div>
-    <!-- Refresh Button / Create Pool -->
+
+    <!-- Refresh Button and Create Pool Group Button -->
     <span>
+        <!-- Refresh Button -->
         <Tooltip Title="Refresh" Color="TooltipColor.Dark">
             <button class="btn btn-info" @onclick="LoadDrives">
                 <img src="/icons/arrow-clockwise.svg" alt="Refresh" style="height: 24px;" class="theme-icon" />
             </button>
         </Tooltip>
 
+        <!-- Create Pool Group Button -->
         <Tooltip Title="Create Pool Group" Color="TooltipColor.Dark">
             @if (SelectedDrives != null && SelectedDrives.Any())
             {
@@ -45,7 +50,8 @@
     </span>
 </div>
 
-<!-- New Drives -->
+<!-- Content Section: Displays New Drives, Pool Groups, and Protected Drives -->
+<!-- New Drives Section -->
 <div class="drive-management-container">
     <h2 class="section-title">New Drives</h2>
     @if (FilteredNewDrives != null && FilteredNewDrives.Any())
@@ -66,7 +72,7 @@
     }
 </div>
 
-<!-- Pool Groups -->
+<!-- Pool Groups Section -->
 <div class="drive-management-container">
     <h2 class="section-title">Pool Groups</h2>
 
@@ -85,7 +91,7 @@
     }
 </div>
 
-<!-- Protected Drives -->
+<!-- Protected Drives Section -->
 <div class="drive-management-container">
     <h2 class="section-title">Protected Drives</h2>
     @if (ProtectedDrives != null && ProtectedDrives.Any())
@@ -101,6 +107,10 @@
     }
 </div>
 
+<!-- 
+    Modals Section: Contains modals for Creating Pools, Renaming Pools, and Displaying Process Lists
+-->
+
 <!-- Create Pool Modal -->
 <Modal @ref="createPoolModal" Title="Create Pool" Size="ModalSize.Large">
     <BodyTemplate>
@@ -110,10 +120,12 @@
         }
         else if (CreatePoolResultMessage != null)
         {
+            <!-- Display Command Outputs -->
             <div class="console-output">
-                <pre>@string.Join("\n", CommandOutputs)<br></pre>
-            </div>
+            <pre>@string.Join("\n", CommandOutputs)<br></pre>
+        </div>
             <br>
+            <!-- Success or Error Alert -->
             @if (CreatePoolResultSuccess == true)
             {
                 <Alert Color="AlertColor.Success">
@@ -145,6 +157,7 @@
         }
         else
         {
+            <!-- Create Pool Form -->
             <EditForm id="createPoolForm" EditContext="@createPoolEditContext" OnValidSubmit="HandleCreatePool">
                 <DataAnnotationsValidator />
                 <ValidationSummary />
@@ -164,7 +177,7 @@
                     </div>
                 </div>
 
-                <!-- Drive Labels using PoolDriveLabelCard -->
+                <!-- Drive Labels Section using PoolDriveLabelCard Component -->
                 <div class="drive-labels-section">
                     <h5>Drive Labels</h5>
                     @foreach (var drive in SelectedDrives ?? Enumerable.Empty<Drive>())
@@ -193,7 +206,6 @@
         {
             <Button Type="ButtonType.Button" Color="ButtonColor.Secondary" @onclick="CloseCreatePoolModal">Cancel</Button>
             <Button Type="ButtonType.Submit" Color="ButtonColor.Primary" Form="createPoolForm">Create Pool</Button>
-
         }
     </FooterTemplate>
 </Modal>
@@ -207,6 +219,7 @@
         }
         else if (RenameResultMessage != null)
         {
+            <!-- Success or Error Alert -->
             @if (RenameResultSuccess == true)
             {
                 <Alert Color="AlertColor.Success">
@@ -238,9 +251,12 @@
         }
         else
         {
+            <!-- Rename Pool Form -->
             <EditForm id="renamePoolForm" EditContext="@renamePoolEditContext" OnValidSubmit="HandleRenamePool">
                 <DataAnnotationsValidator />
                 <ValidationSummary />
+
+                <!-- New Pool Label Input with Icon -->
                 <div class="mb-3">
                     <h5>New Pool Label</h5>
                     <div class="d-flex align-items-center">
@@ -254,7 +270,7 @@
                     </div>
                 </div>
 
-                <!-- Drive Labels using PoolDriveLabelCard -->
+                <!-- Drive Labels Section using PoolDriveLabelCard Component -->
                 <div class="drive-labels-section">
                     <h5>Drive Labels</h5>
                     @foreach (var driveLabel in RenamePoolRequest.DriveLabels)
@@ -342,12 +358,15 @@
 </Modal>
 
 @code {
+    // ---------------------------
+    // Properties
+    // ---------------------------
     private List<PoolGroup> PoolGroups { get; set; } = new List<PoolGroup>();
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
     private List<ProtectedDrive> ProtectedDrives { get; set; } = new List<ProtectedDrive>();
     private List<Drive> SelectedDrives { get; set; } = new List<Drive>();
 
-    // Updated CreatePoolRequest to initialize DriveLabels
+    // Create Pool Request
     private CreatePoolRequest CreatePoolRequest { get; set; } = new CreatePoolRequest
         {
             PoolLabel = string.Empty,
@@ -369,22 +388,34 @@
     private string? CreatePoolResultMessage { get; set; } = null;
     private bool? CreatePoolResultSuccess { get; set; } = null;
 
+    // Modal References
     private Modal createPoolModal = default!;
     private Modal renamePoolModal = default!;
-
     private Modal processListModal = default!;
     private List<ProcessInfo>? ProcessList { get; set; } = null;
     private Guid? currentPoolGroupGuidForUnmount = null;
 
+    // Rename Pool States
     private bool IsRenameInProgress { get; set; } = false;
     private string? RenameResultMessage { get; set; } = null;
     private bool? RenameResultSuccess { get; set; } = null;
     private List<string> RenameCommandOutputs { get; set; } = new List<string>();
 
+    // Pool Creation State
     private bool IsPoolCreationInProgress { get; set; } = false;
 
+    // Search Query
     private string searchQuery = string.Empty;
 
+    // ---------------------------
+    // Helper Methods
+    // ---------------------------
+
+    /// <summary>
+    /// Retrieves a drive by its ID from the pool groups.
+    /// </summary>
+    /// <param name="driveId">The ID of the drive.</param>
+    /// <returns>The <see cref="Drive"/> object if found; otherwise, null.</returns>
     private Drive? GetDriveById(int driveId)
     {
         foreach (var poolGroup in PoolGroups)
@@ -396,8 +427,19 @@
         return null;
     }
 
+    /// <summary>
+    /// Filters new drives based on the search query.
+    /// </summary>
     private IEnumerable<Drive> FilteredNewDrives => NewDrives.Where(d => IsDriveMatch(d));
+
+    /// <summary>
+    /// Filters pool groups based on the search query.
+    /// </summary>
     private IEnumerable<PoolGroup> FilteredPoolGroups => PoolGroups.Where(pg => IsPoolGroupMatch(pg));
+
+    /// <summary>
+    /// Filters protected drives based on the search query.
+    /// </summary>
     private IEnumerable<ProtectedDrive> FilteredProtectedDrives => ProtectedDrives.Where(pd => IsDriveMatch(new Drive
         {
             Name = pd.Name,
@@ -407,6 +449,11 @@
             Serial = pd.Serial
         }));
 
+    /// <summary>
+    /// Determines if a drive matches the current search query.
+    /// </summary>
+    /// <param name="drive">The drive to check.</param>
+    /// <returns>True if the drive matches; otherwise, false.</returns>
     private bool IsDriveMatch(Drive drive)
     {
         if (string.IsNullOrWhiteSpace(searchQuery))
@@ -426,6 +473,11 @@
         return match;
     }
 
+    /// <summary>
+    /// Determines if a pool group matches the current search query.
+    /// </summary>
+    /// <param name="poolGroup">The pool group to check.</param>
+    /// <returns>True if the pool group matches; otherwise, false.</returns>
     private bool IsPoolGroupMatch(PoolGroup poolGroup)
     {
         if (string.IsNullOrWhiteSpace(searchQuery))
@@ -441,6 +493,10 @@
             }));
     }
 
+    // ---------------------------
+    // Lifecycle Methods
+    // ---------------------------
+
     protected override async Task OnInitializedAsync()
     {
         createPoolEditContext = new EditContext(CreatePoolRequest);
@@ -449,6 +505,13 @@
         await LoadDrives();
     }
 
+    // ---------------------------
+    // Data Loading and Organization
+    // ---------------------------
+
+    /// <summary>
+    /// Loads drives and organizes them into new drives, pool groups, and protected drives.
+    /// </summary>
     private async Task LoadDrives()
     {
         try
@@ -467,6 +530,10 @@
         }
     }
 
+    /// <summary>
+    /// Organizes drives into new drives, pool groups, and protected drives.
+    /// Updates the database if any changes are detected.
+    /// </summary>
     private async Task OrganizeDrives()
     {
         var activeDrives = await DriveService.UpdateActiveDrivesAsync();
@@ -483,6 +550,7 @@
         // Update connected status and properties for drives in pools
         foreach (var pool in PoolGroups)
         {
+            // Check for duplicate drive IDs within the pool
             var duplicateDriveIds = pool.Drives
             .GroupBy(d => d.Id)
             .Where(g => g.Count() > 1)
@@ -508,7 +576,7 @@
                 var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == drive.Serial);
                 if (activeDrive != null)
                 {
-                    // Update properties
+                    // Update properties if they have changed
                     if (!drive.IsConnected || drive.Vendor != activeDrive.Vendor || drive.Model != activeDrive.Model ||
                     drive.IsMounted != activeDrive.IsMounted || drive.DevPath != activeDrive.IdLink ||
                     drive.Size != activeDrive.Size)
@@ -524,6 +592,7 @@
                 }
                 else
                 {
+                    // Mark drive as disconnected if not found in active drives
                     if (drive.IsConnected)
                     {
                         drive.IsConnected = false;
@@ -563,7 +632,7 @@
             }
         }
 
-        // NewDrives: drives that are active but not in any pool and not protected
+        // Identify New Drives: Active drives not in any pool and not protected
         var pooledDriveSerials = PoolGroups.SelectMany(p => p.Drives).Select(d => d.Serial).ToHashSet();
         var protectedSerials = ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
 
@@ -583,6 +652,14 @@
         }
     }
 
+    // ---------------------------
+    // Event Handlers
+    // ---------------------------
+
+    /// <summary>
+    /// Protects a drive by its serial number.
+    /// </summary>
+    /// <param name="serial">The serial number of the drive to protect.</param>
     private async Task ProtectDrive(string serial)
     {
         try
@@ -608,6 +685,10 @@
         }
     }
 
+    /// <summary>
+    /// Unprotects a drive by its serial number.
+    /// </summary>
+    /// <param name="serial">The serial number of the drive to unprotect.</param>
     private async Task UnprotectDrive(string serial)
     {
         try
@@ -633,6 +714,10 @@
         }
     }
 
+    /// <summary>
+    /// Toggles the selection of a drive based on its serial number.
+    /// </summary>
+    /// <param name="serial">The serial number of the drive to select or deselect.</param>
     private void SelectDrive(string serial)
     {
         Logger.LogInformation($"Selecting drive with serial: {serial}");
@@ -660,6 +745,11 @@
         }
     }
 
+    /// <summary>
+    /// Checks if a drive is selected based on its serial number.
+    /// </summary>
+    /// <param name="serial">The serial number of the drive.</param>
+    /// <returns>True if the drive is selected; otherwise, false.</returns>
     private bool IsDriveSelected(string? serial)
     {
         if (serial == null)
@@ -667,11 +757,14 @@
         return SelectedDrives.Any(d => d.Serial == serial);
     }
 
+    /// <summary>
+    /// Opens the Create Pool modal and initializes the create pool request.
+    /// </summary>
     private async Task OpenCreatePoolModal()
     {
         Logger.LogInformation("Opening Create Pool modal.");
 
-        // Create a new CreatePoolRequest instance with selected drives
+        // Initialize CreatePoolRequest with selected drives
         CreatePoolRequest = new CreatePoolRequest
             {
                 PoolLabel = "",
@@ -679,19 +772,22 @@
                 DriveLabels = SelectedDrives.ToDictionary(d => d.Serial!, d => d.Label ?? "")
             };
 
-        // Initialize CustomDriveLabels as empty since labels are pre-populated
+        // Clear any custom drive labels
         CustomDriveLabels.Clear();
 
         // Pre-populate drive labels with "PoolLabel-n"
         UpdateDriveLabelsBasedOnPoolLabel();
 
-        // Reassign the EditContext to the new CreatePoolRequest instance
+        // Reinitialize the EditContext
         createPoolEditContext = new EditContext(CreatePoolRequest);
 
         // Show the modal
         await createPoolModal.ShowAsync();
     }
 
+    /// <summary>
+    /// Closes the Create Pool modal and resets the create pool request.
+    /// </summary>
     private async Task CloseCreatePoolModal()
     {
         // Reset the result message
@@ -711,7 +807,7 @@
                 DriveLabels = new Dictionary<string, string>()
             };
 
-        // Reassign the EditContext to the new CreatePoolRequest instance
+        // Reinitialize the EditContext
         createPoolEditContext = new EditContext(CreatePoolRequest);
 
         // Trigger UI update
@@ -721,6 +817,9 @@
         await LoadDrives();
     }
 
+    /// <summary>
+    /// Handles the submission of the Create Pool form.
+    /// </summary>
     private async Task HandleCreatePool()
     {
         Logger.LogInformation("Creating pool...");
@@ -730,6 +829,7 @@
             CommandOutputs.Clear();
             CreatePoolResultMessage = null;
             CreatePoolResultSuccess = null;
+
             var (success, message, outputs) = await DriveService.CreatePoolAsync(CreatePoolRequest);
             CommandOutputs.AddRange(outputs);
             CreatePoolResultMessage = $"{message}";
@@ -757,6 +857,10 @@
         }
     }
 
+    /// <summary>
+    /// Unmounts a pool group by its instance.
+    /// </summary>
+    /// <param name="poolGroup">The pool group to unmount.</param>
     private async Task UnmountPool(PoolGroup poolGroup)
     {
         try
@@ -795,6 +899,9 @@
         }
     }
 
+    /// <summary>
+    /// Kills the listed processes and retries unmounting the pool.
+    /// </summary>
     private async Task KillProcesses()
     {
         if (currentPoolGroupGuidForUnmount == null)
@@ -847,6 +954,9 @@
         }
     }
 
+    /// <summary>
+    /// Closes the Process List modal.
+    /// </summary>
     private async Task CloseProcessListModal()
     {
         await processListModal.HideAsync();
@@ -854,6 +964,10 @@
         currentPoolGroupGuidForUnmount = null;
     }
 
+    /// <summary>
+    /// Removes a pool group by its instance.
+    /// </summary>
+    /// <param name="poolGroup">The pool group to remove.</param>
     private async Task RemovePoolGroup(PoolGroup poolGroup)
     {
         try
@@ -881,6 +995,10 @@
         }
     }
 
+    /// <summary>
+    /// Mounts a pool group by its instance.
+    /// </summary>
+    /// <param name="poolGroup">The pool group to mount.</param>
     private async Task MountPool(PoolGroup poolGroup)
     {
         try
@@ -908,6 +1026,10 @@
         }
     }
 
+    /// <summary>
+    /// Opens the Rename Pool modal and initializes the rename pool request.
+    /// </summary>
+    /// <param name="poolGroup">The pool group to rename.</param>
     private async Task RenamePoolGroup(PoolGroup poolGroup)
     {
         Logger.LogInformation($"Renaming pool group: {poolGroup.GroupLabel}");
@@ -926,6 +1048,11 @@
         await renamePoolModal.ShowAsync();
     }
 
+    /// <summary>
+    /// Handles the change event for drive labels in the rename pool form.
+    /// </summary>
+    /// <param name="driveId">The ID of the drive.</param>
+    /// <param name="newLabel">The new label for the drive.</param>
     private Task OnRenameDriveLabelChanged(int driveId, string newLabel)
     {
         var driveLabel = RenamePoolRequest.DriveLabels.FirstOrDefault(dl => dl.DriveId == driveId);
@@ -935,6 +1062,11 @@
         }
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Forcefully adds a drive to a pool group.
+    /// </summary>
+    /// <param name="drive">The drive to forcefully add.</param>
     private async Task ForceAddDrive(PoolDrive drive)
     {
         try
@@ -970,6 +1102,9 @@
         }
     }
 
+    /// <summary>
+    /// Closes the Rename Pool modal and resets the rename pool request.
+    /// </summary>
     private async Task CloseRenamePoolModal()
     {
         PoolToRename = new PoolGroup(); // Initialize to avoid null reference
@@ -981,6 +1116,9 @@
         await renamePoolModal.HideAsync();
     }
 
+    /// <summary>
+    /// Handles the submission of the Rename Pool form.
+    /// </summary>
     private async Task HandleRenamePool()
     {
         Logger.LogInformation("Renaming pool...");
@@ -1018,6 +1156,10 @@
         }
     }
 
+    // ---------------------------
+    // Drive Selection and Pool Creation Helpers
+    // ---------------------------
+
     /// <summary>
     /// Updates drive labels based on the current pool label.
     /// Only updates labels that have not been manually set.
@@ -1042,6 +1184,7 @@
     /// Event handler when the pool label is changed.
     /// Updates drive labels accordingly.
     /// </summary>
+    /// <param name="e">The change event arguments.</param>
     private async Task HandlePoolLabelChanged(ChangeEventArgs e)
     {
         string newPoolLabel = e.Value?.ToString() ?? string.Empty;
@@ -1054,6 +1197,8 @@
     /// Event handler when a drive label is changed manually.
     /// Marks the drive label as custom to prevent automatic overrides.
     /// </summary>
+    /// <param name="serial">The serial number of the drive.</param>
+    /// <param name="newLabel">The new label for the drive.</param>
     private Task OnDriveLabelChanged(string serial, string newLabel)
     {
         if (!string.IsNullOrWhiteSpace(newLabel))

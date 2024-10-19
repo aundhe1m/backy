@@ -7,9 +7,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Backy.Services
 {
+    /// <summary>
+    /// Defines the contract for drive-related operations.
+    /// </summary>
     public interface IDriveService
     {
-        Task<List<Drive>> UpdateActiveDrivesAsync();
         string FetchPoolStatus(int poolGroupId);
         (long Size, long Used, long Available, string UsePercent) GetMountPointSize(string mountPoint);
         Task<(bool Success, string Message)> ProtectDriveAsync(string serial);
@@ -22,20 +24,44 @@ namespace Backy.Services
         Task<(bool Success, string Message, string Output)> GetPoolDetailAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> ForceAddDriveAsync(int driveId, Guid poolGroupGuid, string devPath);
         Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(KillProcessesRequest request);
+        Task<List<Drive>> UpdateActiveDrivesAsync();
         Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint);
     }
 
+    /// <summary>
+    /// Implements drive-related operations, including managing pools and handling drive protection.
+    /// </summary>
     public class DriveService : IDriveService
     {
+        // ---------------------------
+        // Private Fields
+        // ---------------------------
         private readonly ApplicationDbContext _context;
         private readonly ILogger<DriveService> _logger;
 
+        // ---------------------------
+        // Constructor
+        // ---------------------------
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="DriveService"/> class.
+        /// </summary>
+        /// <param name="context">The application database context.</param>
+        /// <param name="logger">The logger instance.</param>
         public DriveService(ApplicationDbContext context, ILogger<DriveService> logger)
         {
             _context = context;
             _logger = logger;
         }
 
+        // ---------------------------
+        // Public Methods
+        // ---------------------------
+
+        /// <summary>
+        /// Updates the list of active drives by executing the 'lsblk' command and parsing its output.
+        /// </summary>
+        /// <returns>A list of active <see cref="Drive"/> objects.</returns>
         public async Task<List<Drive>> UpdateActiveDrivesAsync()
         {
             var activeDrives = new List<Drive>();
@@ -119,7 +145,11 @@ namespace Backy.Services
             return activeDrives;
         }
 
-
+        /// <summary>
+        /// Fetches the status of a pool group based on its ID by executing the 'mdadm' command.
+        /// </summary>
+        /// <param name="poolGroupId">The ID of the pool group.</param>
+        /// <returns>The status of the pool as a string.</returns>
         public string FetchPoolStatus(int poolGroupId)
         {
             string command = $"mdadm --detail /dev/md{poolGroupId}";
@@ -159,6 +189,11 @@ namespace Backy.Services
             }
         }
 
+        /// <summary>
+        /// Retrieves the size details of a specified mount point by executing the 'df' command.
+        /// </summary>
+        /// <param name="mountPoint">The mount point to inspect.</param>
+        /// <returns>A tuple containing size, used, available space, and usage percentage.</returns>
         public (long Size, long Used, long Available, string UsePercent) GetMountPointSize(string mountPoint)
         {
             try
@@ -234,6 +269,11 @@ namespace Backy.Services
             }
         }
 
+        /// <summary>
+        /// Protects a drive by adding it to the list of protected drives.
+        /// </summary>
+        /// <param name="serial">The serial number of the drive to protect.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         public async Task<(bool Success, string Message)> ProtectDriveAsync(string serial)
         {
             var drive = await _context.ProtectedDrives.FirstOrDefaultAsync(d => d.Serial == serial);
@@ -262,6 +302,11 @@ namespace Backy.Services
             return (false, "Drive is already protected.");
         }
 
+        /// <summary>
+        /// Unprotects a drive by removing it from the list of protected drives.
+        /// </summary>
+        /// <param name="serial">The serial number of the drive to unprotect.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         public async Task<(bool Success, string Message)> UnprotectDriveAsync(string serial)
         {
             var drive = await _context.ProtectedDrives.FirstOrDefaultAsync(d => d.Serial == serial);
@@ -274,6 +319,11 @@ namespace Backy.Services
             return (false, "Drive not found in protected list.");
         }
 
+        /// <summary>
+        /// Creates a new pool based on the provided request data.
+        /// </summary>
+        /// <param name="request">The pool creation request containing pool label and drive serials.</param>
+        /// <returns>A tuple indicating success status, a message, and a list of command outputs.</returns>
         public async Task<(bool Success, string Message, List<string> Outputs)> CreatePoolAsync(CreatePoolRequest request)
         {
             if (string.IsNullOrEmpty(request.PoolLabel) || request.DriveSerials == null || request.DriveSerials.Count == 0)
@@ -421,7 +471,11 @@ namespace Backy.Services
             }
         }
 
-
+        /// <summary>
+        /// Unmounts a pool based on its GUID by executing the necessary shell commands.
+        /// </summary>
+        /// <param name="poolGroupGuid">The GUID of the pool group to unmount.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         public async Task<(bool Success, string Message)> UnmountPoolAsync(Guid poolGroupGuid)
         {
             var poolGroup = await _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
@@ -462,6 +516,11 @@ namespace Backy.Services
             return (true, "Pool unmounted successfully.");
         }
 
+        /// <summary>
+        /// Renames a pool group and its associated drive labels based on the provided request.
+        /// </summary>
+        /// <param name="request">The pool rename request containing new labels.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         public async Task<(bool Success, string Message)> RenamePoolGroupAsync(RenamePoolRequest request)
         {
             var poolGroup = await _context
@@ -503,8 +562,11 @@ namespace Backy.Services
             }
         }
 
-
-
+        /// <summary>
+        /// Removes a pool group based on its GUID by executing the necessary shell commands and updating the database.
+        /// </summary>
+        /// <param name="poolGroupGuid">The GUID of the pool group to remove.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         public async Task<(bool Success, string Message)> RemovePoolGroupAsync(Guid poolGroupGuid)
         {
             var poolGroup = await _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
@@ -532,7 +594,6 @@ namespace Backy.Services
                 // Attempt to unmount
                 string unmountCommand = $"umount {mountPoint}";
                 var unmountResult = ExecuteShellCommand(unmountCommand, commandOutputs);
-
                 if (!unmountResult.success)
                 {
                     return (false, unmountResult.message);
@@ -541,7 +602,6 @@ namespace Backy.Services
                 // Stop the RAID array
                 string stopCommand = $"mdadm --stop /dev/md{poolGroupId}";
                 var stopResult = ExecuteShellCommand(stopCommand, commandOutputs);
-
                 if (!stopResult.success)
                 {
                     return (false, stopResult.message);
@@ -567,6 +627,11 @@ namespace Backy.Services
             }
         }
 
+        /// <summary>
+        /// Retrieves detailed information about a pool group by executing the 'mdadm' command.
+        /// </summary>
+        /// <param name="poolGroupGuid">The GUID of the pool group.</param>
+        /// <returns>A tuple indicating success status, a message, and the command output.</returns>
         public async Task<(bool Success, string Message, string Output)> GetPoolDetailAsync(Guid poolGroupGuid)
         {
             var poolGroup = await _context.PoolGroups.FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
@@ -591,7 +656,11 @@ namespace Backy.Services
             }
         }
 
-
+        /// <summary>
+        /// Mounts a pool group by assembling the RAID array and mounting it to the designated path.
+        /// </summary>
+        /// <param name="poolGroupGuid">The GUID of the pool group to mount.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         public async Task<(bool Success, string Message)> MountPoolAsync(Guid poolGroupGuid)
         {
             var poolGroup = await _context.PoolGroups.Include(pg => pg.Drives).FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
@@ -679,7 +748,7 @@ namespace Backy.Services
         /// Retrieves a list of processes using the specified mount point by executing the 'lsof' command.
         /// </summary>
         /// <param name="mountPoint">The mount point to inspect.</param>
-        /// <returns>A list of ProcessInfo objects representing the processes.</returns>
+        /// <returns>A list of <see cref="ProcessInfo"/> objects representing the processes.</returns>
         public async Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint)
         {
             return await Task.Run(() =>
@@ -699,132 +768,12 @@ namespace Backy.Services
         }
 
         /// <summary>
-        /// Parses the output of the 'lsof' command to extract process information.
+        /// Forcefully adds a drive to a pool group by executing the 'mdadm' command.
         /// </summary>
-        /// <param name="lsofOutput">The raw output string from the 'lsof' command.</param>
-        /// <returns>A list of ProcessInfo objects.</returns>
-        private List<ProcessInfo> ParseLsofOutput(string lsofOutput)
-        {
-            var processes = new List<ProcessInfo>();
-            var lines = lsofOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            if (lines.Length < 2)
-                return processes; // No processes found
-
-            // The first line is the header
-            var headers = Regex.Split(lines[0].Trim(), @"\s+");
-            for (int i = 1; i < lines.Length; i++)
-            {
-                var line = lines[i];
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-                var columns = Regex.Split(line.Trim(), @"\s+");
-                if (columns.Length < headers.Length)
-                {
-                    _logger.LogWarning($"Line {i + 1} has fewer columns than headers. Skipping line.");
-                    continue; // Skip lines that don't have enough columns
-                }
-
-                var process = new ProcessInfo();
-                for (int j = 0; j < headers.Length && j < columns.Length; j++)
-                {
-                    try
-                    {
-                        switch (headers[j].ToUpper())
-                        {
-                            case "COMMAND":
-                                process.Command = columns[j];
-                                break;
-                            case "PID":
-                                if (int.TryParse(columns[j], out int pid))
-                                {
-                                    process.PID = pid;
-                                }
-                                else
-                                {
-                                    _logger.LogWarning($"Invalid PID value '{columns[j]}' at line {i + 1}.");
-                                    process.PID = 0;
-                                }
-                                break;
-                            case "USER":
-                                process.User = columns[j];
-                                break;
-                            case "NAME":
-                                process.Name = columns[j];
-                                break;
-                            default:
-                                // Ignore unhandled headers (FD, TYPE, DEVICE, SIZE/OFF, NODE)
-                                break;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"Error parsing column {j + 1} ('{headers[j]}') at line {i + 1}: {ex.Message}");
-                    }
-                }
-                processes.Add(process);
-            }
-            return processes;
-        }
-
-        private (bool success, string message) ExecuteShellCommand(string command, List<string>? outputList = null)
-        {
-            outputList ??= new List<string>();
-            string output;
-            int exitCode;
-
-            try
-            {
-                _logger.LogInformation($"Executing command: {command}");
-
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "bash",
-                        Arguments = $"-c \"{command}\"",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                    },
-                };
-
-                process.Start();
-                string stdout = process.StandardOutput.ReadToEnd();
-                string stderr = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-
-                output = stdout + stderr;
-                exitCode = process.ExitCode;
-
-                if (outputList != null)
-                {
-                    outputList.Add($"$ {command}");
-                    outputList.Add(output);
-                }
-
-                if (exitCode == 0)
-                {
-                    _logger.LogInformation($"Command executed successfully. Output: {output}");
-                    return (true, output.Trim());
-                }
-                else
-                {
-                    _logger.LogWarning($"Command failed with exit code {exitCode}. Output: {output}");
-                    return (false, output.Trim());
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Command execution failed: {ex.Message}");
-                if (outputList != null)
-                {
-                    outputList.Add($"Error executing command: {ex.Message}");
-                }
-                return (false, "An error occurred while executing the command.");
-            }
-        }
-
+        /// <param name="driveId">The ID of the drive to add.</param>
+        /// <param name="poolGroupGuid">The GUID of the pool group.</param>
+        /// <param name="devPath">The device path of the drive.</param>
+        /// <returns>A tuple indicating success status and a message.</returns>
         public async Task<(bool Success, string Message)> ForceAddDriveAsync(int driveId, Guid poolGroupGuid, string devPath)
         {
             var poolGroup = await _context.PoolGroups.FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
@@ -857,6 +806,11 @@ namespace Backy.Services
             }
         }
 
+        /// <summary>
+        /// Kills specified processes and performs actions such as unmounting or removing pool groups.
+        /// </summary>
+        /// <param name="request">The request containing process IDs and the action to perform.</param>
+        /// <returns>A tuple indicating success status, a message, and a list of command outputs.</returns>
         public async Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(KillProcessesRequest request)
         {
             if (request == null)
@@ -976,5 +930,141 @@ namespace Backy.Services
             }
         }
 
+        // ---------------------------
+        // Private Helper Methods
+        // ---------------------------
+
+        /// <summary>
+        /// Parses the output of the 'lsof' command to extract process information.
+        /// </summary>
+        /// <param name="lsofOutput">The raw output string from the 'lsof' command.</param>
+        /// <returns>A list of <see cref="ProcessInfo"/> objects.</returns>
+        private List<ProcessInfo> ParseLsofOutput(string lsofOutput)
+        {
+            var processes = new List<ProcessInfo>();
+            var lines = lsofOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length < 2)
+                return processes; // No processes found
+
+            // The first line is the header
+            var headers = Regex.Split(lines[0].Trim(), @"\s+");
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                var columns = Regex.Split(line.Trim(), @"\s+");
+                if (columns.Length < headers.Length)
+                {
+                    _logger.LogWarning($"Line {i + 1} has fewer columns than headers. Skipping line.");
+                    continue; // Skip lines that don't have enough columns
+                }
+
+                var process = new ProcessInfo();
+                for (int j = 0; j < headers.Length && j < columns.Length; j++)
+                {
+                    try
+                    {
+                        switch (headers[j].ToUpper())
+                        {
+                            case "COMMAND":
+                                process.Command = columns[j];
+                                break;
+                            case "PID":
+                                if (int.TryParse(columns[j], out int pid))
+                                {
+                                    process.PID = pid;
+                                }
+                                else
+                                {
+                                    _logger.LogWarning($"Invalid PID value '{columns[j]}' at line {i + 1}.");
+                                    process.PID = 0;
+                                }
+                                break;
+                            case "USER":
+                                process.User = columns[j];
+                                break;
+                            case "NAME":
+                                process.Name = columns[j];
+                                break;
+                            default:
+                                // Ignore unhandled headers (FD, TYPE, DEVICE, SIZE/OFF, NODE)
+                                break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error parsing column {j + 1} ('{headers[j]}') at line {i + 1}: {ex.Message}");
+                    }
+                }
+                processes.Add(process);
+            }
+            return processes;
+        }
+
+        /// <summary>
+        /// Executes a shell command and captures its output.
+        /// </summary>
+        /// <param name="command">The shell command to execute.</param>
+        /// <param name="outputList">A list to capture the command's output.</param>
+        /// <returns>A tuple indicating success status and the combined output message.</returns>
+        private (bool success, string message) ExecuteShellCommand(string command, List<string>? outputList = null)
+        {
+            outputList ??= new List<string>();
+            string output;
+            int exitCode;
+
+            try
+            {
+                _logger.LogInformation($"Executing command: {command}");
+
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "bash",
+                        Arguments = $"-c \"{command}\"",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                    },
+                };
+
+                process.Start();
+                string stdout = process.StandardOutput.ReadToEnd();
+                string stderr = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                output = stdout + stderr;
+                exitCode = process.ExitCode;
+
+                if (outputList != null)
+                {
+                    outputList.Add($"$ {command}");
+                    outputList.Add(output);
+                }
+
+                if (exitCode == 0)
+                {
+                    _logger.LogInformation($"Command executed successfully. Output: {output}");
+                    return (true, output.Trim());
+                }
+                else
+                {
+                    _logger.LogWarning($"Command failed with exit code {exitCode}. Output: {output}");
+                    return (false, output.Trim());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Command execution failed: {ex.Message}");
+                if (outputList != null)
+                {
+                    outputList.Add($"Error executing command: {ex.Message}");
+                }
+                return (false, "An error occurred while executing the command.");
+            }
+        }
     }
 }

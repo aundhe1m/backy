@@ -1,15 +1,21 @@
 @using Backy.Models
 @inject ILogger<PoolDriveLabelCard> Logger
 
+<!-- 
+    PoolDriveLabelCard Component
+    Represents a card for setting or displaying a label for a specific drive within a pool.
+-->
+
 <div class="card drive-label-card mb-3">
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center">
+            <!-- Toggle Drive Details Button -->
             <button type="button" class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDriveDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
                     class="theme-icon chevron-icon @(IsDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
             </button>
-            <!-- Drive Icon -->
+            <!-- Drive Icon and Name -->
             <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" class="theme-icon" />
             <span>@Model.Name</span>
         </div>
@@ -20,7 +26,7 @@
         </div>
     </div>
 
-    <!-- Optional Drive Details -->
+    <!-- Drive Details Section -->
     @if (IsDriveDetailsVisible)
     {
         <div class="card-body">
@@ -52,6 +58,10 @@
 </div>
 
 @code {
+    // ---------------------------
+    // Parameters
+    // ---------------------------
+
     [Parameter]
     public Drive Model { get; set; } = default!;
 
@@ -61,18 +71,41 @@
     [Parameter]
     public EventCallback<string> OnLabelChangedCallback { get; set; }
 
+    // ---------------------------
+    // Private Fields
+    // ---------------------------
+
     private bool IsDriveDetailsVisible { get; set; } = false;
 
+    // ---------------------------
+    // Event Handlers
+    // ---------------------------
+
+    /// <summary>
+    /// Toggles the visibility of the drive details section.
+    /// </summary>
     private void ToggleDriveDetails()
     {
         IsDriveDetailsVisible = !IsDriveDetailsVisible;
     }
 
+    /// <summary>
+    /// Handles the blur event on the label input field to update the label.
+    /// </summary>
     private async Task HandleLabelChanged()
     {
         await OnLabelChangedCallback.InvokeAsync(DriveLabel);
     }
 
+    // ---------------------------
+    // Helper Methods
+    // ---------------------------
+
+    /// <summary>
+    /// Formats the size from bytes to a human-readable string.
+    /// </summary>
+    /// <param name="sizeInBytes">Size in bytes.</param>
+    /// <returns>Formatted size string.</returns>
     private string FormatSize(long sizeInBytes)
     {
         if (sizeInBytes < 1024)

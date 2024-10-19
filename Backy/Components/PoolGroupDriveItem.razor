@@ -1,29 +1,36 @@
 @using Backy.Models
 @inject ILogger<PoolGroupDriveItem> Logger
 
+<!-- 
+    PoolGroupDriveItem Component
+    Represents a single drive within a pool group, providing details and actions related to the drive.
+-->
 <div class="card drive-card mb-3">
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center">
         <div class="d-flex align-items-center">
-            <!-- Expand/Collapse button -->
+            <!-- Expand/Collapse Button -->
             <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
                     class="theme-icon chevron-icon @(IsDriveDetailsVisible ? "rotated" : "")" style="height: 24px;" />
             </button>
-            <!-- Drive Icon -->
+            <!-- Drive Icon and Label -->
             <img src="/icons/hdd.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;" class="theme-icon" />
             <span>@(string.IsNullOrEmpty(Model.Label) ? "Unnamed Drive" : Model.Label)</span>
         </div>
-        <!-- Force Add Button -->
+        <!-- Force Add Button (Visible if Drive is Not Mounted) -->
         @if (!Model.IsMounted)
         {
-            <Tooltip Title="Force Add Drive" Color="TooltipColor.Dark" @onclick="ForceAddDrive" role="button">
-                <img src="/icons/plus-circle-dotted.svg" alt="Force Add Drive" style="height: 24px;" class="theme-icon" />
+            <Tooltip Title="Force Add Drive" Color="TooltipColor.Dark" role="button">
+                <button class="btn btn-link p-0" @onclick="ForceAddDrive" title="Force Add Drive">
+                    <img src="/icons/plus-circle-dotted.svg" alt="Force Add Drive" style="height: 24px;"
+                        class="theme-icon" />
+                </button>
             </Tooltip>
         }
     </div>
 
-    <!-- Drive Details -->
+    <!-- Drive Details Section -->
     @if (IsDriveDetailsVisible)
     {
         <div class="card-body">
@@ -59,24 +66,51 @@
 </div>
 
 @code {
+    // ---------------------------
+    // Parameters
+    // ---------------------------
+
     [Parameter, EditorRequired]
     public PoolDrive Model { get; set; } = default!;
 
     [Parameter]
     public EventCallback<PoolDrive> OnForceAdd { get; set; }
 
+    // ---------------------------
+    // Private Fields
+    // ---------------------------
+
     private bool IsDriveDetailsVisible { get; set; } = false;
 
+    // ---------------------------
+    // Event Handlers
+    // ---------------------------
+
+    /// <summary>
+    /// Toggles the visibility of the drive details section.
+    /// </summary>
     private void ToggleDetails()
     {
         IsDriveDetailsVisible = !IsDriveDetailsVisible;
     }
 
+    /// <summary>
+    /// Handles the Force Add Drive button click event.
+    /// </summary>
     private async Task ForceAddDrive()
     {
         await OnForceAdd.InvokeAsync(Model);
     }
 
+    // ---------------------------
+    // Helper Methods
+    // ---------------------------
+
+    /// <summary>
+    /// Formats the size from bytes to a human-readable string.
+    /// </summary>
+    /// <param name="sizeInBytes">Size in bytes.</param>
+    /// <returns>Formatted size string.</returns>
     private string FormatSize(long sizeInBytes)
     {
         if (sizeInBytes < 1024)

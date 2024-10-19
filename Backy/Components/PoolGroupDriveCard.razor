@@ -1,11 +1,14 @@
-<!-- Backy/Components/PoolGroupDriveCard.razor -->
+<!-- 
+    PoolGroupDriveCard Component
+    Represents a card displaying information about a pool group, including its drives and associated actions.
+-->
 
 <div class="card drive-card mb-3">
     <!-- Card Header -->
     <div class="card-header d-flex justify-content-between align-items-center">
         <div class="container">
             <div class="row">
-                <!-- Left Section: Toggle Button, Drive Icon, and Group Label -->
+                <!-- Left Section: Toggle Button, Pool Icon, and Group Label -->
                 <div class="col d-flex align-items-center" style="padding-left: 0px;">
                     <div>
                         <button class="btn btn-link p-0 me-2 chevron-button theme-icon" @onclick="ToggleDetails">
@@ -13,7 +16,7 @@
                                 class="chevron-icon @(IsPoolDriveDetailsVisible ? "rotated" : "")"
                                 style="height: 24px;" />
                         </button>
-                        <!-- Drive Icon -->
+                        <!-- Pool Icon and Group Label -->
                         <img src="/icons/hdd-rack.svg" alt="Drive Icon" style="height: 24px; margin-right: 8px;"
                             class="theme-icon" />
                         <span>@Model.GroupLabel</span>
@@ -30,12 +33,14 @@
                 </div>
                 <!-- Right Section: Action Buttons -->
                 <div class="col d-inline-flex align-items-center justify-content-end" style="padding-right: 0px;">
+                    <!-- Remove Pool Button with Tooltip -->
                     <Tooltip Title="Remove Pool" Color="TooltipColor.Dark" style="padding-left: 12px;">
                         <button class="btn btn-danger" @onclick="RemovePoolGroup">
                             <img src="/icons/trash.svg" alt="Remove Pool" style="height: 24px;" class="theme-icon" />
                         </button>
                     </Tooltip>
 
+                    <!-- Pool Status Button with Tooltip -->
                     <Tooltip Title="Pool Status" Color="TooltipColor.Dark" style="padding-left: 12px;">
                         @if (!Model.PoolEnabled)
                         {
@@ -53,6 +58,7 @@
                         }
                     </Tooltip>
 
+                    <!-- Mount/Unmount Pool Button with Tooltip -->
                     <Tooltip Title="Mount Pool" Color="TooltipColor.Dark" style="padding-left: 12px;">
                         @if (!Model.PoolEnabled && Model.AllDrivesConnected)
                         {
@@ -79,17 +85,17 @@
         </div>
     </div>
 
-    <!-- Drive Details -->
+    <!-- Drive Details Section -->
     @if (IsPoolDriveDetailsVisible)
     {
         <div class="card-body">
-            <!-- Pool Drives -->
+            <!-- List of Drives in the Pool -->
             @foreach (var drive in Model.Drives)
             {
                 <PoolGroupDriveItem @key="drive.Id" Model="@drive" OnForceAdd="@ForceAddDrive" />
             }
 
-            <!-- Drive Details Table -->
+            <!-- Pool Details Table -->
             <div class="table-responsive">
                 <table class="table table-striped">
                     <tbody>
@@ -139,7 +145,6 @@
             </div>
         </div>
     }
-
 </div>
 
 <!-- Status Modal -->
@@ -155,6 +160,10 @@
 </Modal>
 
 @code {
+    // ---------------------------
+    // Parameters
+    // ---------------------------
+
     [Parameter, EditorRequired]
     public PoolGroup Model { get; set; } = default!;
 
@@ -173,18 +182,32 @@
     [Parameter]
     public EventCallback<PoolDrive> OnForceAddDrive { get; set; }
 
+    // ---------------------------
+    // Injected Services
+    // ---------------------------
+
     [Inject]
     protected ToastService ToastService { get; set; } = default!;
 
     [Inject]
     IDriveService DriveService { get; set; } = default!;
 
-    private bool IsPoolDriveDetailsVisible { get; set; } = false;
+    // ---------------------------
+    // Private Fields
+    // ---------------------------
 
+    private bool IsPoolDriveDetailsVisible { get; set; } = false;
     private Modal statusModal = default!;
     private string PoolStatusOutput { get; set; } = string.Empty;
 
-    // Computed property to parse UsePercent string into integer
+    // ---------------------------
+    // Computed Properties
+    // ---------------------------
+
+    /// <summary>
+    /// Parses the UsePercent string into an integer for the progress bar.
+    /// Ensures the value is within 0-100%.
+    /// </summary>
     private int UsePercentNumeric
     {
         get
@@ -198,36 +221,62 @@
         }
     }
 
+    // ---------------------------
+    // Event Handlers
+    // ---------------------------
+
+    /// <summary>
+    /// Toggles the visibility of the pool drive details section.
+    /// </summary>
     private void ToggleDetails()
     {
         IsPoolDriveDetailsVisible = !IsPoolDriveDetailsVisible;
     }
 
+    /// <summary>
+    /// Invokes the Unmount Pool callback.
+    /// </summary>
     private async Task UnmountPool()
     {
         await OnUnmountPool.InvokeAsync(Model);
     }
 
+    /// <summary>
+    /// Invokes the Remove Pool Group callback.
+    /// </summary>
     private async Task RemovePoolGroup()
     {
         await OnRemovePoolGroup.InvokeAsync(Model);
     }
 
+    /// <summary>
+    /// Invokes the Mount Pool callback.
+    /// </summary>
     private async Task MountPool()
     {
         await OnMountPool.InvokeAsync(Model);
     }
 
+    /// <summary>
+    /// Invokes the Rename Pool Group callback.
+    /// </summary>
     private async Task RenamePoolGroup()
     {
         await OnRenamePoolGroup.InvokeAsync(Model);
     }
 
+    /// <summary>
+    /// Invokes the Force Add Drive callback for a specific drive.
+    /// </summary>
+    /// <param name="drive">The drive to force add.</param>
     private async Task ForceAddDrive(PoolDrive drive)
     {
         await OnForceAddDrive.InvokeAsync(drive);
     }
 
+    /// <summary>
+    /// Shows the pool status by fetching details from the DriveService and displaying them in a modal.
+    /// </summary>
     private async Task ShowPoolStatus()
     {
         var result = await DriveService.GetPoolDetailAsync(Model.PoolGroupGuid);
@@ -242,11 +291,23 @@
         }
     }
 
+    /// <summary>
+    /// Closes the pool status modal.
+    /// </summary>
     private async Task CloseStatusModal()
     {
         await statusModal.HideAsync();
     }
 
+    // ---------------------------
+    // Helper Methods
+    // ---------------------------
+
+    /// <summary>
+    /// Formats the size from bytes to a human-readable string.
+    /// </summary>
+    /// <param name="sizeInBytes">Size in bytes.</param>
+    /// <returns>Formatted size string.</returns>
     private string FormatSize(long sizeInBytes)
     {
         if (sizeInBytes < 1024)
