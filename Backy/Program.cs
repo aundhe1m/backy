@@ -30,17 +30,12 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Singleton services are created once and reused throughout the application's lifetime
 builder.Services.AddSingleton<ILoadingService, LoadingService>();
 builder.Services.AddSingleton<ThemeService, ThemeService>();
-builder.Services.AddSingleton<IIndexingQueue, IndexingQueue>();
 
 // Scoped services are created once per client request (connection)
 builder.Services.AddScoped<IDriveService, DriveService>();
 
 // Add data protection services for safeguarding data
 builder.Services.AddDataProtection();
-
-// Register hosted services that run in the background
-builder.Services.AddHostedService<FileIndexingService>();
-builder.Services.AddHostedService<StorageStatusService>();
 
 // Build the web application
 var app = builder.Build();

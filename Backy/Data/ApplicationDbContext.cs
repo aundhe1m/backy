@@ -5,10 +5,6 @@ namespace Backy.Data
 {
     public class ApplicationDbContext : DbContext
     {
-        public DbSet<RemoteScan> RemoteScans { get; set; }
-        public DbSet<IndexSchedule> IndexSchedules { get; set; }
-        public DbSet<FileEntry> Files { get; set; }
-        public DbSet<StorageContent> StorageContents { get; set; }
         public DbSet<PoolGroup> PoolGroups { get; set; }
         public DbSet<PoolDrive> PoolDrives { get; set; }
         public DbSet<ProtectedDrive> ProtectedDrives { get; set; }
@@ -19,11 +15,6 @@ namespace Backy.Data
         // Configure model relationships and constraints
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder
-                .Entity<FileEntry>()
-                .HasIndex(f => new { f.RemoteScanId, f.FullPath })
-                .IsUnique()
-                .HasFilter("\"IsDeleted\" = false");
 
             modelBuilder.Entity<PoolDrive>()
                 .HasIndex(d => d.Id)
