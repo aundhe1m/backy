@@ -1,0 +1,149 @@
+@using Backy.Helpers
+@inject IRemoteConnectionService RemoteConnectionService
+@inject ILoadingService LoadingService
+@inject ToastService ToastService
+
+<div class="card mb-3">
+    <!-- Card Header -->
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center">
+            <!-- Expand/Collapse Button -->
+            <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
+                <img src="/icons/chevron-down.svg" alt="Expand Details"
+                    class="theme-icon chevron-icon @(IsDetailsVisible ? "rotated" : "")" style="height: 24px;" />
+            </button>
+            <!-- Remote Connection Icon and Name -->
+            <img src="/icons/hdd-network.svg" alt="Remote Connection Icon" style="height: 24px; margin-right: 8px;"
+                class="theme-icon" />
+            <span>@Model.Name</span>
+        </div>
+        <!-- Backup Progress -->
+        <div class="flex-grow-1 ms-3">
+            <div>@BackupProgressPercent% backed up</div>
+            <Progress Class="mb-0 mt-1" Height="5">
+                <ProgressBar Width="@BackupProgressPercent" />
+            </Progress>
+        </div>
+        <!-- Action Buttons -->
+        <div>
+            <button class="btn btn-danger" @onclick="DeleteConnection">
+                <img src="/icons/trash.svg" alt="Delete Connection" style="height: 24px;" class="theme-icon" />
+            </button>
+            <button class="btn @(Model.IsEnabled ? "btn-warning" : "btn-success")" @onclick="ToggleEnableConnection">
+                <img src="/icons/@(Model.IsEnabled ? "eye-slash" : "eye") .svg" alt="Toggle Enable"
+                    style="height: 24px;" class="theme-icon" />
+            </button>
+            <button class="btn btn-info" @onclick="EditConnection">
+                <img src="/icons/pencil-square.svg" alt="Edit Connection" style="height: 24px;" class="theme-icon" />
+            </button>
+            <button class="btn @(Model.ScanningActive ? "btn-secondary" : "btn-primary")" @onclick="ScanNowConnection">
+                <img src="/icons/@(Model.ScanningActive ? "x-circle" : "play-circle") .svg" alt="Scan Now"
+                    style="height: 24px;" class="theme-icon" />
+            </button>
+        </div>
+    </div>
+    <!-- Collapsible Body -->
+    @if (IsDetailsVisible)
+    {
+        <div class="card-body">
+            <!-- File and Backup Info -->
+            <h5>File and Backup Info</h5>
+            <table class="table table-striped">
+                <tbody>
+                    <tr>
+                        <th>Total Files</th>
+                        <td>@Model.RemoteFiles.Count</td>
+                    </tr>
+                    <tr>
+                        <th>Backed Up Files</th>
+                        <td>@Model.RemoteFiles.Count(rf => rf.BackupExists)</td>
+                    </tr>
+                    <tr>
+                        <th>Total Size</th>
+                        <td>@SizeFormatter.FormatSize(TotalSize)</td>
+                    </tr>
+                    <tr>
+                        <th>Backed Up Size</th>
+                        <td>@SizeFormatter.FormatSize(BackedUpSize)</td>
+                    </tr>
+                </tbody>
+            </table>
+            <!-- Connection Info -->
+            <h5>Connection Info</h5>
+            <table class="table table-striped">
+                <tbody>
+                    <tr>
+                        <th>Hostname/IP (Port)</th>
+                        <td>@Model.Host (@Model.Port)</td>
+                    </tr>
+                    <tr>
+                        <th>Connection Status</th>
+                        <td>@(Model.IsOnline ? "Online" : "Offline")</td>
+                    </tr>
+                    <tr>
+                        <th>Last Checked</th>
+                        <td>@Model.LastChecked?.ToString("g")</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public RemoteConnection Model { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<Guid> OnDelete { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnToggleEnable { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnScanNow { get; set; }
+
+    private bool IsDetailsVisible { get; set; } = false;
+
+    private long TotalSize => Model.RemoteFiles.Sum(rf => rf.Size);
+    private long BackedUpSize => Model.RemoteFiles.Where(rf => rf.BackupExists).Sum(rf => rf.Size);
+
+    private int BackupProgressPercent
+    {
+        get
+        {
+            if (Model.RemoteFiles.Count == 0)
+                return 0;
+            var percent = (double)Model.RemoteFiles.Count(rf => rf.BackupExists) / Model.RemoteFiles.Count * 100;
+            return (int)Math.Round(percent);
+        }
+    }
+
+    private void ToggleDetails()
+    {
+        IsDetailsVisible = !IsDetailsVisible;
+    }
+
+    private async Task DeleteConnection()
+    {
+        await OnDelete.InvokeAsync(Model.RemoteConnectionId);
+    }
+
+    private async Task EditConnection()
+    {
+        await OnEdit.InvokeAsync(Model.RemoteConnectionId);
+    }
+
+    private async Task ToggleEnableConnection()
+    {
+        await OnToggleEnable.InvokeAsync(Model.RemoteConnectionId);
+    }
+
+    private async Task ScanNowConnection()
+    {
+        await OnScanNow.InvokeAsync(Model.RemoteConnectionId);
+    }
+}

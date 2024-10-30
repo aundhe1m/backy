@@ -1,0 +1,437 @@
+@page "/RemoteStorageManagement"
+@inject ApplicationDbContext DbContext
+@inject ILogger<RemoteStorageManagement> Logger
+@inject NavigationManager NavigationManager
+@inject ModalService ModalService
+@inject ToastService ToastService
+@inject IDataProtectionProvider DataProtectionProvider
+@inject IRemoteConnectionService RemoteConnectionService
+@inject ILoadingService LoadingService
+@rendermode InteractiveServer
+
+<PageTitle>Remote Storage Management - Backy</PageTitle>
+
+<!-- Header Section -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Remote Storage Management</h1>
+
+    <!-- Add Remote Connection Button -->
+    <button class="btn btn-primary" @onclick="OpenAddRemoteConnectionModal">
+        <img src="/icons/plus-square.svg" alt="Add Remote Connection" style="height: 24px;" class="theme-icon" />
+        Add Remote Connection
+    </button>
+</div>
+
+<!-- Remote Connection Cards -->
+@if (RemoteConnections != null && RemoteConnections.Any())
+{
+    @foreach (var connection in RemoteConnections)
+    {
+        <RemoteConnectionCard Model="@connection" OnDelete="@DeleteConnection" OnEdit="@EditConnection"
+    OnToggleEnable="@ToggleEnableConnection" OnScanNow="@ScanNowConnection" />
+    }
+}
+else
+{
+    <p>No remote connections found.</p>
+}
+
+<!-- Remote Connection Modal -->
+<Modal @ref="remoteConnectionModal" Size="ModalSize.Large" Title="@ModalTitle">
+    <BodyTemplate>
+        <EditForm EditContext="@editContext" OnValidSubmit="@HandleValidSubmit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            @if (CurrentStep == 1)
+            {
+                <!-- Page 1: SSH Details -->
+                <div>
+                    <h3>SSH Details</h3>
+                    <div class="mb-3">
+                        <label for="ConnectionName" class="form-label">Connection Name</label>
+                        <InputText id="ConnectionName" class="form-control" @bind-Value="RemoteConnectionModel.Name"
+                            required />
+                        <ValidationMessage For="@(() => RemoteConnectionModel.Name)" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="Hostname" class="form-label">Hostname/IP</label>
+                        <InputText id="Hostname" class="form-control" @bind-Value="RemoteConnectionModel.Host" required />
+                        <ValidationMessage For="@(() => RemoteConnectionModel.Host)" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="Port" class="form-label">Port</label>
+                        <InputNumber id="Port" class="form-control" @bind-Value="RemoteConnectionModel.Port" />
+                        <ValidationMessage For="@(() => RemoteConnectionModel.Port)" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="Username" class="form-label">Username</label>
+                        <InputText id="Username" class="form-control" @bind-Value="RemoteConnectionModel.Username"
+                            required />
+                        <ValidationMessage For="@(() => RemoteConnectionModel.Username)" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Authentication Method</label>
+                        <InputRadioGroup @bind-Value="RemoteConnectionModel.AuthenticationMethod">
+                            <label>
+                                <InputRadio Value="RemoteConnection.AuthMethod.Password" /> Password
+                            </label>
+                            <label class="ms-3">
+                                <InputRadio Value="RemoteConnection.AuthMethod.SSHKey" /> SSH Key
+                            </label>
+                        </InputRadioGroup>
+                        <ValidationMessage For="@(() => RemoteConnectionModel.AuthenticationMethod)" />
+                    </div>
+                    @if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
+                    {
+                        <div class="mb-3">
+                            <label for="Password" class="form-label">Password</label>
+                            <InputText id="Password" type="password" class="form-control" @bind-Value="Password" />
+                        </div>
+                    }
+                    else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
+                    {
+                        <div class="mb-3">
+                            <label for="SSHKey" class="form-label">SSH Key</label>
+                            <InputTextArea id="SSHKey" class="form-control" @bind-Value="SSHKey" />
+                        </div>
+                    }
+                    <div class="mb-3">
+                        <label for="RemotePath" class="form-label">Remote Path</label>
+                        <InputText id="RemotePath" class="form-control" @bind-Value="RemoteConnectionModel.RemotePath"
+                            required />
+                        <ValidationMessage For="@(() => RemoteConnectionModel.RemotePath)" />
+                    </div>
+                </div>
+            }
+            else if (CurrentStep == 2)
+            {
+                <!-- Page 2: Filters -->
+                <div>
+                <h3>Exclude Filters</h3>
+                <p>You can exclude files or directories using wildcard patterns.</p>
+                <p>Examples:</p>
+                <ul>
+                    <li><code>**/*.log</code> - Exclude all .log files</li>
+                    <li><code>temp/**</code> - Exclude all files in the temp directory</li>
+                </ul>
+
+                <!-- Exclude Filters -->
+                <div class="mb-3">
+                    <label class="form-label">Exclude Filters</label>
+                    @foreach (var filter in ExcludeFilters)
+                        {
+                            <div class="input-group mb-2">
+                                <InputText class="form-control" @bind-Value="filter.Pattern" />
+                                <button class="btn btn-danger" type="button"
+                                    @onclick="() => RemoveExcludeFilter(filter)">Remove</button>
+                            </div>
+                        }
+                        <button class="btn btn-secondary" type="button" @onclick="AddExcludeFilter">Add Exclude
+                            Filter</button>
+                    </div>
+                </div>
+            }
+            else if (CurrentStep == 3)
+            {
+                <!-- Page 3: Schedule -->
+                <div>
+                <h3>Schedule</h3>
+                @foreach (var schedule in ScanSchedules)
+                    {
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Days of Week</label><br />
+                                    <label>
+                                        <InputCheckbox @bind-Value="schedule.SelectedDayMonday" /> Monday
+                                    </label>
+                                    <label class="ms-2">
+                                        <InputCheckbox @bind-Value="schedule.SelectedDayTuesday" /> Tuesday
+                                    </label>
+                                    <label class="ms-2">
+                                        <InputCheckbox @bind-Value="schedule.SelectedDayWednesday" /> Wednesday
+                                    </label>
+                                    <label class="ms-2">
+                                        <InputCheckbox @bind-Value="schedule.SelectedDayThursday" /> Thursday
+                                    </label>
+                                    <label class="ms-2">
+                                        <InputCheckbox @bind-Value="schedule.SelectedDayFriday" /> Friday
+                                    </label>
+                                    <label class="ms-2">
+                                        <InputCheckbox @bind-Value="schedule.SelectedDaySaturday" /> Saturday
+                                    </label>
+                                    <label class="ms-2">
+                                        <InputCheckbox @bind-Value="schedule.SelectedDaySunday" /> Sunday
+                                    </label>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Time of Day</label>
+                                    <InputText type="time" class="form-control" @bind-Value="schedule.TimeOfDayString" />
+                                </div>
+                                <button class="btn btn-danger" type="button" @onclick="() => RemoveSchedule(schedule)">Remove
+                                    Schedule</button>
+                            </div>
+                        </div>
+                    }
+                    <button class="btn btn-secondary" type="button" @onclick="AddSchedule">Add Schedule</button>
+                </div>
+            }
+        </EditForm>
+    </BodyTemplate>
+    <FooterTemplate>
+        <!-- Modal Footer Buttons -->
+        @if (CurrentStep > 1)
+        {
+            <button class="btn btn-secondary" @onclick="PreviousStep">Previous</button>
+        }
+        else
+        {
+            <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+        }
+        @if (CurrentStep < 3)
+        {
+            <button class="btn btn-primary" @onclick="NextStep">Next</button>
+        }
+        else
+        {
+            <button class="btn btn-success" @onclick="CreateConnection">Create</button>
+            <button class="btn btn-success" @onclick="CreateAndScanNow">Create and Scan Now</button>
+        }
+    </FooterTemplate>
+</Modal>
+
+@code {
+    // Properties
+    private List<RemoteConnection> RemoteConnections { get; set; } = new List<RemoteConnection>();
+    private RemoteConnection RemoteConnectionModel { get; set; } = new RemoteConnection();
+    private int CurrentStep { get; set; } = 1;
+    private string ModalTitle { get; set; } = "Add Remote Connection";
+    private EditContext editContext = default!;
+    private string Password { get; set; } = string.Empty;
+    private string SSHKey { get; set; } = string.Empty;
+    private List<FilterRule> ExcludeFilters { get; set; } = new List<FilterRule>();
+    private List<RemoteScanSchedule> ScanSchedules { get; set; } = new List<RemoteScanSchedule>();
+
+    private Modal remoteConnectionModal = default!;
+
+    // Lifecycle Methods
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRemoteConnections();
+        editContext = new EditContext(RemoteConnectionModel);
+    }
+
+    private async Task LoadRemoteConnections()
+    {
+        RemoteConnections = await DbContext.RemoteConnections
+        .Include(rc => rc.ScanSchedules)
+        .Include(rc => rc.RemoteFiles)
+        .AsSplitQuery()
+        .ToListAsync();
+    }
+
+    // Event Handlers
+    private async Task OpenAddRemoteConnectionModal()
+    {
+        ModalTitle = "Add Remote Connection";
+        RemoteConnectionModel = new RemoteConnection();
+        Password = string.Empty;
+        SSHKey = string.Empty;
+        ExcludeFilters = new List<FilterRule>();
+        ScanSchedules = new List<RemoteScanSchedule>();
+        CurrentStep = 1;
+        editContext = new EditContext(RemoteConnectionModel);
+        await remoteConnectionModal.ShowAsync();
+    }
+
+    private async Task CloseModal()
+    {
+        await remoteConnectionModal.HideAsync();
+    }
+
+    private async Task NextStep()
+    {
+        if (CurrentStep == 1)
+        {
+            if (!editContext.Validate())
+            {
+                return;
+            }
+            // Validate SSH Connection
+            await ValidateSSHConnection();
+        }
+        else
+        {
+            CurrentStep++;
+        }
+    }
+
+    private void PreviousStep()
+    {
+        CurrentStep--;
+    }
+
+    private async Task ValidateSSHConnection()
+    {
+        await LoadingService.ShowLoading();
+        var success = await RemoteConnectionService.ValidateSSHConnection(RemoteConnectionModel, Password, SSHKey);
+        await LoadingService.HideLoading();
+        if (success)
+        {
+            CurrentStep++;
+        }
+        else
+        {
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "SSH Connection validation failed."));
+        }
+    }
+
+    private void AddExcludeFilter()
+    {
+        ExcludeFilters.Add(new FilterRule());
+    }
+
+    private void RemoveExcludeFilter(FilterRule filter)
+    {
+        ExcludeFilters.Remove(filter);
+    }
+
+    private void AddSchedule()
+    {
+        try
+        {
+            ScanSchedules.Add(new RemoteScanSchedule());
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error adding schedule.");
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "Error adding schedule."));
+        }
+    }
+
+    private void RemoveSchedule(RemoteScanSchedule schedule)
+    {
+        ScanSchedules.Remove(schedule);
+    }
+
+    private async Task CreateConnection()
+    {
+        // Encrypt Password and SSHKey
+        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+        if (!string.IsNullOrEmpty(Password))
+        {
+            RemoteConnectionModel.Password = protector.Protect(Password);
+        }
+        if (!string.IsNullOrEmpty(SSHKey))
+        {
+            RemoteConnectionModel.SSHKey = protector.Protect(SSHKey);
+        }
+
+        // Save Remote Connection
+        DbContext.RemoteConnections.Add(RemoteConnectionModel);
+        await DbContext.SaveChangesAsync();
+
+        // Save Filters
+        foreach (var filter in ExcludeFilters)
+        {
+            var remoteFilter = new RemoteFilter
+                {
+                    RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
+                    Pattern = filter.Pattern,
+                    IsInclude = false
+                };
+            DbContext.RemoteFilters.Add(remoteFilter);
+        }
+
+        // Save Schedules
+        foreach (var schedule in ScanSchedules)
+        {
+            schedule.RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId;
+            DbContext.RemoteScanSchedules.Add(schedule);
+        }
+
+        await DbContext.SaveChangesAsync();
+
+        await CloseModal();
+        await LoadRemoteConnections();
+        ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection created successfully."));
+    }
+
+
+    private async Task CreateAndScanNow()
+    {
+        await CreateConnection();
+        await ScanNowConnection(RemoteConnectionModel.RemoteConnectionId);
+    }
+
+    private async Task DeleteConnection(Guid remoteConnectionId)
+    {
+        var connection = await DbContext.RemoteConnections.FindAsync(remoteConnectionId);
+        if (connection != null)
+        {
+            DbContext.RemoteConnections.Remove(connection);
+            await DbContext.SaveChangesAsync();
+            await LoadRemoteConnections();
+            ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection deleted successfully."));
+        }
+    }
+
+    private async Task EditConnection(Guid remoteConnectionId)
+    {
+        var connection = await DbContext.RemoteConnections
+        .Include(rc => rc.ScanSchedules)
+        .Include(rc => rc.Filters)
+        .FirstOrDefaultAsync(rc => rc.RemoteConnectionId == remoteConnectionId);
+
+        if (connection != null)
+        {
+            ModalTitle = "Edit Remote Connection";
+            RemoteConnectionModel = connection;
+            CurrentStep = 1;
+            Password = string.Empty;
+            SSHKey = string.Empty;
+
+            // Load filters into ExcludeFilters
+            ExcludeFilters = connection.Filters
+            .Where(f => !f.IsInclude)
+            .Select(f => new FilterRule { Pattern = f.Pattern })
+            .ToList();
+
+            // Load schedules
+            ScanSchedules = connection.ScanSchedules.ToList();
+
+            editContext = new EditContext(RemoteConnectionModel);
+            await remoteConnectionModal.ShowAsync();
+        }
+    }
+
+
+    private async Task ToggleEnableConnection(Guid remoteConnectionId)
+    {
+        var connection = await DbContext.RemoteConnections.FindAsync(remoteConnectionId);
+        if (connection != null)
+        {
+            connection.IsEnabled = !connection.IsEnabled;
+            await DbContext.SaveChangesAsync();
+            await LoadRemoteConnections();
+        }
+    }
+
+    private async Task ScanNowConnection(Guid remoteConnectionId)
+    {
+        await RemoteConnectionService.StartScan(remoteConnectionId);
+        ToastService.Notify(new ToastMessage(ToastType.Success, "Scan started."));
+    }
+
+    private void OnStepChanged(int step)
+    {
+        CurrentStep = step;
+    }
+
+    private void HandleValidSubmit()
+    {
+        // Handle form submission
+    }
+}

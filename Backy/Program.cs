@@ -33,6 +33,10 @@ builder.Services.AddSingleton<ThemeService, ThemeService>();
 
 // Scoped services are created once per client request (connection)
 builder.Services.AddScoped<IDriveService, DriveService>();
+builder.Services.AddScoped<IRemoteConnectionService, RemoteConnectionService>();
+
+// Register the background service for monitoring schedules
+builder.Services.AddHostedService<ScheduleMonitorService>();
 
 // Add data protection services for safeguarding data
 builder.Services.AddDataProtection();
