@@ -82,7 +82,7 @@
                     </tr>
                     <tr>
                         <th>Last Checked</th>
-                        <td>@Model.LastChecked?.ToString("g")</td>
+                        <td>@Model.LastChecked?.ToLocalTime().ToString("g")</td>
                     </tr>
                 </tbody>
             </table>

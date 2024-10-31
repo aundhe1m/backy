@@ -26,16 +26,19 @@ namespace Backy.Services
 
     public class RemoteConnectionService : IRemoteConnectionService
     {
-        private readonly ApplicationDbContext _dbContext;
         private readonly ILogger<RemoteConnectionService> _logger;
         private readonly IDataProtectionProvider _dataProtectionProvider;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly Channel<Guid> _scanQueue = Channel.CreateUnbounded<Guid>();
         private Task? _processingQueueTask;
         private readonly SemaphoreSlim _queueSemaphore = new SemaphoreSlim(1, 1);
 
-        public RemoteConnectionService(ApplicationDbContext dbContext, ILogger<RemoteConnectionService> logger, IDataProtectionProvider dataProtectionProvider)
+        public RemoteConnectionService(
+            IServiceScopeFactory serviceScopeFactory,
+            ILogger<RemoteConnectionService> logger,
+            IDataProtectionProvider dataProtectionProvider)
         {
-            _dbContext = dbContext;
+            _serviceScopeFactory = serviceScopeFactory;
             _logger = logger;
             _dataProtectionProvider = dataProtectionProvider;
         }
@@ -116,43 +119,50 @@ namespace Backy.Services
             {
                 _logger.LogInformation($"Processing scan for connection ID: {remoteConnectionId}");
 
-                var connection = await _dbContext.RemoteConnections.FindAsync(remoteConnectionId);
-                if (connection != null)
+                using (var scope = _serviceScopeFactory.CreateScope())
                 {
-                    try
-                    {
-                        connection.ScanningActive = true;
-                        await _dbContext.SaveChangesAsync();
-                        _logger.LogInformation($"Set scanning active for connection: {connection.Name}");
+                    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                    var dataProtectionProvider = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>();
 
-                        // Perform the scan
-                        await PerformScan(connection);
-
-                        connection.ScanningActive = false;
-                        await _dbContext.SaveChangesAsync();
-                        _logger.LogInformation($"Completed scan for connection: {connection.Name}");
-                    }
-                    catch (Exception ex)
+                    var connection = await dbContext.RemoteConnections.FindAsync(remoteConnectionId);
+                    if (connection != null)
                     {
-                        _logger.LogError(ex, $"Error scanning remote connection {connection.Name}");
+                        try
+                        {
+                            connection.ScanningActive = true;
+                            await dbContext.SaveChangesAsync();
+                            _logger.LogInformation($"Set scanning active for connection: {connection.Name}");
+
+                            // Perform the scan
+                            await PerformScan(dbContext, dataProtectionProvider, connection);
+
+                            connection.ScanningActive = false;
+                            await dbContext.SaveChangesAsync();
+                            _logger.LogInformation($"Completed scan for connection: {connection.Name}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, $"Error scanning remote connection {connection.Name}");
+                        }
                     }
-                }
-                else
-                {
-                    _logger.LogWarning($"Connection ID {remoteConnectionId} not found in database.");
+                    else
+                    {
+                        _logger.LogWarning($"Connection ID {remoteConnectionId} not found in database.");
+                    }
                 }
             }
 
             _logger.LogInformation("Finished processing scan queue.");
         }
 
-        private async Task PerformScan(RemoteConnection connection)
+
+        private async Task PerformScan(ApplicationDbContext dbContext, IDataProtectionProvider dataProtectionProvider, RemoteConnection connection)
         {
             // Output log message
             _logger.LogInformation($"Starting scan for connection: {connection.Name}");
 
             // Decrypt Password or SSHKey
-            var protector = _dataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+            var protector = dataProtectionProvider.CreateProtector("RemoteConnectionProtector");
             string password = string.Empty;
             string sshKey = string.Empty;
 
@@ -191,12 +201,12 @@ namespace Backy.Services
             {
                 sftpClient.Connect();
                 connection.IsOnline = sftpClient.IsConnected;
-                connection.LastChecked = DateTimeOffset.Now;
-                await _dbContext.SaveChangesAsync();
+                connection.LastChecked = DateTimeOffset.UtcNow;
+                await dbContext.SaveChangesAsync(); // Changed to dbContext
                 _logger.LogInformation("SFTP client connected successfully.");
 
                 // Load filters
-                var filters = await _dbContext.RemoteFilters
+                var filters = await dbContext.RemoteFilters // Changed to dbContext
                     .Where(f => f.RemoteConnectionId == connection.RemoteConnectionId)
                     .ToListAsync();
                 _logger.LogInformation("Loaded filters from database.");
@@ -212,7 +222,7 @@ namespace Backy.Services
                 _logger.LogInformation($"Filtered files count: {filteredFiles.Count()}");
 
                 // Update RemoteFiles in the database
-                var existingFiles = await _dbContext.RemoteFiles
+                var existingFiles = await dbContext.RemoteFiles // Changed to dbContext
                     .Where(rf => rf.RemoteConnectionId == connection.RemoteConnectionId)
                     .ToListAsync();
                 _logger.LogInformation("Loaded existing remote files from database.");
@@ -231,7 +241,7 @@ namespace Backy.Services
                             Size = file.Length,
                             BackupExists = false // Update as per your backup logic
                         };
-                        _dbContext.RemoteFiles.Add(remoteFile);
+                        dbContext.RemoteFiles.Add(remoteFile); // Changed to dbContext
                         _logger.LogInformation($"Added new file: {file.FullName}");
                     }
                     else
@@ -251,7 +261,7 @@ namespace Backy.Services
                     _logger.LogInformation($"Marked file as deleted: {deletedFile.FullPath}");
                 }
 
-                await _dbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync(); // Changed to dbContext
                 _logger.LogInformation("Database changes saved successfully.");
             }
             catch (Exception ex)
@@ -267,6 +277,7 @@ namespace Backy.Services
                 }
             }
         }
+
 
         private List<ISftpFile> ListRemoteFiles(SftpClient sftpClient, string remotePath)
         {
@@ -386,23 +397,30 @@ namespace Backy.Services
 
         public async Task CheckSchedules(CancellationToken cancellationToken)
         {
-            var now = DateTimeOffset.Now;
-            var connections = await _dbContext.RemoteConnections
-                .Include(rc => rc.ScanSchedules)
-                .Where(rc => rc.IsEnabled)
-                .ToListAsync();
-
-            foreach (var connection in connections)
+            using (var scope = _serviceScopeFactory.CreateScope())
             {
-                foreach (var schedule in connection.ScanSchedules)
+                var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var now = DateTimeOffset.UtcNow;
+                var connections = await dbContext.RemoteConnections
+                    .Include(rc => rc.ScanSchedules)
+                    .Where(rc => rc.IsEnabled)
+                    .ToListAsync();
+
+                foreach (var connection in connections)
                 {
-                    if (IsTimeToScan(schedule, now))
+                    foreach (var schedule in connection.ScanSchedules)
                     {
-                        await StartScan(connection.RemoteConnectionId);
+                        if (IsTimeToScan(schedule, now))
+                        {
+                            await StartScan(connection.RemoteConnectionId);
+                        }
                     }
                 }
             }
         }
+
+
 
         private bool IsTimeToScan(RemoteScanSchedule schedule, DateTimeOffset now)
         {
@@ -415,11 +433,12 @@ namespace Backy.Services
             if (schedule.SelectedDaySaturday) selectedDays.Add(DayOfWeek.Saturday);
             if (schedule.SelectedDaySunday) selectedDays.Add(DayOfWeek.Sunday);
 
-            if (!selectedDays.Contains(now.DayOfWeek))
+            // Use UTC day of week
+            if (!selectedDays.Contains(now.UtcDateTime.DayOfWeek))
                 return false;
 
-            var scheduledTime = TimeSpan.FromMinutes(schedule.TimeOfDayMinutes);
-            var currentTime = now.TimeOfDay;
+            var scheduledTime = schedule.ScheduledTimeUtc;
+            var currentTime = now.UtcDateTime.TimeOfDay;
 
             return Math.Abs((currentTime - scheduledTime).TotalMinutes) < 1;
         }

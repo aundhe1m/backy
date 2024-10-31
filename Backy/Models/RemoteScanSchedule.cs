@@ -19,18 +19,20 @@ namespace Backy.Models
         public bool SelectedDaySaturday { get; set; } = false;
         public bool SelectedDaySunday { get; set; } = false;
 
-        public int TimeOfDayMinutes { get; set; } = 0; // Minutes since midnight
+        public TimeSpan ScheduledTimeUtc { get; set; }
 
-        // Add this property
         [NotMapped]
         public string TimeOfDayString
         {
-            get => TimeSpan.FromMinutes(TimeOfDayMinutes).ToString(@"hh\:mm");
+            get => ScheduledTimeUtc.ToString(@"hh\:mm");
             set
             {
                 if (TimeSpan.TryParse(value, out var time))
                 {
-                    TimeOfDayMinutes = (int)time.TotalMinutes;
+                    // Assume input is in local time and convert to UTC
+                    var localDateTime = DateTime.Today.Add(time);
+                    var utcDateTime = localDateTime.ToUniversalTime();
+                    ScheduledTimeUtc = utcDateTime.TimeOfDay;
                 }
             }
         }
