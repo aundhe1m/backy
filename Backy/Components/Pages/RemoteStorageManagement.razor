@@ -7,6 +7,7 @@
 @inject IDataProtectionProvider DataProtectionProvider
 @inject IRemoteConnectionService RemoteConnectionService
 @inject ILoadingService LoadingService
+@inject ITimeZoneService TimeZoneService
 @rendermode InteractiveServer
 
 <PageTitle>Remote Storage Management - Backy</PageTitle>
@@ -137,40 +138,42 @@ else
                 <!-- Page 3: Schedule -->
                 <div>
                 <h3>Schedule</h3>
-                @foreach (var schedule in ScanSchedules)
+                @foreach (var scheduleViewModel in ScanSchedules)
                     {
                         <div class="card mb-3">
                             <div class="card-body">
                                 <div class="mb-3">
                                     <label class="form-label">Days of Week</label><br />
                                     <label>
-                                        <InputCheckbox @bind-Value="schedule.SelectedDayMonday" /> Monday
+                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayMonday" /> Monday
                                     </label>
                                     <label class="ms-2">
-                                        <InputCheckbox @bind-Value="schedule.SelectedDayTuesday" /> Tuesday
+                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayTuesday" /> Tuesday
                                     </label>
                                     <label class="ms-2">
-                                        <InputCheckbox @bind-Value="schedule.SelectedDayWednesday" /> Wednesday
+                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayWednesday" />
+                                        Wednesday
                                     </label>
                                     <label class="ms-2">
-                                        <InputCheckbox @bind-Value="schedule.SelectedDayThursday" /> Thursday
+                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayThursday" /> Thursday
                                     </label>
                                     <label class="ms-2">
-                                        <InputCheckbox @bind-Value="schedule.SelectedDayFriday" /> Friday
+                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayFriday" /> Friday
                                     </label>
                                     <label class="ms-2">
-                                        <InputCheckbox @bind-Value="schedule.SelectedDaySaturday" /> Saturday
+                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDaySaturday" /> Saturday
                                     </label>
                                     <label class="ms-2">
-                                        <InputCheckbox @bind-Value="schedule.SelectedDaySunday" /> Sunday
+                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDaySunday" /> Sunday
                                     </label>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">Time of Day</label>
-                                    <InputText type="time" class="form-control" @bind-Value="schedule.TimeOfDayString" />
+                                    <TimeInput TValue="TimeOnly?" @bind-Value="scheduleViewModel.ScheduledTimeLocal" />
                                 </div>
-                                <button class="btn btn-danger" type="button" @onclick="() => RemoveSchedule(schedule)">Remove
-                                    Schedule</button>
+                                <button class="btn btn-danger" type="button" @onclick="() => RemoveSchedule(scheduleViewModel)">
+                                    Remove Schedule
+                                </button>
                             </div>
                         </div>
                     }
@@ -211,9 +214,17 @@ else
     private string Password { get; set; } = string.Empty;
     private string SSHKey { get; set; } = string.Empty;
     private List<FilterRule> ExcludeFilters { get; set; } = new List<FilterRule>();
-    private List<RemoteScanSchedule> ScanSchedules { get; set; } = new List<RemoteScanSchedule>();
-
     private Modal remoteConnectionModal = default!;
+
+    // ViewModel for the schedule
+    public class RemoteScanScheduleViewModel
+    {
+        public RemoteScanSchedule Schedule { get; set; } = new RemoteScanSchedule();
+        public TimeOnly? ScheduledTimeLocal { get; set; }
+    }
+
+    // Update ScanSchedules to use the ViewModel
+    private List<RemoteScanScheduleViewModel> ScanSchedules { get; set; } = new List<RemoteScanScheduleViewModel>();
 
     // Lifecycle Methods
     protected override async Task OnInitializedAsync()
@@ -239,7 +250,7 @@ else
         Password = string.Empty;
         SSHKey = string.Empty;
         ExcludeFilters = new List<FilterRule>();
-        ScanSchedules = new List<RemoteScanSchedule>();
+        ScanSchedules = new List<RemoteScanScheduleViewModel>();
         CurrentStep = 1;
         editContext = new EditContext(RemoteConnectionModel);
         await remoteConnectionModal.ShowAsync();
@@ -301,8 +312,12 @@ else
     {
         try
         {
-            ScanSchedules.Add(new RemoteScanSchedule());
-            StateHasChanged();
+            var scheduleViewModel = new RemoteScanScheduleViewModel
+                {
+                    Schedule = new RemoteScanSchedule(),
+                    ScheduledTimeLocal = null
+                };
+            ScanSchedules.Add(scheduleViewModel);
         }
         catch (Exception ex)
         {
@@ -311,10 +326,11 @@ else
         }
     }
 
-    private void RemoveSchedule(RemoteScanSchedule schedule)
+    private void RemoveSchedule(RemoteScanScheduleViewModel scheduleViewModel)
     {
-        ScanSchedules.Remove(schedule);
+        ScanSchedules.Remove(scheduleViewModel);
     }
+
 
     private async Task CreateConnection()
     {
@@ -346,9 +362,24 @@ else
         }
 
         // Save Schedules
-        foreach (var schedule in ScanSchedules)
+        foreach (var scheduleViewModel in ScanSchedules)
         {
+            var schedule = scheduleViewModel.Schedule;
             schedule.RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId;
+
+            // Convert ScheduledTimeLocal to ScheduledTimeUtc
+            if (scheduleViewModel.ScheduledTimeLocal.HasValue)
+            {
+                var timeSpanLocal = scheduleViewModel.ScheduledTimeLocal.Value.ToTimeSpan();
+                var dateTimeLocal = DateTime.Today.Add(timeSpanLocal);
+                var dateTimeUtc = TimeZoneInfo.ConvertTimeToUtc(dateTimeLocal, TimeZoneService.GetConfiguredTimeZone());
+                schedule.ScheduledTimeUtc = dateTimeUtc.TimeOfDay;
+            }
+            else
+            {
+                schedule.ScheduledTimeUtc = TimeSpan.Zero;
+            }
+
             DbContext.RemoteScanSchedules.Add(schedule);
         }
 
@@ -400,13 +431,23 @@ else
             .ToList();
 
             // Load schedules
-            ScanSchedules = connection.ScanSchedules.ToList();
+            ScanSchedules = connection.ScanSchedules.Select(s => new RemoteScanScheduleViewModel
+                {
+                    Schedule = s,
+                    ScheduledTimeLocal = GetLocalTimeOnlyFromUtcTimeSpan(s.ScheduledTimeUtc)
+                }).ToList();
 
             editContext = new EditContext(RemoteConnectionModel);
             await remoteConnectionModal.ShowAsync();
         }
     }
 
+    private TimeOnly? GetLocalTimeOnlyFromUtcTimeSpan(TimeSpan scheduledTimeUtc)
+    {
+        var timeUtc = DateTime.UtcNow.Date.Add(scheduledTimeUtc);
+        var timeLocal = TimeZoneInfo.ConvertTimeFromUtc(timeUtc, TimeZoneService.GetConfiguredTimeZone());
+        return TimeOnly.FromDateTime(timeLocal);
+    }
 
     private async Task ToggleEnableConnection(Guid remoteConnectionId)
     {

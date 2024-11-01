@@ -21,6 +21,7 @@ namespace Backy.Models
 
         public TimeSpan ScheduledTimeUtc { get; set; }
 
+        // Remove time zone conversion from the model
         [NotMapped]
         public string TimeOfDayString
         {
@@ -29,10 +30,7 @@ namespace Backy.Models
             {
                 if (TimeSpan.TryParse(value, out var time))
                 {
-                    // Assume input is in local time and convert to UTC
-                    var localDateTime = DateTime.Today.Add(time);
-                    var utcDateTime = localDateTime.ToUniversalTime();
-                    ScheduledTimeUtc = utcDateTime.TimeOfDay;
+                    ScheduledTimeUtc = time;
                 }
             }
         }

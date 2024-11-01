@@ -3,8 +3,8 @@
 ## Nuke DB and run
 
 ```shell
-docker compose -f ~/backy/docker-compose.yml down && \
-docker compose -f ~/backy/docker-compose.yml up -d && \
+docker compose -f /home/aundhe1m/backy-project/backy/docker-compose.yml down && \
+docker compose -f /home/aundhe1m/backy-project/backy/docker-compose.yml up -d && \
 echo "BUILD" && \
 dotnet build && \
 echo "NUKE MIGRATION" && \
@@ -27,3 +27,7 @@ sudo dotnet run --no-build
 ```shell
 sudo umount /mnt/backy/md1 && sudo mdadm --stop /dev/md1
 ```
+
+## Time Zone
+
+Time zone can be defined be setting the Timezone value to a IANA time zone ID (Europe/Oslo)

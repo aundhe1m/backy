@@ -30,6 +30,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Singleton services are created once and reused throughout the application's lifetime
 builder.Services.AddSingleton<ILoadingService, LoadingService>();
 builder.Services.AddSingleton<ThemeService, ThemeService>();
+builder.Services.AddSingleton<ITimeZoneService, TimeZoneService>();
 
 // Scoped services are created once per client request (connection)
 builder.Services.AddScoped<IDriveService, DriveService>();

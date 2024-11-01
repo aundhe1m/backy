@@ -32,15 +32,18 @@ namespace Backy.Services
         private readonly Channel<Guid> _scanQueue = Channel.CreateUnbounded<Guid>();
         private Task? _processingQueueTask;
         private readonly SemaphoreSlim _queueSemaphore = new SemaphoreSlim(1, 1);
+        private readonly TimeZoneInfo _timeZoneInfo;
 
         public RemoteConnectionService(
-            IServiceScopeFactory serviceScopeFactory,
-            ILogger<RemoteConnectionService> logger,
-            IDataProtectionProvider dataProtectionProvider)
+        IServiceScopeFactory serviceScopeFactory,
+        ILogger<RemoteConnectionService> logger,
+        IDataProtectionProvider dataProtectionProvider,
+        ITimeZoneService timeZoneService)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _logger = logger;
             _dataProtectionProvider = dataProtectionProvider;
+            _timeZoneInfo = timeZoneService.GetConfiguredTimeZone();
         }
 
         public async Task<bool> ValidateSSHConnection(RemoteConnection connection, string password, string sshKey)
@@ -420,8 +423,6 @@ namespace Backy.Services
             }
         }
 
-
-
         private bool IsTimeToScan(RemoteScanSchedule schedule, DateTimeOffset now)
         {
             var selectedDays = new List<DayOfWeek>();
@@ -433,13 +434,17 @@ namespace Backy.Services
             if (schedule.SelectedDaySaturday) selectedDays.Add(DayOfWeek.Saturday);
             if (schedule.SelectedDaySunday) selectedDays.Add(DayOfWeek.Sunday);
 
-            // Use UTC day of week
-            if (!selectedDays.Contains(now.UtcDateTime.DayOfWeek))
+            // Convert current UTC time to the configured time zone
+            var targetTime = TimeZoneInfo.ConvertTimeFromUtc(now.UtcDateTime, _timeZoneInfo);
+
+            // Check if the day matches
+            if (!selectedDays.Contains(targetTime.DayOfWeek))
                 return false;
 
             var scheduledTime = schedule.ScheduledTimeUtc;
-            var currentTime = now.UtcDateTime.TimeOfDay;
+            var currentTime = targetTime.TimeOfDay;
 
+            // Check if the current time matches the scheduled time
             return Math.Abs((currentTime - scheduledTime).TotalMinutes) < 1;
         }
     }
