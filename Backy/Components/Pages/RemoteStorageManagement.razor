@@ -367,17 +367,14 @@ else
             var schedule = scheduleViewModel.Schedule;
             schedule.RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId;
 
-            // Convert ScheduledTimeLocal to ScheduledTimeUtc
+            // Convert ScheduledTimeLocal to ScheduledTime
             if (scheduleViewModel.ScheduledTimeLocal.HasValue)
             {
-                var timeSpanLocal = scheduleViewModel.ScheduledTimeLocal.Value.ToTimeSpan();
-                var dateTimeLocal = DateTime.Today.Add(timeSpanLocal);
-                var dateTimeUtc = TimeZoneInfo.ConvertTimeToUtc(dateTimeLocal, TimeZoneService.GetConfiguredTimeZone());
-                schedule.ScheduledTimeUtc = dateTimeUtc.TimeOfDay;
+                schedule.ScheduledTime = scheduleViewModel.ScheduledTimeLocal.Value.ToTimeSpan();
             }
             else
             {
-                schedule.ScheduledTimeUtc = TimeSpan.Zero;
+                schedule.ScheduledTime = TimeSpan.Zero;
             }
 
             DbContext.RemoteScanSchedules.Add(schedule);
@@ -434,7 +431,7 @@ else
             ScanSchedules = connection.ScanSchedules.Select(s => new RemoteScanScheduleViewModel
                 {
                     Schedule = s,
-                    ScheduledTimeLocal = GetLocalTimeOnlyFromUtcTimeSpan(s.ScheduledTimeUtc)
+                    ScheduledTimeLocal = TimeOnly.FromTimeSpan(s.ScheduledTime)
                 }).ToList();
 
             editContext = new EditContext(RemoteConnectionModel);
@@ -442,9 +439,9 @@ else
         }
     }
 
-    private TimeOnly? GetLocalTimeOnlyFromUtcTimeSpan(TimeSpan scheduledTimeUtc)
+    private TimeOnly? GetLocalTimeOnlyFromUtcTimeSpan(TimeSpan ScheduledTime)
     {
-        var timeUtc = DateTime.UtcNow.Date.Add(scheduledTimeUtc);
+        var timeUtc = DateTime.UtcNow.Date.Add(ScheduledTime);
         var timeLocal = TimeZoneInfo.ConvertTimeFromUtc(timeUtc, TimeZoneService.GetConfiguredTimeZone());
         return TimeOnly.FromDateTime(timeLocal);
     }

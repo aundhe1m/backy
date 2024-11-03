@@ -19,21 +19,7 @@ namespace Backy.Models
         public bool SelectedDaySaturday { get; set; } = false;
         public bool SelectedDaySunday { get; set; } = false;
 
-        public TimeSpan ScheduledTimeUtc { get; set; }
-
-        // Remove time zone conversion from the model
-        [NotMapped]
-        public string TimeOfDayString
-        {
-            get => ScheduledTimeUtc.ToString(@"hh\:mm");
-            set
-            {
-                if (TimeSpan.TryParse(value, out var time))
-                {
-                    ScheduledTimeUtc = time;
-                }
-            }
-        }
+        public TimeSpan ScheduledTime { get; set; }
 
         // Navigation property
         public RemoteConnection RemoteConnection { get; set; } = default!;

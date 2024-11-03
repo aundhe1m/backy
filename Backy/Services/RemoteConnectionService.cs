@@ -435,14 +435,14 @@ namespace Backy.Services
             if (schedule.SelectedDaySunday) selectedDays.Add(DayOfWeek.Sunday);
 
             // Convert current UTC time to the configured time zone
-            var targetTime = TimeZoneInfo.ConvertTimeFromUtc(now.UtcDateTime, _timeZoneInfo);
+            var nowInConfiguredZone = TimeZoneInfo.ConvertTimeFromUtc(now.UtcDateTime, _timeZoneInfo);
 
             // Check if the day matches
-            if (!selectedDays.Contains(targetTime.DayOfWeek))
+            if (!selectedDays.Contains(nowInConfiguredZone.DayOfWeek))
                 return false;
 
-            var scheduledTime = schedule.ScheduledTimeUtc;
-            var currentTime = targetTime.TimeOfDay;
+            var scheduledTime = schedule.ScheduledTime;
+            var currentTime = nowInConfiguredZone.TimeOfDay;
 
             // Check if the current time matches the scheduled time
             return Math.Abs((currentTime - scheduledTime).TotalMinutes) < 1;
