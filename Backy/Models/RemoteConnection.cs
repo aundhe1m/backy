@@ -24,7 +24,6 @@ namespace Backy.Models
 
         public string? SSHKey { get; set; } // Encrypted SSH Key
 
-        [Required(ErrorMessage = "Remote Path is required.")]
         public string RemotePath { get; set; } = string.Empty;
 
         public bool IsEnabled { get; set; } = true;

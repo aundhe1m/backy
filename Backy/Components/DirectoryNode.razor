@@ -1,0 +1,61 @@
+@using static Backy.Components.Pages.RemoteStorageManagement
+<div>
+    <div @onclick="ToggleExpand" style="cursor: pointer;">
+        <img src="/icons/chevron-right.svg"
+            class="theme-icon chevron-icon @(Node.IsExpanded ? "rotated90" : "nonrotated")" style="height: 16px;" />
+        <img src="/icons/@(Node.IsExpanded ? "folder2-open" : "folder").svg" class="theme-icon" style="height: 16px;" />
+        @Node.Name
+        @if (Node.IsLoading)
+        {
+            <Spinner SpinnerType="SpinnerType.Dots" />
+        }
+    </div>
+    @if (Node.IsExpanded)
+    {
+        <div style="margin-left: 20px;">
+            @foreach (var child in Node.Children)
+            {
+                <DirectoryNode Node="child" OnDirectorySelected="OnDirectorySelected" FetchDirectories="FetchDirectories" />
+            }
+
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public DirectoryNodeModel Node { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<string> OnDirectorySelected { get; set; }
+
+    [Parameter]
+    public Func<string, Task<List<string>>> FetchDirectories { get; set; } = default!;
+
+    private async Task ToggleExpand()
+    {
+        if (!Node.IsExpanded)
+        {
+            if (!Node.Children.Any())
+            {
+                await LoadChildDirectories(Node);
+            }
+        }
+        Node.IsExpanded = !Node.IsExpanded;
+        await OnDirectorySelected.InvokeAsync(Node.FullPath);
+    }
+
+    private async Task LoadChildDirectories(DirectoryNodeModel node)
+    {
+        node.IsLoading = true;
+        var directories = await FetchDirectories(node.FullPath);
+        node.Children = directories.Select(dir => new DirectoryNodeModel
+            {
+                Name = dir,
+                FullPath = $"{node.FullPath.TrimEnd('/')}/{dir}",
+                IsExpanded = false
+            }).ToList();
+        node.IsLoading = false;
+        StateHasChanged();
+    }
+}

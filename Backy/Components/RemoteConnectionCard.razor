@@ -14,7 +14,7 @@
                     <!-- Expand/Collapse Button -->
                     <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
                         <img src="/icons/chevron-down.svg" alt="Expand Details"
-                            class="theme-icon chevron-icon @(IsDetailsVisible ? "rotated" : "")"
+                            class="theme-icon chevron-icon @(IsDetailsVisible ? "rotated180" : "nonrotated")"
                             style="height: 24px;" />
                     </button>
                     <!-- Remote Connection Icon and Name -->
@@ -31,6 +31,10 @@
                 </div>
                 <!-- Right Section: Action Buttons -->
                 <div class="col d-flex justify-content-end">
+                    <button class="btn btn-link me-2" @onclick="RefreshFileAndBackupInfo">
+                        <img src="/icons/arrow-clockwise.svg" alt="Refresh Info" style="height: 24px;"
+                            class="theme-icon" />
+                    </button>
                     <button class="btn btn-danger me-2" @onclick="DeleteConnection">
                         <img src="/icons/trash.svg" alt="Delete Connection" style="height: 24px;" class="theme-icon" />
                     </button>
@@ -60,14 +64,14 @@
                         <!-- Expand/Collapse Button -->
                         <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleFileAndBackupInfo">
                             <img src="/icons/chevron-down.svg" alt="Expand Details"
-                                class="theme-icon chevron-icon @(IsFileAndBackupInfoVisible ? "rotated" : "")"
+                                class="theme-icon chevron-icon @(IsFileAndBackupInfoVisible ? "rotated180" : "nonrotated")"
                                 style="height: 24px;" />
                         </button>
                         <h5 class="mb-0">File and Backup Info</h5>
                     </div>
-                    <!-- Refresh Icon -->
-                    <button class="btn btn-link p-0" @onclick="RefreshFileAndBackupInfo">
-                        <img src="/icons/arrow-clockwise.svg" alt="Refresh Info" style="height: 24px;" class="theme-icon" />
+                    <!-- Edit Path -->
+                    <button class="btn btn-link p-0" @onclick="() => EditConnection(2)">
+                        <img src="/icons/pencil-square.svg" alt="Edit Path" style="height: 24px;" class="theme-icon" />
                     </button>
                 </div>
                 @if (IsFileAndBackupInfoVisible)
@@ -77,12 +81,16 @@
                         <table class="table table-striped">
                             <tbody>
                                 <tr>
+                                    <th>Connection Path</th>
+                                    <td>@Model.RemotePath</td>
+                                </tr>
+                                <tr>
                                     <th>Total Files</th>
-                                    <td>@Model.RemoteFiles.Count</td>
+                                    <td>@Model.RemoteFiles.Count(rf => !rf.IsExcluded)</td>
                                 </tr>
                                 <tr>
                                     <th>Backed Up Files</th>
-                                    <td>@Model.RemoteFiles.Count(rf => rf.BackupExists)</td>
+                                    <td>@Model.RemoteFiles.Count(rf => !rf.IsExcluded && rf.BackupExists)</td>
                                 </tr>
                                 <tr>
                                     <th>Total Size</th>
@@ -105,7 +113,7 @@
                         <!-- Expand/Collapse Button -->
                         <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleConnectionInfo">
                             <img src="/icons/chevron-down.svg" alt="Expand Details"
-                                class="theme-icon chevron-icon @(IsConnectionInfoVisible ? "rotated" : "")"
+                                class="theme-icon chevron-icon @(IsConnectionInfoVisible ? "rotated180" : "nonrotated")"
                                 style="height: 24px;" />
                         </button>
                         <h5 class="mb-0">Connection Info</h5>
@@ -151,13 +159,13 @@
                         <!-- Expand/Collapse Button -->
                         <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleFilters">
                             <img src="/icons/chevron-down.svg" alt="Expand Details"
-                                class="theme-icon chevron-icon @(IsFiltersVisible ? "rotated" : "")"
+                                class="theme-icon chevron-icon @(IsFiltersVisible ? "rotated180" : "nonrotated")"
                                 style="height: 24px;" />
                         </button>
                         <h5 class="mb-0">Filters</h5>
                     </div>
                     <!-- Edit Filters -->
-                    <button class="btn btn-link p-0" @onclick="() => EditConnection(2)">
+                    <button class="btn btn-link p-0" @onclick="() => EditConnection(3)">
                         <img src="/icons/pencil-square.svg" alt="Edit Filters" style="height: 24px;" class="theme-icon" />
                     </button>
                 </div>
@@ -200,13 +208,13 @@
                         <!-- Expand/Collapse Button -->
                         <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleSchedules">
                             <img src="/icons/chevron-down.svg" alt="Expand Details"
-                                class="theme-icon chevron-icon @(IsSchedulesVisible ? "rotated" : "")"
+                                class="theme-icon chevron-icon @(IsSchedulesVisible ? "rotated180" : "nonrotated")"
                                 style="height: 24px;" />
                         </button>
                         <h5 class="mb-0">Schedules</h5>
                     </div>
                     <!-- Edit Schedules -->
-                    <button class="btn btn-link p-0" @onclick="() => EditConnection(3)">
+                    <button class="btn btn-link p-0" @onclick="() => EditConnection(4)">
                         <img src="/icons/pencil-square.svg" alt="Edit Schedules" style="height: 24px;" class="theme-icon" />
                     </button>
                 </div>
@@ -284,7 +292,6 @@
     private bool IsConnectionInfoVisible { get; set; } = false;
     private bool IsFiltersVisible { get; set; } = false;
     private bool IsSchedulesVisible { get; set; } = false;
-
     private long TotalSize => Model.RemoteFiles.Where(rf => !rf.IsExcluded).Sum(rf => rf.Size);
     private long BackedUpSize => Model.RemoteFiles.Where(rf => !rf.IsExcluded && rf.BackupExists).Sum(rf => rf.Size);
 
@@ -352,24 +359,6 @@
     }
 
     private async Task EditConnection(int step)
-    {
-        await OnEdit.InvokeAsync(new EditEventArgs
-            {
-                RemoteConnectionId = Model.RemoteConnectionId,
-                Step = step
-            });
-    }
-
-    private async Task EditFilters(int step)
-    {
-        await OnEdit.InvokeAsync(new EditEventArgs
-            {
-                RemoteConnectionId = Model.RemoteConnectionId,
-                Step = step
-            });
-    }
-
-    private async Task EditSchedules(int step)
     {
         await OnEdit.InvokeAsync(new EditEventArgs
             {

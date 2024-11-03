@@ -13,7 +13,7 @@
             <!-- Toggle Details Button -->
             <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
                 <img src="/icons/chevron-down.svg" alt="Expand Details"
-                    class="theme-icon chevron-icon @(IsNewDriveDetailsVisible ? "rotated" : "")"
+                    class="theme-icon chevron-icon @(IsNewDriveDetailsVisible ? "rotated180" : "nonrotated")"
                     style="height: 24px;" />
             </button>
             <!-- Drive Icon and Name -->
@@ -80,7 +80,7 @@
                                 <button class="btn btn-link p-0 me-2 chevron-button"
                                     @onclick="() => TogglePartitionDetails(partition.Name!)">
                                     <img src="/icons/chevron-down.svg" alt="Expand Details"
-                                        class="theme-icon chevron-icon @(IsPartitionDetailsVisible(partition.Name!) ? "rotated" : "")"
+                                        class="theme-icon chevron-icon @(IsPartitionDetailsVisible(partition.Name!) ? "rotated180" : "nonrotated")"
                                         style="height: 24px;" />
                                 </button>
                                 <!-- Partition Icon and Name -->

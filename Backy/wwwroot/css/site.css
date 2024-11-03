@@ -59,8 +59,18 @@ h6 {
   color: #575757;
 }
 
-.chevron-icon.rotated {
+.chevron-icon.nonrotated {
+  transform: rotate(0deg);
+  transition: transform 0.2s;
+}
+
+.chevron-icon.rotated180 {
   transform: rotate(180deg);
+  transition: transform 0.2s;
+}
+
+.chevron-icon.rotated90 {
+  transform: rotate(90deg);
   transition: transform 0.2s;
 }
 
