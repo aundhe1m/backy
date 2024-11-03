@@ -16,6 +16,8 @@ namespace Backy.Models
         [Required]
         public bool IsInclude { get; set; } // true for include, false for exclude
 
+        public int FilteredFileCount { get; set; } = 0;
+
         // Navigation property
         public RemoteConnection RemoteConnection { get; set; } = default!;
     }

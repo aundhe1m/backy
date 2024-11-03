@@ -209,55 +209,84 @@ namespace Backy.Services
                 _logger.LogInformation("SFTP client connected successfully.");
 
                 // Load filters
-                var filters = await dbContext.RemoteFilters // Changed to dbContext
+                var filters = await dbContext.RemoteFilters
                     .Where(f => f.RemoteConnectionId == connection.RemoteConnectionId)
                     .ToListAsync();
-                _logger.LogInformation("Loaded filters from database.");
 
-                var excludePatterns = filters.Where(f => !f.IsInclude).Select(f => f.Pattern).ToList();
+                // Initialize filter counts
+                foreach (var filter in filters)
+                {
+                    filter.FilteredFileCount = 0;
+                }
 
-                // Perform directory listing and update RemoteFiles
+                // Build matchers for each filter
+                var filterMatchers = filters.ToDictionary(
+                    filter => filter,
+                    filter =>
+                    {
+                        var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
+                        matcher.AddInclude(filter.Pattern);
+                        return matcher;
+                    });
+
+                // Perform directory listing
                 var files = ListRemoteFiles(sftpClient, connection.RemotePath);
-                _logger.LogInformation($"Listed {files.Count} files from remote path.");
 
-                // Apply filters using Microsoft.Extensions.FileSystemGlobbing
-                var filteredFiles = ApplyFilters(files, connection.RemotePath, excludePatterns);
-                _logger.LogInformation($"Filtered files count: {filteredFiles.Count()}");
-
-                // Update RemoteFiles in the database
-                var existingFiles = await dbContext.RemoteFiles // Changed to dbContext
+                // Build list of existing files
+                var existingFiles = await dbContext.RemoteFiles
                     .Where(rf => rf.RemoteConnectionId == connection.RemoteConnectionId)
                     .ToListAsync();
-                _logger.LogInformation("Loaded existing remote files from database.");
 
-                foreach (var file in filteredFiles)
+                // Process each file
+                foreach (var file in files)
                 {
+                    var relativePath = GetRelativePath(connection.RemotePath, file.FullName).Replace('\\', '/').TrimStart('/');
+
+                    bool isExcluded = false;
+
+                    foreach (var kvp in filterMatchers)
+                    {
+                        var filter = kvp.Key;
+                        var matcher = kvp.Value;
+                        var matchResult = matcher.Match(relativePath);
+
+                        if (matchResult.HasMatches)
+                        {
+                            // Increment the filter's count
+                            filter.FilteredFileCount++;
+
+                            if (!filter.IsInclude)
+                            {
+                                isExcluded = true;
+                            }
+                        }
+                    }
+
+                    // Update or add the RemoteFile
                     var existingFile = existingFiles.FirstOrDefault(rf => rf.FullPath == file.FullName);
                     if (existingFile == null)
                     {
-                        // Add new file
                         var remoteFile = new RemoteFile
                         {
                             RemoteConnectionId = connection.RemoteConnectionId,
                             FileName = file.Name,
                             FullPath = file.FullName,
                             Size = file.Length,
-                            BackupExists = false // Update as per your backup logic
+                            BackupExists = false, // Update as per your backup logic
+                            IsExcluded = isExcluded
                         };
-                        dbContext.RemoteFiles.Add(remoteFile); // Changed to dbContext
-                        _logger.LogInformation($"Added new file: {file.FullName}");
+                        dbContext.RemoteFiles.Add(remoteFile);
                     }
                     else
                     {
-                        // Update existing file
                         existingFile.Size = file.Length;
                         existingFile.IsDeleted = false;
-                        _logger.LogInformation($"Updated existing file: {file.FullName}");
+                        existingFile.IsExcluded = isExcluded;
                     }
                 }
 
                 // Mark files as deleted if they no longer exist
-                var deletedFiles = existingFiles.Where(ef => !filteredFiles.Any(f => f.FullName == ef.FullPath));
+                var deletedFiles = existingFiles.Where(ef => !files.Any(f => f.FullName == ef.FullPath));
                 foreach (var deletedFile in deletedFiles)
                 {
                     deletedFile.IsDeleted = true;
@@ -310,59 +339,51 @@ namespace Backy.Services
 
 
         // RemoteConnectionService.cs
-        private IEnumerable<ISftpFile> ApplyFilters(IEnumerable<ISftpFile> files, string rootPath, List<string> excludePatterns)
-        {
-            var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
+        // private void ApplyFilters(IEnumerable<ISftpFile> files, string rootPath, List<RemoteFilter> filters)
+        // {
+        //     var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
+        //     matcher.AddInclude("**/*");
 
-            // Include all files by default
-            matcher.AddInclude("**/*");
+        //     // Initialize filter counts
+        //     var filterCounts = filters.ToDictionary(f => f.Pattern, f => 0);
 
-            // Apply exclude patterns
-            if (excludePatterns.Any())
-            {
-                matcher.AddExcludePatterns(excludePatterns);
-            }
+        //     // Build list of file paths relative to the root path
+        //     var filePaths = files.Select(f =>
+        //     {
+        //         var relativePath = GetRelativePath(rootPath, f.FullName).Replace('\\', '/');
+        //         return relativePath.TrimStart('/');
+        //     }).ToList();
 
-            // Build list of file paths relative to the root path and remove leading slashes
-            var filePaths = files.Select(f =>
-            {
-                var relativePath = GetRelativePath(rootPath, f.FullName).Replace('\\', '/');
-                return relativePath.TrimStart('/');
-            }).ToList();
+        //     // Apply each filter individually
+        //     foreach (var filter in filters)
+        //     {
+        //         matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
+        //         matcher.AddInclude(filter.Pattern);
 
-            _logger.LogInformation("Relative file paths:");
-            foreach (var path in filePaths)
-            {
-                _logger.LogInformation($"- {path}");
-            }
+        //         var result = matcher.Match(".", filePaths);
+        //         filterCounts[filter.Pattern] = result.Files.Count();
+        //     }
 
-            // Perform matching with root directory "."
-            var result = matcher.Match(".", filePaths);
+        //     // Update filter counts in database
+        //     foreach (var filter in filters)
+        //     {
+        //         filter.FilteredFileCount = filterCounts[filter.Pattern];
+        //     }
 
-            _logger.LogInformation("Matched file paths:");
-            foreach (var file in result.Files)
-            {
-                _logger.LogInformation($"- {file.Path}");
-            }
+        //     // Apply exclude patterns to get the final list of files
+        //     matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
+        //     matcher.AddInclude("**/*");
+        //     matcher.AddExcludePatterns(filters.Select(f => f.Pattern));
+        //     var matchedFiles = matcher.Match(".", filePaths).Files.Select(f => f.Path.Replace('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            // Get matched file paths
-            var matchedFilePaths = result.Files
-                .Select(f => f.Path.Replace('\\', '/'))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        //     var filteredFiles = files.Where(f =>
+        //     {
+        //         var relativePath = GetRelativePath(rootPath, f.FullName).Replace('\\', '/').TrimStart('/');
+        //         return matchedFiles.Contains(relativePath);
+        //     });
 
-            // Filter the files based on matched relative paths
-            var filteredFiles = files.Where(f =>
-            {
-                var relativePath = GetRelativePath(rootPath, f.FullName).Replace('\\', '/').TrimStart('/');
-                return matchedFilePaths.Contains(relativePath);
-            });
-
-            _logger.LogInformation($"Filtered files count: {filteredFiles.Count()}");
-
-            return filteredFiles;
-        }
-
-
+        //     return filteredFiles;
+        // }
 
         // Helper method to get relative path
         private string GetRelativePath(string rootPath, string fullPath)

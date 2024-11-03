@@ -28,8 +28,10 @@
 {
     @foreach (var connection in RemoteConnections)
     {
-        <RemoteConnectionCard Model="@connection" OnDelete="@DeleteConnection" OnEdit="@EditConnection"
-    OnToggleEnable="@ToggleEnableConnection" OnScanNow="@ScanNowConnection" />
+        <RemoteConnectionCard Model="@connection"
+    OnDelete="@EventCallback.Factory.Create(this, () => DeleteConnection(connection.RemoteConnectionId))"
+    OnEdit="@EventCallback.Factory.Create(this, () => EditConnection(new EditEventArgs { RemoteConnectionId = connection.RemoteConnectionId, Step = 1 }))"
+    OnToggleEnable="ToggleEnableConnection" OnScanNow="ScanNowConnection" />
     }
 }
 else
@@ -180,6 +182,18 @@ else
                     <button class="btn btn-secondary" type="button" @onclick="AddSchedule">Add Schedule</button>
                 </div>
             }
+            else if (CurrentStep == 4)
+            {
+                <!-- Page 4: Summary -->
+                <div>
+                <h3>Summary</h3>
+                <p>Please review your settings before creating the connection.</p>
+                <!-- Display a summary of the entered data -->
+                <!-- For brevity, only the connection name is shown -->
+                <p><strong>Connection Name:</strong> @RemoteConnectionModel.Name</p>
+                <!-- Add other summary details as needed -->
+            </div>
+            }
         </EditForm>
     </BodyTemplate>
     <FooterTemplate>
@@ -192,9 +206,17 @@ else
         {
             <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
         }
-        @if (CurrentStep < 3)
+
+        @if (CurrentStep < 4)
         {
-            <button class="btn btn-primary" @onclick="NextStep">Next</button>
+            @if (IsEditMode)
+            {
+                <button class="btn btn-primary" @onclick="SaveChanges">Save</button>
+            }
+            else
+            {
+                <button class="btn btn-primary" @onclick="NextStep">Next</button>
+            }
         }
         else
         {
@@ -211,6 +233,7 @@ else
     private int CurrentStep { get; set; } = 1;
     private string ModalTitle { get; set; } = "Add Remote Connection";
     private EditContext editContext = default!;
+    private bool IsEditMode { get; set; } = false;
     private string Password { get; set; } = string.Empty;
     private string SSHKey { get; set; } = string.Empty;
     private List<FilterRule> ExcludeFilters { get; set; } = new List<FilterRule>();
@@ -221,6 +244,12 @@ else
     {
         public RemoteScanSchedule Schedule { get; set; } = new RemoteScanSchedule();
         public TimeOnly? ScheduledTimeLocal { get; set; }
+    }
+
+    public class EditEventArgs
+    {
+        public Guid RemoteConnectionId { get; set; }
+        public int Step { get; set; }
     }
 
     // Update ScanSchedules to use the ViewModel
@@ -237,6 +266,7 @@ else
     {
         RemoteConnections = await DbContext.RemoteConnections
         .Include(rc => rc.ScanSchedules)
+        .Include(rc => rc.Filters)
         .Include(rc => rc.RemoteFiles)
         .AsSplitQuery()
         .ToListAsync();
@@ -245,6 +275,7 @@ else
     // Event Handlers
     private async Task OpenAddRemoteConnectionModal()
     {
+        IsEditMode = false;
         ModalTitle = "Add Remote Connection";
         RemoteConnectionModel = new RemoteConnection();
         Password = string.Empty;
@@ -406,8 +437,15 @@ else
         }
     }
 
-    private async Task EditConnection(Guid remoteConnectionId)
+    private async Task EditConnection(EditEventArgs args)
     {
+        await LoadRemoteConnectionForEdit(args.RemoteConnectionId, args.Step);
+    }
+
+
+    private async Task LoadRemoteConnectionForEdit(Guid remoteConnectionId, int step)
+    {
+        IsEditMode = true;
         var connection = await DbContext.RemoteConnections
         .Include(rc => rc.ScanSchedules)
         .Include(rc => rc.Filters)
@@ -417,7 +455,7 @@ else
         {
             ModalTitle = "Edit Remote Connection";
             RemoteConnectionModel = connection;
-            CurrentStep = 1;
+            CurrentStep = step;
             Password = string.Empty;
             SSHKey = string.Empty;
 
@@ -437,6 +475,15 @@ else
             editContext = new EditContext(RemoteConnectionModel);
             await remoteConnectionModal.ShowAsync();
         }
+    }
+
+    private async Task SaveChanges()
+    {
+        // Save changes to the database
+        await DbContext.SaveChangesAsync();
+        await CloseModal();
+        await LoadRemoteConnections();
+        ToastService.Notify(new ToastMessage(ToastType.Success, "Changes saved successfully."));
     }
 
     private TimeOnly? GetLocalTimeOnlyFromUtcTimeSpan(TimeSpan ScheduledTime)

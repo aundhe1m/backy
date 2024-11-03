@@ -2,90 +2,261 @@
 @inject IRemoteConnectionService RemoteConnectionService
 @inject ILoadingService LoadingService
 @inject ToastService ToastService
+@inject ITimeZoneService TimeZoneService
 
 <div class="card mb-3">
     <!-- Card Header -->
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <div class="d-flex align-items-center">
-            <!-- Expand/Collapse Button -->
-            <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
-                <img src="/icons/chevron-down.svg" alt="Expand Details"
-                    class="theme-icon chevron-icon @(IsDetailsVisible ? "rotated" : "")" style="height: 24px;" />
-            </button>
-            <!-- Remote Connection Icon and Name -->
-            <img src="/icons/hdd-network.svg" alt="Remote Connection Icon" style="height: 24px; margin-right: 8px;"
-                class="theme-icon" />
-            <span>@Model.Name</span>
-        </div>
-        <!-- Backup Progress -->
-        <div class="flex-grow-1 ms-3">
-            <div>@BackupProgressPercent% backed up</div>
-            <Progress Class="mb-0 mt-1" Height="5">
-                <ProgressBar Width="@BackupProgressPercent" />
-            </Progress>
-        </div>
-        <!-- Action Buttons -->
-        <div>
-            <button class="btn btn-danger" @onclick="DeleteConnection">
-                <img src="/icons/trash.svg" alt="Delete Connection" style="height: 24px;" class="theme-icon" />
-            </button>
-            <button class="btn @(Model.IsEnabled ? "btn-warning" : "btn-success")" @onclick="ToggleEnableConnection">
-                <img src="/icons/@(Model.IsEnabled ? "eye-slash" : "eye") .svg" alt="Toggle Enable"
-                    style="height: 24px;" class="theme-icon" />
-            </button>
-            <button class="btn btn-info" @onclick="EditConnection">
-                <img src="/icons/pencil-square.svg" alt="Edit Connection" style="height: 24px;" class="theme-icon" />
-            </button>
-            <button class="btn @(Model.ScanningActive ? "btn-secondary" : "btn-primary")" @onclick="ScanNowConnection">
-                <img src="/icons/@(Model.ScanningActive ? "x-circle" : "play-circle") .svg" alt="Scan Now"
-                    style="height: 24px;" class="theme-icon" />
-            </button>
+    <div class="card-header">
+        <div class="container">
+            <div class="row align-items-center">
+                <!-- Left Section: Expand/Collapse Button and Connection Name -->
+                <div class="col d-flex align-items-center">
+                    <!-- Expand/Collapse Button -->
+                    <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleDetails">
+                        <img src="/icons/chevron-down.svg" alt="Expand Details"
+                            class="theme-icon chevron-icon @(IsDetailsVisible ? "rotated" : "")"
+                            style="height: 24px;" />
+                    </button>
+                    <!-- Remote Connection Icon and Name -->
+                    <img src="/icons/hdd-network.svg" alt="Remote Connection Icon"
+                        style="height: 24px; margin-right: 8px;" class="theme-icon" />
+                    <span>@Model.Name</span>
+                </div>
+                <!-- Middle Section: Backup Progress -->
+                <div class="col text-center">
+                    <div>@BackupProgressPercent% backed up</div>
+                    <Progress Class="mb-0 mt-1" Height="5">
+                        <ProgressBar Width="@BackupProgressPercent" />
+                    </Progress>
+                </div>
+                <!-- Right Section: Action Buttons -->
+                <div class="col d-flex justify-content-end">
+                    <button class="btn btn-danger me-2" @onclick="DeleteConnection">
+                        <img src="/icons/trash.svg" alt="Delete Connection" style="height: 24px;" class="theme-icon" />
+                    </button>
+                    <button class="btn @(Model.IsEnabled ? "btn-warning" : "btn-success") me-2"
+                        @onclick="ToggleEnableConnection">
+                        <img src="/icons/@(Model.IsEnabled ? "eye-slash" : "eye").svg" alt="Toggle Enable"
+                            style="height: 24px;" class="theme-icon" />
+                    </button>
+                    <button class="btn @(Model.ScanningActive ? "btn-secondary" : "btn-primary")"
+                        @onclick="ScanNowConnection">
+                        <img src="/icons/@(Model.ScanningActive ? "x-circle" : "play-circle").svg" alt="Scan Now"
+                            style="height: 24px;" class="theme-icon" />
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
+
     <!-- Collapsible Body -->
     @if (IsDetailsVisible)
     {
         <div class="card-body">
-            <!-- File and Backup Info -->
-            <h5>File and Backup Info</h5>
-            <table class="table table-striped">
-                <tbody>
-                    <tr>
-                        <th>Total Files</th>
-                        <td>@Model.RemoteFiles.Count</td>
-                    </tr>
-                    <tr>
-                        <th>Backed Up Files</th>
-                        <td>@Model.RemoteFiles.Count(rf => rf.BackupExists)</td>
-                    </tr>
-                    <tr>
-                        <th>Total Size</th>
-                        <td>@SizeFormatter.FormatSize(TotalSize)</td>
-                    </tr>
-                    <tr>
-                        <th>Backed Up Size</th>
-                        <td>@SizeFormatter.FormatSize(BackedUpSize)</td>
-                    </tr>
-                </tbody>
-            </table>
-            <!-- Connection Info -->
-            <h5>Connection Info</h5>
-            <table class="table table-striped">
-                <tbody>
-                    <tr>
-                        <th>Hostname/IP (Port)</th>
-                        <td>@Model.Host (@Model.Port)</td>
-                    </tr>
-                    <tr>
-                        <th>Connection Status</th>
-                        <td>@(Model.IsOnline ? "Online" : "Offline")</td>
-                    </tr>
-                    <tr>
-                        <th>Last Checked</th>
-                        <td>@Model.LastChecked?.ToLocalTime().ToString("g")</td>
-                    </tr>
-                </tbody>
-            </table>
+            <!-- File and Backup Info Card -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <!-- Expand/Collapse Button -->
+                        <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleFileAndBackupInfo">
+                            <img src="/icons/chevron-down.svg" alt="Expand Details"
+                                class="theme-icon chevron-icon @(IsFileAndBackupInfoVisible ? "rotated" : "")"
+                                style="height: 24px;" />
+                        </button>
+                        <h5 class="mb-0">File and Backup Info</h5>
+                    </div>
+                    <!-- Refresh Icon -->
+                    <button class="btn btn-link p-0" @onclick="RefreshFileAndBackupInfo">
+                        <img src="/icons/arrow-clockwise.svg" alt="Refresh Info" style="height: 24px;" class="theme-icon" />
+                    </button>
+                </div>
+                @if (IsFileAndBackupInfoVisible)
+                {
+                    <div class="card-body">
+                        <!-- File and Backup Info Content -->
+                        <table class="table table-striped">
+                            <tbody>
+                                <tr>
+                                    <th>Total Files</th>
+                                    <td>@Model.RemoteFiles.Count</td>
+                                </tr>
+                                <tr>
+                                    <th>Backed Up Files</th>
+                                    <td>@Model.RemoteFiles.Count(rf => rf.BackupExists)</td>
+                                </tr>
+                                <tr>
+                                    <th>Total Size</th>
+                                    <td>@SizeFormatter.FormatSize(TotalSize)</td>
+                                </tr>
+                                <tr>
+                                    <th>Backed Up Size</th>
+                                    <td>@SizeFormatter.FormatSize(BackedUpSize)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+
+            <!-- Connection Info Card -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <!-- Expand/Collapse Button -->
+                        <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleConnectionInfo">
+                            <img src="/icons/chevron-down.svg" alt="Expand Details"
+                                class="theme-icon chevron-icon @(IsConnectionInfoVisible ? "rotated" : "")"
+                                style="height: 24px;" />
+                        </button>
+                        <h5 class="mb-0">Connection Info</h5>
+                    </div>
+                    <!-- Edit Connection Info -->
+                    <button class="btn btn-link p-0" @onclick="() => EditConnection(1)">
+                        <img src="/icons/pencil-square.svg" alt="Edit Connection" style="height: 24px;"
+                            class="theme-icon" />
+                    </button>
+                </div>
+                @if (IsConnectionInfoVisible)
+                {
+                    <div class="card-body">
+                        <!-- Connection Info Content -->
+                        <table class="table table-striped">
+                            <tbody>
+                                <tr>
+                                    <th>Remote Connection Name</th>
+                                    <td>@Model.Name</td>
+                                </tr>
+                                <tr>
+                                    <th>Hostname/IP (Port)</th>
+                                    <td>@Model.Host (@Model.Port)</td>
+                                </tr>
+                                <tr>
+                                    <th>Connection Status</th>
+                                    <td>@(Model.IsOnline ? "Online" : "Offline")</td>
+                                </tr>
+                                <tr>
+                                    <th>Last Checked</th>
+                                    <td>@Model.LastChecked?.ToLocalTime().ToString("g")</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+
+            <!-- Filters Card -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <!-- Expand/Collapse Button -->
+                        <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleFilters">
+                            <img src="/icons/chevron-down.svg" alt="Expand Details"
+                                class="theme-icon chevron-icon @(IsFiltersVisible ? "rotated" : "")"
+                                style="height: 24px;" />
+                        </button>
+                        <h5 class="mb-0">Filters</h5>
+                    </div>
+                    <!-- Edit Filters -->
+                    <button class="btn btn-link p-0" @onclick="() => EditConnection(2)">
+                        <img src="/icons/pencil-square.svg" alt="Edit Filters" style="height: 24px;" class="theme-icon" />
+                    </button>
+                </div>
+                @if (IsFiltersVisible)
+                {
+                    <div class="card-body">
+                        <!-- Filters Content -->
+                        @if (Model.Filters != null && Model.Filters.Any())
+                        {
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Exclude Rule</th>
+                                        <th class="text-center">Number of Filtered Files</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var filter in Model.Filters.Where(f => !f.IsInclude))
+                                    {
+                                        <tr>
+                                            <td>@filter.Pattern</td>
+                                            <td class="text-center">@filter.FilteredFileCount</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <p>No filters defined.</p>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Schedules Card -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <!-- Expand/Collapse Button -->
+                        <button class="btn btn-link p-0 me-2 chevron-button" @onclick="ToggleSchedules">
+                            <img src="/icons/chevron-down.svg" alt="Expand Details"
+                                class="theme-icon chevron-icon @(IsSchedulesVisible ? "rotated" : "")"
+                                style="height: 24px;" />
+                        </button>
+                        <h5 class="mb-0">Schedules</h5>
+                    </div>
+                    <!-- Edit Schedules -->
+                    <button class="btn btn-link p-0" @onclick="() => EditConnection(3)">
+                        <img src="/icons/pencil-square.svg" alt="Edit Schedules" style="height: 24px;" class="theme-icon" />
+                    </button>
+                </div>
+                @if (IsSchedulesVisible)
+                {
+                    <div class="card-body">
+                        <!-- Schedules Content -->
+                        @if (Model.ScanSchedules != null && Model.ScanSchedules.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Mon</th>
+                                            <th>Tue</th>
+                                            <th>Wed</th>
+                                            <th>Thu</th>
+                                            <th>Fri</th>
+                                            <th>Sat</th>
+                                            <th>Sun</th>
+                                            <th class="text-end">Next Scan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var schedule in Model.ScanSchedules)
+                                        {
+                                            <tr>
+                                                <td>@schedule.ScheduledTime.ToString(@"hh\:mm")</td>
+                                                <td>@RenderDayCell(schedule.SelectedDayMonday)</td>
+                                                <td>@RenderDayCell(schedule.SelectedDayTuesday)</td>
+                                                <td>@RenderDayCell(schedule.SelectedDayWednesday)</td>
+                                                <td>@RenderDayCell(schedule.SelectedDayThursday)</td>
+                                                <td>@RenderDayCell(schedule.SelectedDayFriday)</td>
+                                                <td>@RenderDayCell(schedule.SelectedDaySaturday)</td>
+                                                <td>@RenderDayCell(schedule.SelectedDaySunday)</td>
+                                                <td class="text-end">@DisplayNextScan(schedule)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p>No schedules defined.</p>
+                        }
+                    </div>
+                }
+            </div>
         </div>
     }
 </div>
@@ -98,7 +269,7 @@
     public EventCallback<Guid> OnDelete { get; set; }
 
     [Parameter]
-    public EventCallback<Guid> OnEdit { get; set; }
+    public EventCallback<EditEventArgs> OnEdit { get; set; }
 
     [Parameter]
     public EventCallback<Guid> OnToggleEnable { get; set; }
@@ -106,19 +277,40 @@
     [Parameter]
     public EventCallback<Guid> OnScanNow { get; set; }
 
-    private bool IsDetailsVisible { get; set; } = false;
 
-    private long TotalSize => Model.RemoteFiles.Sum(rf => rf.Size);
-    private long BackedUpSize => Model.RemoteFiles.Where(rf => rf.BackupExists).Sum(rf => rf.Size);
+
+    private bool IsDetailsVisible { get; set; } = false;
+    private bool IsFileAndBackupInfoVisible { get; set; } = false;
+    private bool IsConnectionInfoVisible { get; set; } = false;
+    private bool IsFiltersVisible { get; set; } = false;
+    private bool IsSchedulesVisible { get; set; } = false;
+
+    private long TotalSize => Model.RemoteFiles.Where(rf => !rf.IsExcluded).Sum(rf => rf.Size);
+    private long BackedUpSize => Model.RemoteFiles.Where(rf => !rf.IsExcluded && rf.BackupExists).Sum(rf => rf.Size);
 
     private int BackupProgressPercent
     {
         get
         {
-            if (Model.RemoteFiles.Count == 0)
+            var totalFiles = Model.RemoteFiles.Count(rf => !rf.IsExcluded);
+            if (totalFiles == 0)
                 return 0;
-            var percent = (double)Model.RemoteFiles.Count(rf => rf.BackupExists) / Model.RemoteFiles.Count * 100;
+
+            var backedUpFiles = Model.RemoteFiles.Count(rf => !rf.IsExcluded && rf.BackupExists);
+            var percent = (double)backedUpFiles / totalFiles * 100;
             return (int)Math.Round(percent);
+        }
+    }
+
+    private MarkupString RenderDayCell(bool isSelected)
+    {
+        if (isSelected)
+        {
+            return (MarkupString)$"<img src=\"/icons/check2.svg\" alt=\"Selected\" style=\"height: 16px;\" />";
+        }
+        else
+        {
+            return (MarkupString)"-";
         }
     }
 
@@ -127,14 +319,63 @@
         IsDetailsVisible = !IsDetailsVisible;
     }
 
+    private void ToggleFileAndBackupInfo()
+    {
+        IsFileAndBackupInfoVisible = !IsFileAndBackupInfoVisible;
+    }
+
+    private void RefreshFileAndBackupInfo()
+    {
+        // Implement refresh logic here
+        ToastService.Notify(new ToastMessage(ToastType.Info, "Refreshing file and backup information..."));
+        // For now, just reload the data or simulate a refresh
+    }
+
+    private void ToggleConnectionInfo()
+    {
+        IsConnectionInfoVisible = !IsConnectionInfoVisible;
+    }
+
+    private void ToggleFilters()
+    {
+        IsFiltersVisible = !IsFiltersVisible;
+    }
+
+    private void ToggleSchedules()
+    {
+        IsSchedulesVisible = !IsSchedulesVisible;
+    }
+
     private async Task DeleteConnection()
     {
         await OnDelete.InvokeAsync(Model.RemoteConnectionId);
     }
 
-    private async Task EditConnection()
+    private async Task EditConnection(int step)
     {
-        await OnEdit.InvokeAsync(Model.RemoteConnectionId);
+        await OnEdit.InvokeAsync(new EditEventArgs
+            {
+                RemoteConnectionId = Model.RemoteConnectionId,
+                Step = step
+            });
+    }
+
+    private async Task EditFilters(int step)
+    {
+        await OnEdit.InvokeAsync(new EditEventArgs
+            {
+                RemoteConnectionId = Model.RemoteConnectionId,
+                Step = step
+            });
+    }
+
+    private async Task EditSchedules(int step)
+    {
+        await OnEdit.InvokeAsync(new EditEventArgs
+            {
+                RemoteConnectionId = Model.RemoteConnectionId,
+                Step = step
+            });
     }
 
     private async Task ToggleEnableConnection()
@@ -145,5 +386,55 @@
     private async Task ScanNowConnection()
     {
         await OnScanNow.InvokeAsync(Model.RemoteConnectionId);
+    }
+
+    private string DisplayNextScan(RemoteScanSchedule schedule)
+    {
+        // Compute Next Scan
+        var nextScan = ComputeNextScan(schedule);
+        var now = TimeZoneInfo.ConvertTime(DateTime.UtcNow, TimeZoneService.GetConfiguredTimeZone());
+        var timeSpan = nextScan - now;
+
+        if (timeSpan.TotalHours < 24)
+        {
+            int hours = (int)timeSpan.TotalHours;
+            int minutes = timeSpan.Minutes;
+            return $"In {hours} hours and {minutes} minutes";
+        }
+        else
+        {
+            return nextScan.ToString("dddd 'at' HH:mm");
+        }
+    }
+
+    private DateTime ComputeNextScan(RemoteScanSchedule schedule)
+    {
+        var now = TimeZoneInfo.ConvertTime(DateTime.UtcNow, TimeZoneService.GetConfiguredTimeZone());
+
+        var scheduledDays = new List<DayOfWeek>();
+        if (schedule.SelectedDayMonday) scheduledDays.Add(DayOfWeek.Monday);
+        if (schedule.SelectedDayTuesday) scheduledDays.Add(DayOfWeek.Tuesday);
+        if (schedule.SelectedDayWednesday) scheduledDays.Add(DayOfWeek.Wednesday);
+        if (schedule.SelectedDayThursday) scheduledDays.Add(DayOfWeek.Thursday);
+        if (schedule.SelectedDayFriday) scheduledDays.Add(DayOfWeek.Friday);
+        if (schedule.SelectedDaySaturday) scheduledDays.Add(DayOfWeek.Saturday);
+        if (schedule.SelectedDaySunday) scheduledDays.Add(DayOfWeek.Sunday);
+
+        for (int i = 0; i <= 7; i++)
+        {
+            var nextDate = now.Date.AddDays(i);
+            if (scheduledDays.Contains(nextDate.DayOfWeek))
+            {
+                var scheduledDateTime = nextDate.Add(schedule.ScheduledTime);
+
+                if (scheduledDateTime > now)
+                {
+                    return scheduledDateTime;
+                }
+            }
+        }
+
+        // If not found, return the first possible future date
+        return now;
     }
 }

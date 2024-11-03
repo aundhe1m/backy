@@ -28,6 +28,7 @@ namespace Backy.Models
         public string BackupDriveSerials { get; set; } = string.Empty;
 
         public bool IsDeleted { get; set; } = false;
+        public bool IsExcluded { get; set; } = false;
 
         // Navigation property
         public RemoteConnection RemoteConnection { get; set; } = default!;
