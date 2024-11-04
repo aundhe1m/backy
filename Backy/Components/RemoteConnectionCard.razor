@@ -86,11 +86,11 @@
                                 </tr>
                                 <tr>
                                     <th>Total Files</th>
-                                    <td>@Model.RemoteFiles.Count(rf => !rf.IsExcluded)</td>
+                                    <td>@Model.TotalFiles</td>
                                 </tr>
                                 <tr>
                                     <th>Backed Up Files</th>
-                                    <td>@Model.RemoteFiles.Count(rf => !rf.IsExcluded && rf.BackupExists)</td>
+                                    <td>@Model.BackedUpFiles</td>
                                 </tr>
                                 <tr>
                                     <th>Total Size</th>
@@ -285,6 +285,8 @@
     [Parameter]
     public EventCallback<Guid> OnScanNow { get; set; }
 
+    [Parameter]
+    public EventCallback<Guid> OnRefresh { get; set; }
 
 
     private bool IsDetailsVisible { get; set; } = false;
@@ -292,19 +294,17 @@
     private bool IsConnectionInfoVisible { get; set; } = false;
     private bool IsFiltersVisible { get; set; } = false;
     private bool IsSchedulesVisible { get; set; } = false;
-    private long TotalSize => Model.RemoteFiles.Where(rf => !rf.IsExcluded).Sum(rf => rf.Size);
-    private long BackedUpSize => Model.RemoteFiles.Where(rf => !rf.IsExcluded && rf.BackupExists).Sum(rf => rf.Size);
+    private long TotalSize => Model.TotalSize;
+    private long BackedUpSize => Model.BackedUpSize;
 
     private int BackupProgressPercent
     {
         get
         {
-            var totalFiles = Model.RemoteFiles.Count(rf => !rf.IsExcluded);
-            if (totalFiles == 0)
+            if (Model.TotalFiles == 0)
                 return 0;
 
-            var backedUpFiles = Model.RemoteFiles.Count(rf => !rf.IsExcluded && rf.BackupExists);
-            var percent = (double)backedUpFiles / totalFiles * 100;
+            var percent = (double)Model.BackedUpFiles / Model.TotalFiles * 100;
             return (int)Math.Round(percent);
         }
     }
@@ -331,12 +331,11 @@
         IsFileAndBackupInfoVisible = !IsFileAndBackupInfoVisible;
     }
 
-    private void RefreshFileAndBackupInfo()
+    private async Task RefreshFileAndBackupInfo()
     {
-        // Implement refresh logic here
-        ToastService.Notify(new ToastMessage(ToastType.Info, "Refreshing file and backup information..."));
-        // For now, just reload the data or simulate a refresh
+        await OnRefresh.InvokeAsync(Model.RemoteConnectionId);
     }
+
 
     private void ToggleConnectionInfo()
     {

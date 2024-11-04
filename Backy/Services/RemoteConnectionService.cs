@@ -219,6 +219,12 @@ namespace Backy.Services
                     filter.FilteredFileCount = 0;
                 }
 
+                // Initialize counts
+                connection.TotalFiles = 0;
+                connection.BackedUpFiles = 0;
+                connection.TotalSize = 0;
+                connection.BackedUpSize = 0;
+
                 // Build matchers for each filter
                 var filterMatchers = filters.ToDictionary(
                     filter => filter,
@@ -262,6 +268,13 @@ namespace Backy.Services
                         }
                     }
 
+                    // Count total files and size
+                    if (!isExcluded)
+                    {
+                        connection.TotalFiles++;
+                        connection.TotalSize += file.Length;
+                    }
+
                     // Update or add the RemoteFile
                     var existingFile = existingFiles.FirstOrDefault(rf => rf.FullPath == file.FullName);
                     if (existingFile == null)
@@ -282,6 +295,13 @@ namespace Backy.Services
                         existingFile.Size = file.Length;
                         existingFile.IsDeleted = false;
                         existingFile.IsExcluded = isExcluded;
+
+                        // Count backed up files
+                        if (existingFile.BackupExists)
+                        {
+                            connection.BackedUpFiles++;
+                            connection.BackedUpSize += file.Length;
+                        }
                     }
                 }
 

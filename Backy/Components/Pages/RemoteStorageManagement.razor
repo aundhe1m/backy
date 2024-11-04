@@ -1,8 +1,9 @@
 @page "/RemoteStorageManagement"
+@using Backy.Models
+@using Backy.Helpers
 @inject ApplicationDbContext DbContext
 @inject ILogger<RemoteStorageManagement> Logger
 @inject NavigationManager NavigationManager
-@inject ModalService ModalService
 @inject ToastService ToastService
 @inject IDataProtectionProvider DataProtectionProvider
 @inject IRemoteConnectionService RemoteConnectionService
@@ -28,10 +29,11 @@
 {
     @foreach (var connection in RemoteConnections)
     {
-        <RemoteConnectionCard Model="@connection"
-    OnDelete="@EventCallback.Factory.Create(this, () => DeleteConnection(connection.RemoteConnectionId))"
-    OnEdit="@EventCallback.Factory.Create(this, () => EditConnection(new EditEventArgs { RemoteConnectionId = connection.RemoteConnectionId, Step = 1 }))"
-    OnToggleEnable="ToggleEnableConnection" OnScanNow="ScanNowConnection" />
+        <RemoteConnectionCard Model="@connection" OnDelete="@(() => DeleteConnection(connection.RemoteConnectionId))"
+    OnEdit="@EditConnection" OnToggleEnable="@(() => ToggleEnableConnection(connection.RemoteConnectionId))"
+    OnScanNow="@(() => ScanNowConnection(connection.RemoteConnectionId))"
+    OnRefresh="@(() => RefreshConnection(connection.RemoteConnectionId))" />
+
     }
 }
 else
@@ -39,384 +41,39 @@ else
     <p>No remote connections found.</p>
 }
 
-<!-- Remote Connection Modal -->
-<Modal @ref="remoteConnectionModal" Size="ModalSize.Large" Title="@ModalTitle">
-    <BodyTemplate>
-        <EditForm EditContext="@editContext" OnValidSubmit="@HandleValidSubmit">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
+<!-- Modals -->
+<RemoteConnectionWizard @ref="wizard" OnFinished="OnConnectionAdded" />
 
-            @if (CurrentStep == 1)
-            {
-                <!-- Page 1: SSH Details -->
-                <div>
-                    <h3>SSH Details</h3>
-                    <div class="mb-3">
-                        <label for="ConnectionName" class="form-label">Connection Name</label>
-                        <InputText id="ConnectionName" class="form-control" @bind-Value="RemoteConnectionModel.Name"
-                            required />
-                        <ValidationMessage For="@(() => RemoteConnectionModel.Name)" />
-                    </div>
-                    <div class="mb-3">
-                        <label for="Hostname" class="form-label">Hostname/IP</label>
-                        <InputText id="Hostname" class="form-control" @bind-Value="RemoteConnectionModel.Host" required />
-                        <ValidationMessage For="@(() => RemoteConnectionModel.Host)" />
-                    </div>
-                    <div class="mb-3">
-                        <label for="Port" class="form-label">Port</label>
-                        <InputNumber id="Port" class="form-control" @bind-Value="RemoteConnectionModel.Port" />
-                        <ValidationMessage For="@(() => RemoteConnectionModel.Port)" />
-                    </div>
-                    <div class="mb-3">
-                        <label for="Username" class="form-label">Username</label>
-                        <InputText id="Username" class="form-control" @bind-Value="RemoteConnectionModel.Username"
-                            required />
-                        <ValidationMessage For="@(() => RemoteConnectionModel.Username)" />
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Authentication Method</label>
-                        <InputRadioGroup @bind-Value="RemoteConnectionModel.AuthenticationMethod">
-                            <label>
-                                <InputRadio Value="RemoteConnection.AuthMethod.Password" /> Password
-                            </label>
-                            <label class="ms-3">
-                                <InputRadio Value="RemoteConnection.AuthMethod.SSHKey" /> SSH Key
-                            </label>
-                        </InputRadioGroup>
-                        <ValidationMessage For="@(() => RemoteConnectionModel.AuthenticationMethod)" />
-                    </div>
-                    @if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
-                    {
-                        <div class="mb-3">
-                            <label for="Password" class="form-label">Password</label>
-                            <InputText id="Password" type="password" class="form-control" @bind-Value="Password" />
-                        </div>
-                    }
-                    else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
-                    {
-                        <div class="mb-3">
-                            <label for="SSHKey" class="form-label">SSH Key</label>
-                            <InputTextArea id="SSHKey" class="form-control" @bind-Value="SSHKey" />
-                        </div>
-                    }
-                </div>
-            }
-            @if (CurrentStep == 2)
-            {
-                <!-- Page 2: Path Selection -->
-                <div>
-                    <h3>Select Remote Path</h3>
-                    <div class="mb-3">
-                        <label for="RemotePathInput" class="form-label">Remote Path</label>
-                        <InputText id="RemotePathInput" class="form-control"
-                            @bind-Value="RemoteConnectionModel.RemotePath" />
-                        @if (IsRemotePathInvalid)
-                        {
-                            <div class="text-danger">Remote Path is required.</div>
-                        }
-                    </div>
-                    <div class="directory-explorer" style="height: 400px; overflow-y: auto;">
-                        @if (DirectoryTree != null)
-                        {
-                            <DirectoryNode Node="DirectoryTree" OnDirectorySelected="OnDirectorySelected"
-                                FetchDirectories="FetchDirectories" />
-                        }
-                        else
-                        {
-                            <p>Loading directories...</p>
-                        }
-                    </div>
-                </div>
-            }
-            else if (CurrentStep == 3)
-            {
-                <!-- Page 3: Filters -->
-                <div>
-                <h3>Exclude Filters</h3>
-                <p>You can exclude files or directories using wildcard patterns.</p>
-                <p>Examples:</p>
-                <ul>
-                    <li><code>**/*.log</code> - Exclude all .log files</li>
-                    <li><code>temp/**</code> - Exclude all files in the temp directory</li>
-                </ul>
+<RemoteModalSSHDetails @ref="editSSHDetailsModal" IsEditMode="true" RemoteConnectionModel="EditingConnection"
+    OnSaved="OnConnectionEdited" />
 
-                <!-- Exclude Filters -->
-                <div class="mb-3">
-                    <label class="form-label">Exclude Filters</label>
-                    @foreach (var filter in ExcludeFilters)
-                        {
-                            <div class="input-group mb-2">
-                                <InputText class="form-control" @bind-Value="filter.Pattern" />
-                                <button class="btn btn-danger" type="button"
-                                    @onclick="() => RemoveExcludeFilter(filter)">Remove</button>
-                            </div>
-                        }
-                        <button class="btn btn-secondary" type="button" @onclick="AddExcludeFilter">Add Exclude
-                            Filter</button>
-                    </div>
-                </div>
-            }
-            else if (CurrentStep == 4)
-            {
-                <!-- Page 3: Schedule -->
-                <div>
-                <h3>Schedule</h3>
-                @foreach (var scheduleViewModel in ScanSchedules)
-                    {
-                        <div class="card mb-3">
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label class="form-label">Days of Week</label><br />
-                                    <label>
-                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayMonday" /> Monday
-                                    </label>
-                                    <label class="ms-2">
-                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayTuesday" /> Tuesday
-                                    </label>
-                                    <label class="ms-2">
-                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayWednesday" />
-                                        Wednesday
-                                    </label>
-                                    <label class="ms-2">
-                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayThursday" /> Thursday
-                                    </label>
-                                    <label class="ms-2">
-                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayFriday" /> Friday
-                                    </label>
-                                    <label class="ms-2">
-                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDaySaturday" /> Saturday
-                                    </label>
-                                    <label class="ms-2">
-                                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDaySunday" /> Sunday
-                                    </label>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Time of Day</label>
-                                    <TimeInput TValue="TimeOnly?" @bind-Value="scheduleViewModel.ScheduledTimeLocal" />
-                                </div>
-                                <button class="btn btn-danger" type="button" @onclick="() => RemoveSchedule(scheduleViewModel)">
-                                    Remove Schedule
-                                </button>
-                            </div>
-                        </div>
-                    }
-                    <button class="btn btn-secondary" type="button" @onclick="AddSchedule">Add Schedule</button>
-                </div>
-            }
-            else if (CurrentStep == 5)
-            {
-                <!-- Page 4: Summary -->
-                <div>
-                <h3>Summary</h3>
-                <p>Please review your settings before creating the connection.</p>
-                <!-- Display a summary of the entered data -->
-                <!-- For brevity, only the connection name is shown -->
-                <p><strong>Connection Name:</strong> @RemoteConnectionModel.Name</p>
-                <!-- Add other summary details as needed -->
-            </div>
-            }
-        </EditForm>
-    </BodyTemplate>
-    <FooterTemplate>
-        <!-- Modal Footer Buttons -->
-        @if (CurrentStep > 1)
-        {
-            <button class="btn btn-secondary" @onclick="PreviousStep">Previous</button>
-        }
-        else
-        {
-            <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-        }
+<RemoteModalPathSelection @ref="editPathModal" IsEditMode="true" RemoteConnectionModel="EditingConnection"
+    OnSaved="OnConnectionEdited" />
 
-        @if (CurrentStep < 4)
-        {
-            @if (IsEditMode)
-            {
-                <button class="btn btn-primary" @onclick="SaveChanges">Save</button>
-            }
-            else
-            {
-                <button class="btn btn-primary" @onclick="NextStep">Next</button>
-            }
-        }
-        else
-        {
-            <button class="btn btn-success" @onclick="CreateConnection">Create</button>
-            <button class="btn btn-success" @onclick="CreateAndScanNow">Create and Scan Now</button>
-        }
-    </FooterTemplate>
-</Modal>
+<RemoteModalFilters @ref="editFiltersModal" IsEditMode="true" RemoteConnectionModel="EditingConnection"
+    OnSaved="OnConnectionEdited" />
+
+<RemoteModalSchedule @ref="editScheduleModal" IsEditMode="true" RemoteConnectionModel="EditingConnection"
+    OnSaved="@(startScan => OnConnectionEdited(startScan))" />
+
 
 @code {
     // Properties
     private List<RemoteConnection> RemoteConnections { get; set; } = new List<RemoteConnection>();
     private RemoteConnection RemoteConnectionModel { get; set; } = new RemoteConnection();
-    private int CurrentStep { get; set; } = 1;
-    private string ModalTitle { get; set; } = "Add Remote Connection";
-    private EditContext editContext = default!;
-    private bool IsEditMode { get; set; } = false;
-    private string Password { get; set; } = string.Empty;
-    private string SSHKey { get; set; } = string.Empty;
-    private List<FilterRule> ExcludeFilters { get; set; } = new List<FilterRule>();
-    private Modal remoteConnectionModal = default!;
-    private bool IsRemotePathInvalid => CurrentStep == 2 && string.IsNullOrWhiteSpace(RemoteConnectionModel.RemotePath);
+    private RemoteConnection EditingConnection { get; set; } = new RemoteConnection();
 
+    private RemoteConnectionWizard wizard = default!;
+    private RemoteModalSSHDetails editSSHDetailsModal = default!;
+    private RemoteModalPathSelection editPathModal = default!;
+    private RemoteModalFilters editFiltersModal = default!;
+    private RemoteModalSchedule editScheduleModal = default!;
 
-    // ViewModel for the schedule
-    public class RemoteScanScheduleViewModel
-    {
-        public RemoteScanSchedule Schedule { get; set; } = new RemoteScanSchedule();
-        public TimeOnly? ScheduledTimeLocal { get; set; }
-    }
-
-    public class DirectoryNodeModel
-    {
-        public string Name { get; set; } = string.Empty;
-        public string FullPath { get; set; } = string.Empty;
-        public bool IsExpanded { get; set; } = false;
-        public List<DirectoryNodeModel> Children { get; set; } = new List<DirectoryNodeModel>();
-        public bool IsLoading { get; set; } = false;
-    }
-
-    public class EditEventArgs
-    {
-        public Guid RemoteConnectionId { get; set; }
-        public int Step { get; set; }
-    }
-
-    private DirectoryNodeModel? DirectoryTree { get; set; }
-
-    private SftpClient? sftpClient;
-
-    protected override Task OnAfterRenderAsync(bool firstRender)
-    {
-        return Task.CompletedTask;
-    }
-
-
-    private async Task InitializeSftpClient()
-    {
-        try
-        {
-            if (sftpClient == null)
-            {
-                var connectionInfo = GetSshConnectionInfo();
-                sftpClient = new SftpClient(connectionInfo);
-                await Task.Run(() => sftpClient.Connect());
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to initialize SFTP client.");
-            ToastService.Notify(new ToastMessage(ToastType.Danger, "Failed to connect to the remote server."));
-            throw;
-        }
-    }
-
-
-
-    private async Task LoadRootDirectories()
-    {
-        DirectoryTree = new DirectoryNodeModel
-            {
-                Name = "/",
-                FullPath = "/",
-                IsExpanded = true,
-                IsLoading = true
-            };
-
-        await LoadChildDirectories(DirectoryTree);
-    }
-
-    private async Task LoadChildDirectories(DirectoryNodeModel node)
-    {
-        node.IsLoading = true;
-        var directories = await FetchDirectories(node.FullPath);
-        node.Children = directories.Select(dir => new DirectoryNodeModel
-            {
-                Name = dir,
-                FullPath = $"{node.FullPath.TrimEnd('/')}/{dir}",
-                IsExpanded = false
-            }).ToList();
-        node.IsLoading = false;
-        StateHasChanged();
-    }
-
-    private async Task<List<string>> FetchDirectories(string path)
-    {
-        if (sftpClient == null)
-        {
-            throw new InvalidOperationException("SFTP client is not initialized.");
-        }
-
-        var directories = new List<string>();
-        try
-        {
-            var items = await Task.Run(() => sftpClient.ListDirectory(path));
-            directories = items.Where(item => item.IsDirectory && item.Name != "." && item.Name != "..")
-            .Select(item => item.Name)
-            .ToList();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, $"Failed to fetch directories for path {path}");
-            ToastService.Notify(new ToastMessage(ToastType.Danger, $"Failed to fetch directories for path {path}"));
-        }
-        return directories;
-    }
-
-
-
-    private ConnectionInfo GetSshConnectionInfo()
-    {
-        if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
-        {
-            return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
-            new PasswordAuthenticationMethod(RemoteConnectionModel.Username, Password));
-        }
-        else
-        {
-            var keyFile = new PrivateKeyFile(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(SSHKey)));
-            return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
-            new PrivateKeyAuthenticationMethod(RemoteConnectionModel.Username, keyFile));
-        }
-    }
-
-
-    private void OnRemotePathChanged(ChangeEventArgs e)
-    {
-        var path = e.Value?.ToString() ?? "/";
-        NavigateToPath(path);
-    }
-
-    private async Task NavigateToPath(string path)
-    {
-        DirectoryTree = new DirectoryNodeModel
-            {
-                Name = path,
-                FullPath = path,
-                IsExpanded = true,
-                IsLoading = true
-            };
-        await LoadChildDirectories(DirectoryTree);
-        StateHasChanged();
-    }
-
-
-    private void OnDirectorySelected(string fullPath)
-    {
-        RemoteConnectionModel.RemotePath = fullPath;
-    }
-
-
-    // Update ScanSchedules to use the ViewModel
-    private List<RemoteScanScheduleViewModel> ScanSchedules { get; set; } = new List<RemoteScanScheduleViewModel>();
 
     // Lifecycle Methods
     protected override async Task OnInitializedAsync()
     {
         await LoadRemoteConnections();
-        editContext = new EditContext(RemoteConnectionModel);
     }
 
     private async Task LoadRemoteConnections()
@@ -424,7 +81,6 @@ else
         RemoteConnections = await DbContext.RemoteConnections
         .Include(rc => rc.ScanSchedules)
         .Include(rc => rc.Filters)
-        .Include(rc => rc.RemoteFiles)
         .AsSplitQuery()
         .ToListAsync();
     }
@@ -432,181 +88,111 @@ else
     // Event Handlers
     private async Task OpenAddRemoteConnectionModal()
     {
-        IsEditMode = false;
-        ModalTitle = "Add Remote Connection";
-        RemoteConnectionModel = new RemoteConnection();
-        Password = string.Empty;
-        SSHKey = string.Empty;
-        ExcludeFilters = new List<FilterRule>();
-        ScanSchedules = new List<RemoteScanScheduleViewModel>();
-        CurrentStep = 1;
-        editContext = new EditContext(RemoteConnectionModel);
-        await remoteConnectionModal.ShowAsync();
+        await wizard.ShowAsync();
     }
 
-
-    private async Task CloseModal()
+    private async Task OnConnectionAdded(RemoteConnection newConnection)
     {
-        if (sftpClient != null)
-        {
-            await Task.Run(() => sftpClient.Disconnect());
-            sftpClient.Dispose();
-            sftpClient = null;
-        }
-        await remoteConnectionModal.HideAsync();
+        // Save the new connection
+        DbContext.RemoteConnections.Add(newConnection);
+        await DbContext.SaveChangesAsync();
+        await LoadRemoteConnections();
+        ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection created successfully."));
+
+        // Optionally start scanning
+        await RemoteConnectionService.StartScan(newConnection.RemoteConnectionId);
+        ToastService.Notify(new ToastMessage(ToastType.Success, "Scan started."));
     }
 
-
-
-
-    private async Task NextStep()
+    private async Task EditConnection(EditEventArgs args)
     {
-        if (CurrentStep == 1)
+        EditingConnection = await DbContext.RemoteConnections
+        .Include(rc => rc.ScanSchedules)
+        .Include(rc => rc.Filters)
+        .FirstOrDefaultAsync(rc => rc.RemoteConnectionId == args.RemoteConnectionId);
+
+        if (EditingConnection != null)
         {
-            if (!editContext.Validate())
+            switch (args.Step)
             {
-                return;
+                case 1:
+                    await editSSHDetailsModal.ShowAsync();
+                    break;
+                case 2:
+                    await editPathModal.ShowAsync();
+                    break;
+                case 3:
+                    await editFiltersModal.ShowAsync();
+                    break;
+                case 4:
+                    await editScheduleModal.ShowAsync();
+                    break;
+                default:
+                    break;
             }
-            // Validate SSH Connection
-            var success = await ValidateSSHConnection();
-            if (success)
-            {
-                CurrentStep++;
-                await InitializeSftpClient();
-                await LoadRootDirectories();
-            }
-            else
-            {
-                ToastService.Notify(new ToastMessage(ToastType.Danger, "SSH Connection validation failed."));
-                return;
-            }
-        }
-        else if (CurrentStep == 2)
-        {
-            if (string.IsNullOrWhiteSpace(RemoteConnectionModel.RemotePath))
-            {
-                ToastService.Notify(new ToastMessage(ToastType.Danger, "Please select a remote path."));
-                return;
-            }
-            CurrentStep++;
         }
         else
         {
-            CurrentStep++;
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "Remote Connection not found."));
         }
     }
 
 
-
-    private void PreviousStep()
+    private async Task OnConnectionEdited()
     {
-        CurrentStep--;
+        await OnConnectionEdited(false);
     }
 
-    private async Task<bool> ValidateSSHConnection()
+    private async Task OnConnectionEdited(bool startScan)
     {
-        await LoadingService.ShowLoading();
-        var success = await RemoteConnectionService.ValidateSSHConnection(RemoteConnectionModel, Password, SSHKey);
-        await LoadingService.HideLoading();
-        return success;
-    }
+        // Fetch the existing connection
+        var existingConnection = await DbContext.RemoteConnections
+        .Include(rc => rc.ScanSchedules)
+        .Include(rc => rc.Filters)
+        .FirstOrDefaultAsync(rc => rc.RemoteConnectionId == EditingConnection.RemoteConnectionId);
 
-
-    private void AddExcludeFilter()
-    {
-        ExcludeFilters.Add(new FilterRule());
-    }
-
-    private void RemoveExcludeFilter(FilterRule filter)
-    {
-        ExcludeFilters.Remove(filter);
-    }
-
-    private void AddSchedule()
-    {
-        try
+        if (existingConnection != null)
         {
-            var scheduleViewModel = new RemoteScanScheduleViewModel
-                {
-                    Schedule = new RemoteScanSchedule(),
-                    ScheduledTimeLocal = null
-                };
-            ScanSchedules.Add(scheduleViewModel);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error adding schedule.");
-            ToastService.Notify(new ToastMessage(ToastType.Danger, "Error adding schedule."));
-        }
-    }
+            // Update simple properties
+            existingConnection.Name = EditingConnection.Name;
+            existingConnection.Host = EditingConnection.Host;
+            existingConnection.Port = EditingConnection.Port;
+            existingConnection.Username = EditingConnection.Username;
+            existingConnection.AuthenticationMethod = EditingConnection.AuthenticationMethod;
+            existingConnection.Password = EditingConnection.Password;
+            existingConnection.SSHKey = EditingConnection.SSHKey;
+            existingConnection.RemotePath = EditingConnection.RemotePath;
 
-    private void RemoveSchedule(RemoteScanScheduleViewModel scheduleViewModel)
-    {
-        ScanSchedules.Remove(scheduleViewModel);
-    }
-
-
-    private async Task CreateConnection()
-    {
-        // Encrypt Password and SSHKey
-        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
-        if (!string.IsNullOrEmpty(Password))
-        {
-            RemoteConnectionModel.Password = protector.Protect(Password);
-        }
-        if (!string.IsNullOrEmpty(SSHKey))
-        {
-            RemoteConnectionModel.SSHKey = protector.Protect(SSHKey);
-        }
-
-        // Save Remote Connection
-        DbContext.RemoteConnections.Add(RemoteConnectionModel);
-        await DbContext.SaveChangesAsync();
-
-        // Save Filters
-        foreach (var filter in ExcludeFilters)
-        {
-            var remoteFilter = new RemoteFilter
-                {
-                    RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
-                    Pattern = filter.Pattern,
-                    IsInclude = false
-                };
-            DbContext.RemoteFilters.Add(remoteFilter);
-        }
-
-        // Save Schedules
-        foreach (var scheduleViewModel in ScanSchedules)
-        {
-            var schedule = scheduleViewModel.Schedule;
-            schedule.RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId;
-
-            // Convert ScheduledTimeLocal to ScheduledTime
-            if (scheduleViewModel.ScheduledTimeLocal.HasValue)
+            // Update Filters
+            DbContext.RemoteFilters.RemoveRange(existingConnection.Filters);
+            existingConnection.Filters.Clear();
+            foreach (var filter in EditingConnection.Filters)
             {
-                schedule.ScheduledTime = scheduleViewModel.ScheduledTimeLocal.Value.ToTimeSpan();
-            }
-            else
-            {
-                schedule.ScheduledTime = TimeSpan.Zero;
+                filter.RemoteConnectionId = existingConnection.RemoteConnectionId;
+                existingConnection.Filters.Add(filter);
             }
 
-            DbContext.RemoteScanSchedules.Add(schedule);
+            // Update ScanSchedules
+            DbContext.RemoteScanSchedules.RemoveRange(existingConnection.ScanSchedules);
+            existingConnection.ScanSchedules.Clear();
+            foreach (var schedule in EditingConnection.ScanSchedules)
+            {
+                schedule.RemoteConnectionId = existingConnection.RemoteConnectionId;
+                existingConnection.ScanSchedules.Add(schedule);
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadRemoteConnections();
+            ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection updated successfully."));
+
+            if (startScan)
+            {
+                await RemoteConnectionService.StartScan(existingConnection.RemoteConnectionId);
+                ToastService.Notify(new ToastMessage(ToastType.Success, "Scan started."));
+            }
         }
-
-        await DbContext.SaveChangesAsync();
-
-        await CloseModal();
-        await LoadRemoteConnections();
-        ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection created successfully."));
     }
 
-
-    private async Task CreateAndScanNow()
-    {
-        await CreateConnection();
-        await ScanNowConnection(RemoteConnectionModel.RemoteConnectionId);
-    }
 
     private async Task DeleteConnection(Guid remoteConnectionId)
     {
@@ -618,106 +204,6 @@ else
             await LoadRemoteConnections();
             ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection deleted successfully."));
         }
-    }
-
-    private async Task EditConnection(EditEventArgs args)
-    {
-        await LoadRemoteConnectionForEdit(args.RemoteConnectionId, args.Step);
-    }
-
-
-    private async Task LoadRemoteConnectionForEdit(Guid remoteConnectionId, int step)
-    {
-        IsEditMode = true;
-        var connection = await DbContext.RemoteConnections
-        .Include(rc => rc.ScanSchedules)
-        .Include(rc => rc.Filters)
-        .FirstOrDefaultAsync(rc => rc.RemoteConnectionId == remoteConnectionId);
-
-        if (connection != null)
-        {
-            ModalTitle = "Edit Remote Connection";
-            RemoteConnectionModel = connection;
-            CurrentStep = step;
-            Password = string.Empty;
-            SSHKey = string.Empty;
-
-            // Load filters into ExcludeFilters
-            ExcludeFilters = connection.Filters
-            .Where(f => !f.IsInclude)
-            .Select(f => new FilterRule { Pattern = f.Pattern })
-            .ToList();
-
-            // Load schedules
-            ScanSchedules = connection.ScanSchedules.Select(s => new RemoteScanScheduleViewModel
-                {
-                    Schedule = s,
-                    ScheduledTimeLocal = TimeOnly.FromTimeSpan(s.ScheduledTime)
-                }).ToList();
-
-            editContext = new EditContext(RemoteConnectionModel);
-            await remoteConnectionModal.ShowAsync();
-        }
-    }
-
-    private async Task SaveChanges()
-    {
-        // Update RemoteConnectionModel
-        DbContext.RemoteConnections.Update(RemoteConnectionModel);
-
-        // Remove existing filters
-        var existingFilters = DbContext.RemoteFilters.Where(f => f.RemoteConnectionId ==
-        RemoteConnectionModel.RemoteConnectionId);
-        DbContext.RemoteFilters.RemoveRange(existingFilters);
-
-        // Add new filters
-        foreach (var filter in ExcludeFilters)
-        {
-            var remoteFilter = new RemoteFilter
-                {
-                    RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
-                    Pattern = filter.Pattern,
-                    IsInclude = false
-                };
-            DbContext.RemoteFilters.Add(remoteFilter);
-        }
-
-        // Remove existing schedules
-        var existingSchedules = DbContext.RemoteScanSchedules.Where(s => s.RemoteConnectionId ==
-        RemoteConnectionModel.RemoteConnectionId);
-        DbContext.RemoteScanSchedules.RemoveRange(existingSchedules);
-
-        // Add new schedules
-        foreach (var scheduleViewModel in ScanSchedules)
-        {
-            var schedule = scheduleViewModel.Schedule;
-            schedule.RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId;
-
-            // Convert ScheduledTimeLocal to ScheduledTime
-            if (scheduleViewModel.ScheduledTimeLocal.HasValue)
-            {
-                schedule.ScheduledTime = scheduleViewModel.ScheduledTimeLocal.Value.ToTimeSpan();
-            }
-            else
-            {
-                schedule.ScheduledTime = TimeSpan.Zero;
-            }
-
-            DbContext.RemoteScanSchedules.Add(schedule);
-        }
-
-        await DbContext.SaveChangesAsync();
-        await CloseModal();
-        await LoadRemoteConnections();
-        ToastService.Notify(new ToastMessage(ToastType.Success, "Changes saved successfully."));
-    }
-
-
-    private TimeOnly? GetLocalTimeOnlyFromUtcTimeSpan(TimeSpan ScheduledTime)
-    {
-        var timeUtc = DateTime.UtcNow.Date.Add(ScheduledTime);
-        var timeLocal = TimeZoneInfo.ConvertTimeFromUtc(timeUtc, TimeZoneService.GetConfiguredTimeZone());
-        return TimeOnly.FromDateTime(timeLocal);
     }
 
     private async Task ToggleEnableConnection(Guid remoteConnectionId)
@@ -737,13 +223,22 @@ else
         ToastService.Notify(new ToastMessage(ToastType.Success, "Scan started."));
     }
 
-    private void OnStepChanged(int step)
+    private async Task RefreshConnection(Guid remoteConnectionId)
     {
-        CurrentStep = step;
-    }
+        // Fetch the latest data from the database, including summary properties
+        var updatedConnection = await DbContext.RemoteConnections
+        .Include(rc => rc.ScanSchedules)
+        .Include(rc => rc.Filters)
+        .FirstOrDefaultAsync(rc => rc.RemoteConnectionId == remoteConnectionId);
 
-    private void HandleValidSubmit()
-    {
-        // Handle form submission
+        if (updatedConnection != null)
+        {
+            var index = RemoteConnections.FindIndex(rc => rc.RemoteConnectionId == remoteConnectionId);
+            if (index >= 0)
+            {
+                RemoteConnections[index] = updatedConnection!;
+                StateHasChanged();
+            }
+        }
     }
 }

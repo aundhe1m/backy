@@ -1,6 +1,7 @@
 @using static Backy.Components.Pages.RemoteStorageManagement
 <div>
-    <div @onclick="ToggleExpand" style="cursor: pointer;">
+    <div @onclick="ToggleExpand" style="cursor: pointer;"
+        class="@(Node.FullPath == SelectedPath ? "selected-directory" : "")">
         <img src="/icons/chevron-right.svg"
             class="theme-icon chevron-icon @(Node.IsExpanded ? "rotated90" : "nonrotated")" style="height: 16px;" />
         <img src="/icons/@(Node.IsExpanded ? "folder2-open" : "folder").svg" class="theme-icon" style="height: 16px;" />
@@ -15,9 +16,9 @@
         <div style="margin-left: 20px;">
             @foreach (var child in Node.Children)
             {
-                <DirectoryNode Node="child" OnDirectorySelected="OnDirectorySelected" FetchDirectories="FetchDirectories" />
+                <DirectoryNode Node="child" OnDirectorySelected="OnDirectorySelected" FetchDirectories="FetchDirectories"
+                    SelectedPath="SelectedPath" />
             }
-
         </div>
     }
 </div>
@@ -31,6 +32,9 @@
 
     [Parameter]
     public Func<string, Task<List<string>>> FetchDirectories { get; set; } = default!;
+
+    [Parameter]
+    public string SelectedPath { get; set; } = string.Empty;
 
     private async Task ToggleExpand()
     {
@@ -49,12 +53,15 @@
     {
         node.IsLoading = true;
         var directories = await FetchDirectories(node.FullPath);
-        node.Children = directories.Select(dir => new DirectoryNodeModel
+        node.Children = directories
+        .OrderBy(dir => dir, StringComparer.OrdinalIgnoreCase)
+        .Select(dir => new DirectoryNodeModel
             {
                 Name = dir,
                 FullPath = $"{node.FullPath.TrimEnd('/')}/{dir}",
                 IsExpanded = false
-            }).ToList();
+            })
+        .ToList();
         node.IsLoading = false;
         StateHasChanged();
     }

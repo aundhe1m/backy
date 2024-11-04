@@ -43,10 +43,15 @@ namespace Backy.Models
         public AuthMethod AuthenticationMethod { get; set; } = AuthMethod.Password;
 
         public bool ScanningActive { get; set; } = false;
+        public int TotalFiles { get; set; }
+        public int BackedUpFiles { get; set; }
+        public long TotalSize { get; set; }
+        public long BackedUpSize { get; set; }
 
         // Navigation properties
         public ICollection<RemoteScanSchedule> ScanSchedules { get; set; } = new List<RemoteScanSchedule>();
         public ICollection<RemoteFile> RemoteFiles { get; set; } = new List<RemoteFile>();
-        public ICollection<RemoteFilter> Filters { get; set; } = new List<RemoteFilter>();
+        public List<RemoteFilter> Filters { get; set; } = new List<RemoteFilter>();
+
     }
 }

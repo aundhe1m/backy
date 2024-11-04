@@ -1,0 +1,78 @@
+@using Backy.Models
+@inject IDataProtectionProvider DataProtectionProvider
+@inject IRemoteConnectionService RemoteConnectionService
+@inject ToastService ToastService
+
+<Modal @ref="wizardModal" Size="ModalSize.Large" Title="Add Remote Connection">
+    <BodyTemplate>
+        @if (CurrentStep == 1)
+        {
+            <!-- Step 1: SSH Details -->
+            <RemoteModalSSHDetails RemoteConnectionModel="RemoteConnectionModel" IsEditMode="false" OnNext="NextStep" />
+        }
+        else if (CurrentStep == 2)
+        {
+            <!-- Step 2: Path Selection -->
+            <RemoteModalPathSelection RemoteConnectionModel="RemoteConnectionModel" IsEditMode="false" OnNext="NextStep"
+                OnBack="PreviousStep" />
+        }
+        else if (CurrentStep == 3)
+        {
+            <!-- Step 3: Filters -->
+            <RemoteModalFilters RemoteConnectionModel="RemoteConnectionModel" IsEditMode="false" OnNext="NextStep"
+                OnBack="PreviousStep" />
+        }
+        else if (CurrentStep == 4)
+        {
+            <!-- Step 4: Schedule -->
+            <RemoteModalSchedule RemoteConnectionModel="RemoteConnectionModel" IsEditMode="false" OnFinish="Finish"
+                OnBack="PreviousStep" />
+        }
+    </BodyTemplate>
+</Modal>
+
+@code {
+    [Parameter]
+    public EventCallback<RemoteConnection> OnFinished { get; set; }
+
+    private Modal wizardModal = default!;
+    private int CurrentStep = 1;
+    private RemoteConnection RemoteConnectionModel { get; set; } = new RemoteConnection();
+
+    public async Task ShowAsync()
+    {
+        CurrentStep = 1;
+        RemoteConnectionModel = new RemoteConnection();
+        await wizardModal.ShowAsync();
+    }
+
+    private void NextStep()
+    {
+        CurrentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        CurrentStep--;
+    }
+
+    private async Task Finish()
+    {
+        // Save and scan logic here
+        // Encrypt password or SSH key
+        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+        if (!string.IsNullOrEmpty(RemoteConnectionModel.Password))
+        {
+            RemoteConnectionModel.Password = protector.Protect(RemoteConnectionModel.Password);
+        }
+        if (!string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+        {
+            RemoteConnectionModel.SSHKey = protector.Protect(RemoteConnectionModel.SSHKey);
+        }
+
+        // Notify parent component
+        await OnFinished.InvokeAsync(RemoteConnectionModel);
+
+        await wizardModal.HideAsync();
+    }
+}
