@@ -1,0 +1,199 @@
+@using Backy.Models
+@inject IDataProtectionProvider DataProtectionProvider
+@inject IRemoteConnectionService RemoteConnectionService
+@inject ToastService ToastService
+@inject ILogger<RemoteFormSSHDetails> Logger
+
+<EditForm EditContext="@editContext">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <!-- SSH Details Form -->
+    <div>
+        <h3>SSH Details</h3>
+
+        <!-- Connection Name -->
+        <div class="mb-3">
+            <label for="ConnectionName" class="form-label">Connection Name</label>
+            <InputText id="ConnectionName" class="form-control" @bind-Value="RemoteConnectionModel.Name" required />
+            <ValidationMessage For="@(() => RemoteConnectionModel.Name)" />
+        </div>
+
+        <!-- Hostname/IP -->
+        <div class="mb-3">
+            <label for="Host" class="form-label">Hostname/IP</label>
+            <InputText id="Host" class="form-control" @bind-Value="RemoteConnectionModel.Host" required />
+            <ValidationMessage For="@(() => RemoteConnectionModel.Host)" />
+        </div>
+
+        <!-- Port -->
+        <div class="mb-3">
+            <label for="Port" class="form-label">Port</label>
+            <InputNumber id="Port" class="form-control" @bind-Value="RemoteConnectionModel.Port" required />
+            <ValidationMessage For="@(() => RemoteConnectionModel.Port)" />
+        </div>
+
+        <!-- Username -->
+        <div class="mb-3">
+            <label for="Username" class="form-label">Username</label>
+            <InputText id="Username" class="form-control" @bind-Value="RemoteConnectionModel.Username" required />
+            <ValidationMessage For="@(() => RemoteConnectionModel.Username)" />
+        </div>
+
+        <!-- Authentication Method -->
+        <div class="mb-3">
+            <label class="form-label">Authentication Method</label>
+            <div>
+                <InputRadioGroup @bind-Value="RemoteConnectionModel.AuthenticationMethod">
+                    <InputRadio Value="RemoteConnection.AuthMethod.Password" /> Password
+                    <InputRadio Value="RemoteConnection.AuthMethod.SSHKey" class="ms-3" /> SSH Key
+                </InputRadioGroup>
+            </div>
+        </div>
+
+        <!-- Password Field -->
+        @if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
+        {
+            <div class="mb-3">
+                <label for="Password" class="form-label">Password</label>
+                <InputText id="Password" type="password" class="form-control" @bind-Value="Password" required />
+                <ValidationMessage For="@(() => Password)" />
+            </div>
+        }
+        <!-- SSH Key Field -->
+        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
+        {
+        <div class="mb-3">
+            <label for="SSHKey" class="form-label">SSH Key</label>
+            <InputTextArea id="SSHKey" class="form-control" @bind-Value="SSHKey" rows="5" required />
+            <ValidationMessage For="@(() => SSHKey)" />
+        </div>
+        }
+    </div>
+</EditForm>
+
+@code {
+    [Parameter]
+    public RemoteConnection RemoteConnectionModel { get; set; } = new RemoteConnection();
+
+    [Parameter]
+    public EventCallback OnValidSubmit { get; set; }
+
+    private EditContext editContext = default!;
+
+    private string Password { get; set; } = string.Empty;
+    private string SSHKey { get; set; } = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        editContext = new EditContext(RemoteConnectionModel);
+
+        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+        if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
+        {
+            if (!string.IsNullOrEmpty(RemoteConnectionModel.Password))
+            {
+                Password = protector.Unprotect(RemoteConnectionModel.Password);
+            }
+        }
+        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
+        {
+            if (!string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+            {
+                SSHKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
+            }
+        }
+    }
+
+    public async Task<bool> SubmitFormAsync()
+    {
+        if (!editContext.Validate())
+        {
+            return false;
+        }
+
+        // Protect and store the password or SSH key before validation
+        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+
+        if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
+        {
+            if (!string.IsNullOrEmpty(Password))
+            {
+                RemoteConnectionModel.Password = protector.Protect(Password);
+                RemoteConnectionModel.SSHKey = null;
+            }
+        }
+        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
+        {
+            if (!string.IsNullOrEmpty(SSHKey))
+            {
+                RemoteConnectionModel.SSHKey = protector.Protect(SSHKey);
+                RemoteConnectionModel.Password = null;
+            }
+        }
+
+        // Validate SSH Connection
+        bool isValidConnection = await ValidateSSHConnection();
+
+        if (!isValidConnection)
+        {
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "SSH Connection validation failed."));
+            return false;
+        }
+
+        await OnValidSubmit.InvokeAsync();
+        return true;
+    }
+
+    private async Task<bool> ValidateSSHConnection()
+    {
+        try
+        {
+            var connectionInfo = GetSshConnectionInfo();
+            using var client = new SshClient(connectionInfo);
+            await Task.Run(() => client.Connect());
+
+            if (client.IsConnected)
+            {
+                client.Disconnect();
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "SSH Connection validation failed.");
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "SSH Connection validation failed."));
+            return false;
+        }
+    }
+
+    private ConnectionInfo GetSshConnectionInfo()
+    {
+        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+        if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
+        {
+            if (string.IsNullOrEmpty(RemoteConnectionModel.Password))
+            {
+                throw new InvalidOperationException("Password is not set.");
+            }
+            string password = protector.Unprotect(RemoteConnectionModel.Password);
+            return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
+            new PasswordAuthenticationMethod(RemoteConnectionModel.Username, password));
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+            {
+                throw new InvalidOperationException("SSH Key is not set.");
+            }
+            string sshKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
+            var keyFile = new PrivateKeyFile(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sshKey)));
+            return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
+            new PrivateKeyAuthenticationMethod(RemoteConnectionModel.Username, keyFile));
+        }
+    }
+}

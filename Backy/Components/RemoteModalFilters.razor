@@ -2,40 +2,11 @@
 
 <Modal @ref="filtersModal" Size="ModalSize.Large" Title="Edit Filters">
     <BodyTemplate>
-        <div>
-            <h3>Exclude Filters</h3>
-            <p>You can exclude files or directories using wildcard patterns.</p>
-            <p>Examples:</p>
-            <ul>
-                <li><code>**/*.log</code> - Exclude all .log files</li>
-                <li><code>temp/**</code> - Exclude all files in the temp directory</li>
-            </ul>
-
-            <!-- Exclude Filters -->
-            <div class="mb-3">
-                <label class="form-label">Exclude Filters</label>
-                @foreach (var filter in ExcludeFilters)
-                {
-                    <div class="input-group mb-2">
-                        <InputText class="form-control" @bind-Value="filter.Pattern" />
-                        <button class="btn btn-danger" type="button"
-                            @onclick="() => RemoveExcludeFilter(filter)">Remove</button>
-                    </div>
-                }
-                <button class="btn btn-secondary" type="button" @onclick="AddExcludeFilter">Add Exclude Filter</button>
-            </div>
-        </div>
+        <RemoteFormFilters @ref="filtersForm" RemoteConnectionModel="RemoteConnectionModel" />
     </BodyTemplate>
     <FooterTemplate>
         <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-        @if (IsEditMode)
-        {
-            <button class="btn btn-primary" @onclick="Save">Save</button>
-        }
-        else
-        {
-            <button class="btn btn-primary" @onclick="Save">Next</button>
-        }
+        <button class="btn btn-primary" @onclick="SaveChanges">Save</button>
     </FooterTemplate>
 </Modal>
 
@@ -46,30 +17,11 @@
     [Parameter]
     public EventCallback OnSaved { get; set; }
 
-    [Parameter]
-    public bool IsEditMode { get; set; } = false;
-
     private Modal filtersModal = default!;
-
-    private List<FilterRule> ExcludeFilters { get; set; } = new List<FilterRule>();
-
-    protected override void OnParametersSet()
-    {
-        // Load filters into ExcludeFilters
-        ExcludeFilters = RemoteConnectionModel.Filters
-        .Where(f => !f.IsInclude)
-        .Select(f => new FilterRule { Pattern = f.Pattern })
-        .ToList();
-    }
+    private RemoteFormFilters? filtersForm;
 
     public async Task ShowAsync()
     {
-        // Load filters into ExcludeFilters
-        ExcludeFilters = RemoteConnectionModel.Filters
-        .Where(f => !f.IsInclude)
-        .Select(f => new FilterRule { Pattern = f.Pattern })
-        .ToList();
-
         await filtersModal.ShowAsync();
     }
 
@@ -78,37 +30,13 @@
         await filtersModal.HideAsync();
     }
 
-    private void AddExcludeFilter()
+    private async Task SaveChanges()
     {
-        ExcludeFilters.Add(new FilterRule());
-    }
-
-    private void RemoveExcludeFilter(FilterRule filter)
-    {
-        ExcludeFilters.Remove(filter);
-    }
-
-    private async Task Save()
-    {
-        // Remove existing filters
-        RemoteConnectionModel.Filters.RemoveAll(f => !f.IsInclude);
-
-        // Add new filters
-        foreach (var filter in ExcludeFilters)
+        if (filtersForm != null)
         {
-            var remoteFilter = new RemoteFilter
-                {
-                    RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
-                    Pattern = filter.Pattern,
-                    IsInclude = false
-                };
-            RemoteConnectionModel.Filters.Add(remoteFilter);
+            filtersForm.SaveChanges();
+            await OnSaved.InvokeAsync();
+            await CloseModal();
         }
-
-        // Notify parent component
-        await OnSaved.InvokeAsync();
-
-        await CloseModal();
     }
-
 }

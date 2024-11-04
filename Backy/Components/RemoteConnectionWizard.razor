@@ -1,34 +1,29 @@
 @using Backy.Models
-@inject IDataProtectionProvider DataProtectionProvider
-@inject IRemoteConnectionService RemoteConnectionService
 @inject ToastService ToastService
 
-<Modal @ref="wizardModal" Size="ModalSize.Large" Title="Add Remote Connection">
+<Modal @ref="wizardModal" Size="ModalSize.Large" Title="@GetTitle()">
     <BodyTemplate>
         @if (CurrentStep == 1)
         {
-            <!-- Step 1: SSH Details -->
-            <RemoteModalSSHDetails RemoteConnectionModel="RemoteConnectionModel" IsEditMode="false" OnNext="NextStep" />
+            <RemoteFormSSHDetails @ref="sshDetailsForm" RemoteConnectionModel="RemoteConnectionModel" />
         }
         else if (CurrentStep == 2)
         {
-            <!-- Step 2: Path Selection -->
-            <RemoteModalPathSelection RemoteConnectionModel="RemoteConnectionModel" IsEditMode="false" OnNext="NextStep"
-                OnBack="PreviousStep" />
+            <RemoteFormPathSelection @ref="pathSelectionForm" RemoteConnectionModel="RemoteConnectionModel" />
         }
         else if (CurrentStep == 3)
         {
-            <!-- Step 3: Filters -->
-            <RemoteModalFilters RemoteConnectionModel="RemoteConnectionModel" IsEditMode="false" OnNext="NextStep"
-                OnBack="PreviousStep" />
+            <RemoteFormFilters @ref="filtersForm" RemoteConnectionModel="RemoteConnectionModel" />
         }
         else if (CurrentStep == 4)
         {
-            <!-- Step 4: Schedule -->
-            <RemoteModalSchedule RemoteConnectionModel="RemoteConnectionModel" IsEditMode="false" OnFinish="Finish"
-                OnBack="PreviousStep" />
+            <RemoteFormSchedule @ref="scheduleForm" RemoteConnectionModel="RemoteConnectionModel" />
         }
     </BodyTemplate>
+    <FooterTemplate>
+        <button class="btn btn-secondary" @onclick="PreviousStep" disabled="@(CurrentStep == 1)">Back</button>
+        <button class="btn btn-primary" @onclick="NextOrFinish">@GetNextButtonText()</button>
+    </FooterTemplate>
 </Modal>
 
 @code {
@@ -39,6 +34,11 @@
     private int CurrentStep = 1;
     private RemoteConnection RemoteConnectionModel { get; set; } = new RemoteConnection();
 
+    private RemoteFormSSHDetails? sshDetailsForm;
+    private RemoteFormPathSelection? pathSelectionForm;
+    private RemoteFormFilters? filtersForm;
+    private RemoteFormSchedule? scheduleForm;
+
     public async Task ShowAsync()
     {
         CurrentStep = 1;
@@ -46,33 +46,93 @@
         await wizardModal.ShowAsync();
     }
 
-    private void NextStep()
+    private string GetTitle() => CurrentStep switch
     {
-        CurrentStep++;
+        1 => "Add Remote Connection - SSH Details",
+        2 => "Add Remote Connection - Select Remote Path",
+        3 => "Add Remote Connection - Filters",
+        4 => "Add Remote Connection - Schedule",
+        _ => "Add Remote Connection"
+    };
+
+    private async Task NextOrFinish()
+    {
+        if (CurrentStep == 4)
+        {
+            await Finish();
+        }
+        else
+        {
+            await NextStep();
+        }
     }
 
-    private void PreviousStep()
+    private string GetNextButtonText() => CurrentStep == 4 ? "Finish" : "Next";
+
+    private async Task NextStep()
     {
-        CurrentStep--;
+        bool isValid = CurrentStep switch
+        {
+            1 => await ValidateStep1(),
+            2 => await ValidateStep2(),
+            3 => await ValidateStep3(),
+            _ => false
+        };
+
+        if (isValid)
+        {
+            CurrentStep++;
+        }
+    }
+
+    private async Task<bool> ValidateStep1()
+    {
+        if (sshDetailsForm != null)
+        {
+            return await sshDetailsForm.SubmitFormAsync();
+        }
+        return false;
+    }
+
+    private async Task<bool> ValidateStep2()
+    {
+        if (pathSelectionForm != null)
+        {
+            return await pathSelectionForm.ValidateFormAsync();
+        }
+        return false;
+    }
+
+    private async Task<bool> ValidateStep3()
+    {
+        if (filtersForm != null)
+        {
+            filtersForm.SaveChanges();
+            await Task.CompletedTask;
+            return true;
+        }
+        await Task.CompletedTask;
+        return false;
     }
 
     private async Task Finish()
     {
-        // Save and scan logic here
-        // Encrypt password or SSH key
-        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
-        if (!string.IsNullOrEmpty(RemoteConnectionModel.Password))
+        if (scheduleForm != null)
         {
-            RemoteConnectionModel.Password = protector.Protect(RemoteConnectionModel.Password);
-        }
-        if (!string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
-        {
-            RemoteConnectionModel.SSHKey = protector.Protect(RemoteConnectionModel.SSHKey);
+            scheduleForm.SaveChanges();
         }
 
-        // Notify parent component
+        // Finalize and save the new connection
         await OnFinished.InvokeAsync(RemoteConnectionModel);
-
         await wizardModal.HideAsync();
+        ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection created successfully."));
+    }
+
+    private void PreviousStep()
+    {
+        if (CurrentStep > 1)
+        {
+            CurrentStep--;
+        }
     }
 }

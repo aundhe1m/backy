@@ -44,16 +44,14 @@ else
 <!-- Modals -->
 <RemoteConnectionWizard @ref="wizard" OnFinished="OnConnectionAdded" />
 
-<RemoteModalSSHDetails @ref="editSSHDetailsModal" IsEditMode="true" RemoteConnectionModel="EditingConnection"
+<RemoteModalSSHDetails @ref="editSSHDetailsModal" RemoteConnectionModel="EditingConnection"
     OnSaved="OnConnectionEdited" />
 
-<RemoteModalPathSelection @ref="editPathModal" IsEditMode="true" RemoteConnectionModel="EditingConnection"
-    OnSaved="OnConnectionEdited" />
+<RemoteModalPathSelection @ref="editPathModal" RemoteConnectionModel="EditingConnection" OnSaved="OnConnectionEdited" />
 
-<RemoteModalFilters @ref="editFiltersModal" IsEditMode="true" RemoteConnectionModel="EditingConnection"
-    OnSaved="OnConnectionEdited" />
+<RemoteModalFilters @ref="editFiltersModal" RemoteConnectionModel="EditingConnection" OnSaved="OnConnectionEdited" />
 
-<RemoteModalSchedule @ref="editScheduleModal" IsEditMode="true" RemoteConnectionModel="EditingConnection"
+<RemoteModalSchedule @ref="editScheduleModal" RemoteConnectionModel="EditingConnection"
     OnSaved="@(startScan => OnConnectionEdited(startScan))" />
 
 
@@ -106,10 +104,20 @@ else
 
     private async Task EditConnection(EditEventArgs args)
     {
-        EditingConnection = await DbContext.RemoteConnections
+        var connection = await DbContext.RemoteConnections
         .Include(rc => rc.ScanSchedules)
         .Include(rc => rc.Filters)
         .FirstOrDefaultAsync(rc => rc.RemoteConnectionId == args.RemoteConnectionId);
+
+        if (connection != null)
+        {
+            EditingConnection = connection;
+        }
+        else
+        {
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "Connection not found."));
+            return;
+        }
 
         if (EditingConnection != null)
         {
@@ -134,6 +142,7 @@ else
         else
         {
             ToastService.Notify(new ToastMessage(ToastType.Danger, "Remote Connection not found."));
+            return;
         }
     }
 
@@ -153,14 +162,27 @@ else
 
         if (existingConnection != null)
         {
+            var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+
             // Update simple properties
             existingConnection.Name = EditingConnection.Name;
             existingConnection.Host = EditingConnection.Host;
             existingConnection.Port = EditingConnection.Port;
             existingConnection.Username = EditingConnection.Username;
             existingConnection.AuthenticationMethod = EditingConnection.AuthenticationMethod;
-            existingConnection.Password = EditingConnection.Password;
-            existingConnection.SSHKey = EditingConnection.SSHKey;
+
+            // Protect and store the password or SSH key
+            if (EditingConnection.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
+            {
+                existingConnection.Password = protector.Protect(protector.Unprotect(EditingConnection.Password));
+                existingConnection.SSHKey = null;
+            }
+            else if (EditingConnection.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
+            {
+                existingConnection.SSHKey = protector.Protect(protector.Unprotect(EditingConnection.SSHKey));
+                existingConnection.Password = null;
+            }
+
             existingConnection.RemotePath = EditingConnection.RemotePath;
 
             // Update Filters

@@ -1,0 +1,76 @@
+@using Backy.Models
+
+<div>
+    <h3>Exclude Filters</h3>
+    <p>You can exclude files or directories using wildcard patterns.</p>
+    <p>Examples:</p>
+    <ul>
+        <li><code>**/*.log</code> - Exclude all .log files</li>
+        <li><code>temp/**</code> - Exclude all files in the temp directory</li>
+    </ul>
+
+    <!-- Exclude Filters -->
+    <div class="mb-3">
+        <label class="form-label">Exclude Filters</label>
+        @foreach (var filter in ExcludeFilters)
+        {
+            <div class="input-group mb-2">
+                <InputText class="form-control" @bind-Value="filter.Pattern" />
+                <button class="btn btn-danger" type="button" @onclick="() => RemoveExcludeFilter(filter)">Remove</button>
+            </div>
+        }
+        <button class="btn btn-secondary" type="button" @onclick="AddExcludeFilter">Add Exclude Filter</button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public RemoteConnection RemoteConnectionModel { get; set; } = default!;
+
+    private List<FilterRule> ExcludeFilters { get; set; } = new List<FilterRule>();
+
+    protected override void OnInitialized()
+    {
+        // Load filters into ExcludeFilters
+        ExcludeFilters = RemoteConnectionModel.Filters
+        .Where(f => !f.IsInclude)
+        .Select(f => new FilterRule { Pattern = f.Pattern })
+        .ToList();
+    }
+
+    private void AddExcludeFilter()
+    {
+        ExcludeFilters.Add(new FilterRule());
+    }
+
+    private void RemoveExcludeFilter(FilterRule filter)
+    {
+        ExcludeFilters.Remove(filter);
+    }
+
+    public void SaveChanges()
+    {
+        // Remove existing exclude filters
+        RemoteConnectionModel.Filters.RemoveAll(f => !f.IsInclude);
+
+        // Add new filters
+        foreach (var filter in ExcludeFilters)
+        {
+            if (!string.IsNullOrWhiteSpace(filter.Pattern))
+            {
+                var remoteFilter = new RemoteFilter
+                    {
+                        RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
+                        Pattern = filter.Pattern,
+                        IsInclude = false
+                    };
+                RemoteConnectionModel.Filters.Add(remoteFilter);
+            }
+        }
+    }
+
+    private class FilterRule
+    {
+        public string Pattern { get; set; } = string.Empty;
+    }
+}

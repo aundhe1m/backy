@@ -1,0 +1,110 @@
+@using Backy.Models
+@inject ITimeZoneService TimeZoneService
+
+<div>
+    <h3>Schedule</h3>
+    @foreach (var scheduleViewModel in ScanSchedules)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Days of Week</label><br />
+                    <label>
+                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayMonday" /> Monday
+                    </label>
+                    <label class="ms-2">
+                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayTuesday" /> Tuesday
+                    </label>
+                    <label class="ms-2">
+                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayWednesday" /> Wednesday
+                    </label>
+                    <label class="ms-2">
+                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayThursday" /> Thursday
+                    </label>
+                    <label class="ms-2">
+                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDayFriday" /> Friday
+                    </label>
+                    <label class="ms-2">
+                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDaySaturday" /> Saturday
+                    </label>
+                    <label class="ms-2">
+                        <InputCheckbox @bind-Value="scheduleViewModel.Schedule.SelectedDaySunday" /> Sunday
+                    </label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Time of Day</label>
+                    <TimeInput TValue="TimeOnly?" @bind-Value="scheduleViewModel.ScheduledTimeLocal" />
+                </div>
+                <button class="btn btn-danger" type="button" @onclick="() => RemoveSchedule(scheduleViewModel)">Remove
+                    Schedule</button>
+            </div>
+        </div>
+    }
+    <button class="btn btn-secondary" type="button" @onclick="AddSchedule">Add Schedule</button>
+</div>
+
+@code {
+    [Parameter]
+    public RemoteConnection RemoteConnectionModel { get; set; } = default!;
+
+    public class RemoteScanScheduleViewModel
+    {
+        public RemoteScanSchedule Schedule { get; set; } = new RemoteScanSchedule();
+        public TimeOnly? ScheduledTimeLocal { get; set; }
+    }
+
+    private List<RemoteScanScheduleViewModel> ScanSchedules { get; set; } = new List<RemoteScanScheduleViewModel>();
+
+    protected override void OnInitialized()
+    {
+        // Load schedules
+        ScanSchedules = RemoteConnectionModel.ScanSchedules.Select(s => new RemoteScanScheduleViewModel
+            {
+                Schedule = s,
+                ScheduledTimeLocal = TimeOnly.FromTimeSpan(s.ScheduledTime)
+            }).ToList();
+    }
+
+    private void AddSchedule()
+    {
+        var scheduleViewModel = new RemoteScanScheduleViewModel
+            {
+                Schedule = new RemoteScanSchedule(),
+                ScheduledTimeLocal = null
+            };
+        ScanSchedules.Add(scheduleViewModel);
+    }
+
+
+    private void RemoveSchedule(RemoteScanScheduleViewModel scheduleViewModel)
+    {
+        ScanSchedules.Remove(scheduleViewModel);
+    }
+
+    public void SaveChanges()
+    {
+        // Remove existing schedules
+        RemoteConnectionModel.ScanSchedules.Clear();
+
+        // Add updated schedules
+        foreach (var scheduleViewModel in ScanSchedules)
+        {
+            var schedule = scheduleViewModel.Schedule;
+
+            // Convert ScheduledTimeLocal to ScheduledTime
+            if (scheduleViewModel.ScheduledTimeLocal.HasValue)
+            {
+                schedule.ScheduledTime = scheduleViewModel.ScheduledTimeLocal.Value.ToTimeSpan();
+            }
+            else
+            {
+                schedule.ScheduledTime = TimeSpan.Zero;
+            }
+
+            schedule.RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId;
+
+            RemoteConnectionModel.ScanSchedules.Add(schedule);
+        }
+    }
+
+}

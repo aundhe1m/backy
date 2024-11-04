@@ -1,0 +1,171 @@
+@using Backy.Models
+@inject IDataProtectionProvider DataProtectionProvider
+@inject ILogger<RemoteFormPathSelection> Logger
+@inject ToastService ToastService
+
+<div>
+    <h3>Select Remote Path</h3>
+    <div class="mb-3">
+        <label for="RemotePathInput" class="form-label">Remote Path</label>
+        <InputText id="RemotePathInput" class="form-control" @bind-Value="RemoteConnectionModel.RemotePath" />
+        @if (IsRemotePathInvalid)
+        {
+            <div class="text-danger">Remote Path is required.</div>
+        }
+    </div>
+    <div class="directory-explorer" style="height: 400px; overflow-y: auto;">
+        @if (DirectoryTree != null)
+        {
+            <DirectoryNode Node="DirectoryTree" OnDirectorySelected="OnDirectorySelected"
+                FetchDirectories="FetchDirectories" SelectedPath="SelectedPath" />
+        }
+        else
+        {
+            <p>Loading directories...</p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public RemoteConnection RemoteConnectionModel { get; set; } = default!;
+
+    private string SelectedPath { get; set; } = string.Empty;
+    private DirectoryNodeModel? DirectoryTree { get; set; }
+    private SftpClient? sftpClient;
+
+    private bool IsRemotePathInvalid => string.IsNullOrWhiteSpace(RemoteConnectionModel.RemotePath);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await InitializeSftpClient();
+        await LoadRootDirectories();
+    }
+
+    private async Task InitializeSftpClient()
+    {
+        try
+        {
+            if (sftpClient == null)
+            {
+                var connectionInfo = GetSshConnectionInfo();
+                sftpClient = new SftpClient(connectionInfo);
+                await Task.Run(() => sftpClient.Connect());
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize SFTP client.");
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "Failed to connect to the remote server."));
+            throw;
+        }
+    }
+
+    private ConnectionInfo GetSshConnectionInfo()
+    {
+        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+        string password = string.Empty;
+        string sshKey = string.Empty;
+
+        if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
+        {
+            if (string.IsNullOrEmpty(RemoteConnectionModel.Password))
+            {
+                throw new InvalidOperationException("Password is not set.");
+            }
+            password = protector.Unprotect(RemoteConnectionModel.Password);
+            return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
+            new PasswordAuthenticationMethod(RemoteConnectionModel.Username, password));
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+            {
+                throw new InvalidOperationException("SSH Key is not set.");
+            }
+            sshKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
+            var keyFile = new PrivateKeyFile(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sshKey)));
+            return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
+            new PrivateKeyAuthenticationMethod(RemoteConnectionModel.Username, keyFile));
+        }
+    }
+
+    private async Task LoadRootDirectories()
+    {
+        DirectoryTree = new DirectoryNodeModel
+            {
+                Name = "/",
+                FullPath = "/",
+                IsExpanded = true,
+                IsLoading = true
+            };
+
+        await LoadChildDirectories(DirectoryTree);
+    }
+
+    private async Task LoadChildDirectories(DirectoryNodeModel node)
+    {
+        node.IsLoading = true;
+        var directories = await FetchDirectories(node.FullPath);
+        node.Children = directories
+        .OrderBy(dir => dir, StringComparer.OrdinalIgnoreCase)
+        .Select(dir => new DirectoryNodeModel
+            {
+                Name = dir,
+                FullPath = $"{node.FullPath.TrimEnd('/')}/{dir}",
+                IsExpanded = false
+            })
+        .ToList();
+        node.IsLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task<List<string>> FetchDirectories(string path)
+    {
+        if (sftpClient == null)
+        {
+            throw new InvalidOperationException("SFTP client is not initialized.");
+        }
+
+        var directories = new List<string>();
+        try
+        {
+            var items = await Task.Run(() => sftpClient.ListDirectory(path));
+            directories = items.Where(item => item.IsDirectory && item.Name != "." && item.Name != "..")
+            .Select(item => item.Name)
+            .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to fetch directories for path {path}");
+            ToastService.Notify(new ToastMessage(ToastType.Danger, $"Failed to fetch directories for path {path}"));
+        }
+        return directories;
+    }
+
+    private void OnDirectorySelected(string fullPath)
+    {
+        SelectedPath = fullPath;
+        RemoteConnectionModel.RemotePath = fullPath;
+    }
+
+    public Task<bool> ValidateFormAsync()
+    {
+        if (string.IsNullOrWhiteSpace(RemoteConnectionModel.RemotePath))
+        {
+            ToastService.Notify(new ToastMessage(ToastType.Danger, "Please select a remote path."));
+            return Task.FromResult(false);
+        }
+        return Task.FromResult(true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (sftpClient != null)
+        {
+            await Task.Run(() => sftpClient.Disconnect());
+            sftpClient.Dispose();
+            sftpClient = null;
+        }
+    }
+}
