@@ -51,23 +51,24 @@
             </div>
         </div>
 
-        <!-- Password Field -->
+
         @if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
         {
+            <!-- Password Field -->
             <div class="mb-3">
                 <label for="Password" class="form-label">Password</label>
-                <InputText id="Password" type="password" class="form-control" @bind-Value="Password" required />
+                <InputText id="Password" type="password" class="form-control" @bind-Value="Password" />
                 <ValidationMessage For="@(() => Password)" />
             </div>
         }
-        <!-- SSH Key Field -->
-        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
+        else
         {
-        <div class="mb-3">
-            <label for="SSHKey" class="form-label">SSH Key</label>
-            <InputTextArea id="SSHKey" class="form-control" @bind-Value="SSHKey" rows="5" required />
-            <ValidationMessage For="@(() => SSHKey)" />
-        </div>
+            <!-- SSH Key Field -->
+            <div class="mb-3">
+                <label for="SSHKey" class="form-label">SSH Key</label>
+                <InputTextArea id="SSHKey" class="form-control" @bind-Value="SSHKey" rows="5" />
+                <ValidationMessage For="@(() => SSHKey)" />
+            </div>
         }
     </div>
 </EditForm>
@@ -88,21 +89,9 @@
     {
         editContext = new EditContext(RemoteConnectionModel);
 
-        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
-        if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
-        {
-            if (!string.IsNullOrEmpty(RemoteConnectionModel.Password))
-            {
-                Password = protector.Unprotect(RemoteConnectionModel.Password);
-            }
-        }
-        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
-        {
-            if (!string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
-            {
-                SSHKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
-            }
-        }
+        // Do not unprotect and display the password or SSHKey
+        Password = string.Empty;
+        SSHKey = string.Empty;
     }
 
     public async Task<bool> SubmitFormAsync()
@@ -112,24 +101,43 @@
             return false;
         }
 
+        var isNewConnection = RemoteConnectionModel.RemoteConnectionId == Guid.Empty;
+
+        // For new connections, the password or SSH key is required
+        if (isNewConnection)
+        {
+            if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password &&
+            string.IsNullOrEmpty(Password))
+            {
+                ToastService.Notify(new ToastMessage(ToastType.Danger, "Password is required for new connections."));
+                return false;
+            }
+            if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey && string.IsNullOrEmpty(SSHKey))
+            {
+                ToastService.Notify(new ToastMessage(ToastType.Danger, "SSH Key is required for new connections."));
+                return false;
+            }
+        }
+
         // Protect and store the password or SSH key before validation
         var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
-
         if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
         {
             if (!string.IsNullOrEmpty(Password))
             {
                 RemoteConnectionModel.Password = protector.Protect(Password);
-                RemoteConnectionModel.SSHKey = null;
             }
+            // Else, keep existing password
+            RemoteConnectionModel.SSHKey = null;
         }
         else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
         {
             if (!string.IsNullOrEmpty(SSHKey))
             {
                 RemoteConnectionModel.SSHKey = protector.Protect(SSHKey);
-                RemoteConnectionModel.Password = null;
             }
+            // Else, keep existing SSHKey
+            RemoteConnectionModel.Password = null;
         }
 
         // Validate SSH Connection
@@ -176,24 +184,44 @@
         var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
         if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
         {
-            if (string.IsNullOrEmpty(RemoteConnectionModel.Password))
+            string password;
+            if (!string.IsNullOrEmpty(Password))
+            {
+                password = Password;
+            }
+            else if (!string.IsNullOrEmpty(RemoteConnectionModel.Password))
+            {
+                password = protector.Unprotect(RemoteConnectionModel.Password);
+            }
+            else
             {
                 throw new InvalidOperationException("Password is not set.");
             }
-            string password = protector.Unprotect(RemoteConnectionModel.Password);
             return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
             new PasswordAuthenticationMethod(RemoteConnectionModel.Username, password));
         }
-        else
+        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
         {
-            if (string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+            string sshKey;
+            if (!string.IsNullOrEmpty(SSHKey))
+            {
+                sshKey = SSHKey;
+            }
+            else if (!string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+            {
+                sshKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
+            }
+            else
             {
                 throw new InvalidOperationException("SSH Key is not set.");
             }
-            string sshKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
             var keyFile = new PrivateKeyFile(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sshKey)));
             return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
             new PrivateKeyAuthenticationMethod(RemoteConnectionModel.Username, keyFile));
+        }
+        else
+        {
+            throw new InvalidOperationException("Invalid authentication method.");
         }
     }
 }

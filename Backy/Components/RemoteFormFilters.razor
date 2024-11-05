@@ -29,7 +29,7 @@
 
     private List<FilterRule> ExcludeFilters { get; set; } = new List<FilterRule>();
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
         // Load filters into ExcludeFilters
         ExcludeFilters = RemoteConnectionModel.Filters

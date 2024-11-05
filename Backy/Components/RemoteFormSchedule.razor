@@ -55,7 +55,7 @@
 
     private List<RemoteScanScheduleViewModel> ScanSchedules { get; set; } = new List<RemoteScanScheduleViewModel>();
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
         // Load schedules
         ScanSchedules = RemoteConnectionModel.ScanSchedules.Select(s => new RemoteScanScheduleViewModel
@@ -74,7 +74,6 @@
             };
         ScanSchedules.Add(scheduleViewModel);
     }
-
 
     private void RemoveSchedule(RemoteScanScheduleViewModel scheduleViewModel)
     {
@@ -106,5 +105,4 @@
             RemoteConnectionModel.ScanSchedules.Add(schedule);
         }
     }
-
 }

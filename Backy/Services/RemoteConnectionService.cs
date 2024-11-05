@@ -171,13 +171,29 @@ namespace Backy.Services
 
             if (!string.IsNullOrEmpty(connection.Password))
             {
-                password = protector.Unprotect(connection.Password);
-                _logger.LogInformation("Password decrypted successfully.");
+                try
+                {
+                    password = protector.Unprotect(connection.Password);
+                    _logger.LogInformation("Password decrypted successfully.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to decrypt password.");
+                    throw new InvalidOperationException("Invalid stored password. Please update the connection details.");
+                }
             }
             if (!string.IsNullOrEmpty(connection.SSHKey))
             {
-                sshKey = protector.Unprotect(connection.SSHKey);
-                _logger.LogInformation("SSH key decrypted successfully.");
+                try
+                {
+                    sshKey = protector.Unprotect(connection.SSHKey);
+                    _logger.LogInformation("SSH key decrypted successfully.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to decrypt SSH key.");
+                    throw new InvalidOperationException("Invalid stored SSH key. Please update the connection details.");
+                }
             }
 
             Renci.SshNet.ConnectionInfo connectionInfo;

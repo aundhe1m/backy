@@ -119,33 +119,24 @@ else
             return;
         }
 
-        if (EditingConnection != null)
+        switch (args.Step)
         {
-            switch (args.Step)
-            {
-                case 1:
-                    await editSSHDetailsModal.ShowAsync();
-                    break;
-                case 2:
-                    await editPathModal.ShowAsync();
-                    break;
-                case 3:
-                    await editFiltersModal.ShowAsync();
-                    break;
-                case 4:
-                    await editScheduleModal.ShowAsync();
-                    break;
-                default:
-                    break;
-            }
-        }
-        else
-        {
-            ToastService.Notify(new ToastMessage(ToastType.Danger, "Remote Connection not found."));
-            return;
+            case 1:
+                await editSSHDetailsModal.ShowAsync();
+                break;
+            case 2:
+                await editPathModal.ShowAsync();
+                break;
+            case 3:
+                await editFiltersModal.ShowAsync();
+                break;
+            case 4:
+                await editScheduleModal.ShowAsync();
+                break;
+            default:
+                break;
         }
     }
-
 
     private async Task OnConnectionEdited()
     {
@@ -170,38 +161,31 @@ else
             existingConnection.Port = EditingConnection.Port;
             existingConnection.Username = EditingConnection.Username;
             existingConnection.AuthenticationMethod = EditingConnection.AuthenticationMethod;
+            existingConnection.RemotePath = EditingConnection.RemotePath;
 
-            // Protect and store the password or SSH key
+            // Update password or SSHKey if provided
             if (EditingConnection.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
             {
-                existingConnection.Password = protector.Protect(protector.Unprotect(EditingConnection.Password));
+                if (!string.IsNullOrEmpty(EditingConnection.Password))
+                {
+                    existingConnection.Password = EditingConnection.Password;
+                }
                 existingConnection.SSHKey = null;
             }
             else if (EditingConnection.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
             {
-                existingConnection.SSHKey = protector.Protect(protector.Unprotect(EditingConnection.SSHKey));
+                if (!string.IsNullOrEmpty(EditingConnection.SSHKey))
+                {
+                    existingConnection.SSHKey = EditingConnection.SSHKey;
+                }
                 existingConnection.Password = null;
             }
 
-            existingConnection.RemotePath = EditingConnection.RemotePath;
-
             // Update Filters
-            DbContext.RemoteFilters.RemoveRange(existingConnection.Filters);
-            existingConnection.Filters.Clear();
-            foreach (var filter in EditingConnection.Filters)
-            {
-                filter.RemoteConnectionId = existingConnection.RemoteConnectionId;
-                existingConnection.Filters.Add(filter);
-            }
+            await UpdateFiltersAsync(existingConnection, EditingConnection.Filters);
 
             // Update ScanSchedules
-            DbContext.RemoteScanSchedules.RemoveRange(existingConnection.ScanSchedules);
-            existingConnection.ScanSchedules.Clear();
-            foreach (var schedule in EditingConnection.ScanSchedules)
-            {
-                schedule.RemoteConnectionId = existingConnection.RemoteConnectionId;
-                existingConnection.ScanSchedules.Add(schedule);
-            }
+            await UpdateScanSchedulesAsync(existingConnection, EditingConnection.ScanSchedules);
 
             await DbContext.SaveChangesAsync();
             await LoadRemoteConnections();
@@ -215,6 +199,72 @@ else
         }
     }
 
+    private async Task UpdateFiltersAsync(RemoteConnection existingConnection, List<RemoteFilter> updatedFilters)
+    {
+        // Load existing filters
+        await DbContext.Entry(existingConnection).Collection(c => c.Filters).LoadAsync();
+
+        // Find filters to remove
+        var filtersToRemove = existingConnection.Filters
+        .Where(ef => !updatedFilters.Any(uf => uf.Id == ef.Id))
+        .ToList();
+
+        // Remove filters
+        DbContext.RemoteFilters.RemoveRange(filtersToRemove);
+
+        // Update existing filters and add new ones
+        foreach (var updatedFilter in updatedFilters)
+        {
+            var existingFilter = existingConnection.Filters.FirstOrDefault(f => f.Id == updatedFilter.Id);
+            if (existingFilter != null)
+            {
+                existingFilter.Pattern = updatedFilter.Pattern;
+                existingFilter.IsInclude = updatedFilter.IsInclude;
+            }
+            else
+            {
+                updatedFilter.RemoteConnectionId = existingConnection.RemoteConnectionId;
+                DbContext.RemoteFilters.Add(updatedFilter);
+            }
+        }
+    }
+
+    private async Task UpdateScanSchedulesAsync(RemoteConnection existingConnection, ICollection<RemoteScanSchedule>
+    updatedSchedules)
+    {
+        // Load existing schedules
+        await DbContext.Entry(existingConnection).Collection(c => c.ScanSchedules).LoadAsync();
+
+        // Find schedules to remove
+        var schedulesToRemove = existingConnection.ScanSchedules
+        .Where(es => !updatedSchedules.Any(us => us.Id == es.Id))
+        .ToList();
+
+        // Remove schedules
+        DbContext.RemoteScanSchedules.RemoveRange(schedulesToRemove);
+
+        // Update existing schedules and add new ones
+        foreach (var updatedSchedule in updatedSchedules)
+        {
+            var existingSchedule = existingConnection.ScanSchedules.FirstOrDefault(s => s.Id == updatedSchedule.Id);
+            if (existingSchedule != null)
+            {
+                existingSchedule.SelectedDayMonday = updatedSchedule.SelectedDayMonday;
+                existingSchedule.SelectedDayTuesday = updatedSchedule.SelectedDayTuesday;
+                existingSchedule.SelectedDayWednesday = updatedSchedule.SelectedDayWednesday;
+                existingSchedule.SelectedDayThursday = updatedSchedule.SelectedDayThursday;
+                existingSchedule.SelectedDayFriday = updatedSchedule.SelectedDayFriday;
+                existingSchedule.SelectedDaySaturday = updatedSchedule.SelectedDaySaturday;
+                existingSchedule.SelectedDaySunday = updatedSchedule.SelectedDaySunday;
+                existingSchedule.ScheduledTime = updatedSchedule.ScheduledTime;
+            }
+            else
+            {
+                updatedSchedule.RemoteConnectionId = existingConnection.RemoteConnectionId;
+                DbContext.RemoteScanSchedules.Add(updatedSchedule);
+            }
+        }
+    }
 
     private async Task DeleteConnection(Guid remoteConnectionId)
     {

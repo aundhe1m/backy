@@ -42,6 +42,25 @@
         await LoadRootDirectories();
     }
 
+    private void UnprotectCredentials()
+    {
+        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
+        if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
+        {
+            if (!string.IsNullOrEmpty(RemoteConnectionModel.Password))
+            {
+                RemoteConnectionModel.Password = protector.Unprotect(RemoteConnectionModel.Password);
+            }
+        }
+        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
+        {
+            if (!string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+            {
+                RemoteConnectionModel.SSHKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
+            }
+        }
+    }
+
     private async Task InitializeSftpClient()
     {
         try
@@ -64,30 +83,45 @@
     private ConnectionInfo GetSshConnectionInfo()
     {
         var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
-        string password = string.Empty;
-        string sshKey = string.Empty;
-
         if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
         {
-            if (string.IsNullOrEmpty(RemoteConnectionModel.Password))
+            string password;
+            if (!string.IsNullOrEmpty(RemoteConnectionModel.Password))
+            {
+                password = protector.Unprotect(RemoteConnectionModel.Password);
+            }
+            else
             {
                 throw new InvalidOperationException("Password is not set.");
             }
-            password = protector.Unprotect(RemoteConnectionModel.Password);
             return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
             new PasswordAuthenticationMethod(RemoteConnectionModel.Username, password));
         }
-        else
+        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
         {
-            if (string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+            string sshKey;
+            if (!string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
+            {
+                sshKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
+            }
+            else
             {
                 throw new InvalidOperationException("SSH Key is not set.");
             }
-            sshKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
             var keyFile = new PrivateKeyFile(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sshKey)));
             return new ConnectionInfo(RemoteConnectionModel.Host, RemoteConnectionModel.Port, RemoteConnectionModel.Username,
             new PrivateKeyAuthenticationMethod(RemoteConnectionModel.Username, keyFile));
         }
+        else
+        {
+            throw new InvalidOperationException("Invalid authentication method.");
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await InitializeSftpClient();
+        await LoadRootDirectories();
     }
 
     private async Task LoadRootDirectories()
