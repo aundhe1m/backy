@@ -89,8 +89,11 @@ else
         await wizard.ShowAsync();
     }
 
-    private async Task OnConnectionAdded(RemoteConnection newConnection)
+    private async Task OnConnectionAdded((RemoteConnection connection, bool startScan) result)
     {
+        var newConnection = result.connection;
+        var startScan = result.startScan;
+
         // Save the new connection
         DbContext.RemoteConnections.Add(newConnection);
         await DbContext.SaveChangesAsync();
@@ -98,8 +101,11 @@ else
         ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection created successfully."));
 
         // Optionally start scanning
-        await RemoteConnectionService.StartScan(newConnection.RemoteConnectionId);
-        ToastService.Notify(new ToastMessage(ToastType.Success, "Scan started."));
+        if (startScan)
+        {
+            await RemoteConnectionService.StartScan(newConnection.RemoteConnectionId);
+            ToastService.Notify(new ToastMessage(ToastType.Success, "Scan started."));
+        }
     }
 
     private async Task EditConnection(EditEventArgs args)
@@ -111,6 +117,9 @@ else
 
         if (connection != null)
         {
+            // Ensure the Password and SSHKey are loaded
+            await DbContext.Entry(connection).ReloadAsync();
+
             EditingConnection = connection;
         }
         else
@@ -210,7 +219,11 @@ else
         .ToList();
 
         // Remove filters
-        DbContext.RemoteFilters.RemoveRange(filtersToRemove);
+        foreach (var filter in filtersToRemove)
+        {
+            existingConnection.Filters.Remove(filter);
+            DbContext.RemoteFilters.Remove(filter);
+        }
 
         // Update existing filters and add new ones
         foreach (var updatedFilter in updatedFilters)
@@ -218,16 +231,25 @@ else
             var existingFilter = existingConnection.Filters.FirstOrDefault(f => f.Id == updatedFilter.Id);
             if (existingFilter != null)
             {
+                // Update existing filter
                 existingFilter.Pattern = updatedFilter.Pattern;
                 existingFilter.IsInclude = updatedFilter.IsInclude;
             }
             else
             {
-                updatedFilter.RemoteConnectionId = existingConnection.RemoteConnectionId;
-                DbContext.RemoteFilters.Add(updatedFilter);
+                // Create a new filter and add it to the existingConnection
+                var newFilter = new RemoteFilter
+                    {
+                        Pattern = updatedFilter.Pattern,
+                        IsInclude = updatedFilter.IsInclude,
+                        RemoteConnectionId = existingConnection.RemoteConnectionId,
+                        RemoteConnection = existingConnection
+                    };
+                existingConnection.Filters.Add(newFilter);
             }
         }
     }
+
 
     private async Task UpdateScanSchedulesAsync(RemoteConnection existingConnection, ICollection<RemoteScanSchedule>
     updatedSchedules)
@@ -309,8 +331,11 @@ else
             if (index >= 0)
             {
                 RemoteConnections[index] = updatedConnection!;
+                // Reassign the list to force Blazor to detect changes
+                RemoteConnections = RemoteConnections.ToList();
                 StateHasChanged();
             }
         }
     }
+
 }

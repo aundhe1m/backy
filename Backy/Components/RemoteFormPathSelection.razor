@@ -36,29 +36,10 @@
 
     private bool IsRemotePathInvalid => string.IsNullOrWhiteSpace(RemoteConnectionModel.RemotePath);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
         await InitializeSftpClient();
         await LoadRootDirectories();
-    }
-
-    private void UnprotectCredentials()
-    {
-        var protector = DataProtectionProvider.CreateProtector("RemoteConnectionProtector");
-        if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
-        {
-            if (!string.IsNullOrEmpty(RemoteConnectionModel.Password))
-            {
-                RemoteConnectionModel.Password = protector.Unprotect(RemoteConnectionModel.Password);
-            }
-        }
-        else if (RemoteConnectionModel.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
-        {
-            if (!string.IsNullOrEmpty(RemoteConnectionModel.SSHKey))
-            {
-                RemoteConnectionModel.SSHKey = protector.Unprotect(RemoteConnectionModel.SSHKey);
-            }
-        }
     }
 
     private async Task InitializeSftpClient()
@@ -116,12 +97,6 @@
         {
             throw new InvalidOperationException("Invalid authentication method.");
         }
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        await InitializeSftpClient();
-        await LoadRootDirectories();
     }
 
     private async Task LoadRootDirectories()

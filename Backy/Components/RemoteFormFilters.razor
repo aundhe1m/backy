@@ -31,16 +31,20 @@
 
     protected override void OnParametersSet()
     {
-        // Load filters into ExcludeFilters
         ExcludeFilters = RemoteConnectionModel.Filters
         .Where(f => !f.IsInclude)
-        .Select(f => new FilterRule { Pattern = f.Pattern })
+        .Select(f => new FilterRule { Id = f.Id, Pattern = f.Pattern })
         .ToList();
     }
 
     private void AddExcludeFilter()
     {
         ExcludeFilters.Add(new FilterRule());
+    }
+
+    public List<FilterRule> GetUpdatedFilters()
+    {
+        return ExcludeFilters.Where(f => !string.IsNullOrWhiteSpace(f.Pattern)).ToList();
     }
 
     private void RemoveExcludeFilter(FilterRule filter)
@@ -50,27 +54,42 @@
 
     public void SaveChanges()
     {
-        // Remove existing exclude filters
-        RemoteConnectionModel.Filters.RemoveAll(f => !f.IsInclude);
-
-        // Add new filters
-        foreach (var filter in ExcludeFilters)
+        // Update existing filters and add new ones
+        foreach (var filterRule in ExcludeFilters)
         {
-            if (!string.IsNullOrWhiteSpace(filter.Pattern))
+            if (!string.IsNullOrWhiteSpace(filterRule.Pattern))
             {
-                var remoteFilter = new RemoteFilter
+                if (filterRule.Id.HasValue)
+                {
+                    // Existing filter, update it
+                    var existingFilter = RemoteConnectionModel.Filters.FirstOrDefault(f => f.Id == filterRule.Id.Value);
+                    if (existingFilter != null)
                     {
-                        RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
-                        Pattern = filter.Pattern,
-                        IsInclude = false
-                    };
-                RemoteConnectionModel.Filters.Add(remoteFilter);
+                        existingFilter.Pattern = filterRule.Pattern;
+                    }
+                }
+                else
+                {
+                    // New filter, add it
+                    var remoteFilter = new RemoteFilter
+                        {
+                            RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
+                            Pattern = filterRule.Pattern,
+                            IsInclude = false
+                        };
+                    RemoteConnectionModel.Filters.Add(remoteFilter);
+                }
             }
         }
-    }
 
-    private class FilterRule
-    {
-        public string Pattern { get; set; } = string.Empty;
+        // Remove filters that were deleted
+        var excludeFilterIds = ExcludeFilters.Where(f => f.Id.HasValue).Select(f => f.Id.Value).ToList();
+        var filtersToRemove = RemoteConnectionModel.Filters
+        .Where(f => !f.IsInclude && !excludeFilterIds.Contains(f.Id))
+        .ToList();
+        foreach (var filter in filtersToRemove)
+        {
+            RemoteConnectionModel.Filters.Remove(filter);
+        }
     }
 }

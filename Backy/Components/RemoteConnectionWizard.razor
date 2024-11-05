@@ -22,13 +22,22 @@
     </BodyTemplate>
     <FooterTemplate>
         <button class="btn btn-secondary" @onclick="PreviousStep" disabled="@(CurrentStep == 1)">Back</button>
-        <button class="btn btn-primary" @onclick="NextOrFinish">@GetNextButtonText()</button>
+        @if (CurrentStep == 4)
+        {
+            <button class="btn btn-primary" @onclick="() => Finish(false)">Finish</button>
+            <button class="btn btn-primary ms-2" @onclick="() => Finish(true)">Finish and Scan</button>
+        }
+        else
+        {
+            <button class="btn btn-primary" @onclick="NextStep">Next</button>
+        }
     </FooterTemplate>
+
 </Modal>
 
 @code {
     [Parameter]
-    public EventCallback<RemoteConnection> OnFinished { get; set; }
+    public EventCallback<(RemoteConnection connection, bool startScan)> OnFinished { get; set; }
 
     private Modal wizardModal = default!;
     private int CurrentStep = 1;
@@ -54,18 +63,6 @@
         4 => "Add Remote Connection - Schedule",
         _ => "Add Remote Connection"
     };
-
-    private async Task NextOrFinish()
-    {
-        if (CurrentStep == 4)
-        {
-            await Finish();
-        }
-        else
-        {
-            await NextStep();
-        }
-    }
 
     private string GetNextButtonText() => CurrentStep == 4 ? "Finish" : "Next";
 
@@ -115,7 +112,7 @@
         return false;
     }
 
-    private async Task Finish()
+    private async Task Finish(bool startScan)
     {
         if (scheduleForm != null)
         {
@@ -123,7 +120,7 @@
         }
 
         // Finalize and save the new connection
-        await OnFinished.InvokeAsync(RemoteConnectionModel);
+        await OnFinished.InvokeAsync((RemoteConnectionModel, startScan));
         await wizardModal.HideAsync();
         ToastService.Notify(new ToastMessage(ToastType.Success, "Remote Connection created successfully."));
     }
