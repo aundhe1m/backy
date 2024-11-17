@@ -1,4 +1,6 @@
 @using Backy.Models
+@using System.Text
+@inject ILogger<RemoteFormFilters> Logger
 
 <div>
     <h3>Exclude Filters</h3>
@@ -54,42 +56,21 @@
 
     public void SaveChanges()
     {
-        // Update existing filters and add new ones
-        foreach (var filterRule in ExcludeFilters)
-        {
-            if (!string.IsNullOrWhiteSpace(filterRule.Pattern))
+        var newRules = ExcludeFilters.Where(f => RemoteConnectionModel.Filters.Exists(r => r.Pattern == f.Pattern) ==
+        false).Select(f => new RemoteFilter
             {
-                if (filterRule.Id.HasValue)
-                {
-                    // Existing filter, update it
-                    var existingFilter = RemoteConnectionModel.Filters.FirstOrDefault(f => f.Id == filterRule.Id.Value);
-                    if (existingFilter != null)
-                    {
-                        existingFilter.Pattern = filterRule.Pattern;
-                    }
-                }
-                else
-                {
-                    // New filter, add it
-                    var remoteFilter = new RemoteFilter
-                        {
-                            RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
-                            Pattern = filterRule.Pattern,
-                            IsInclude = false
-                        };
-                    RemoteConnectionModel.Filters.Add(remoteFilter);
-                }
-            }
+                Pattern = f.Pattern,
+                RemoteConnectionId = RemoteConnectionModel.RemoteConnectionId,
+            }).ToList();
+
+        var removedRules = RemoteConnectionModel.Filters.Where(r => ExcludeFilters.Exists(f => f.Pattern == r.Pattern) ==
+        false).Select(r => r).ToList(); ;
+
+        foreach (var rule in removedRules)
+        {
+            RemoteConnectionModel.Filters.Remove(rule);
         }
 
-        // Remove filters that were deleted
-        var excludeFilterIds = ExcludeFilters.Where(f => f.Id.HasValue).Select(f => f.Id.Value).ToList();
-        var filtersToRemove = RemoteConnectionModel.Filters
-        .Where(f => !f.IsInclude && !excludeFilterIds.Contains(f.Id))
-        .ToList();
-        foreach (var filter in filtersToRemove)
-        {
-            RemoteConnectionModel.Filters.Remove(filter);
-        }
+        RemoteConnectionModel.Filters.AddRange(newRules);
     }
 }
