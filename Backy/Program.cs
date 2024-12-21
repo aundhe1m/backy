@@ -31,6 +31,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddSingleton<ILoadingService, LoadingService>();
 builder.Services.AddSingleton<ThemeService, ThemeService>();
 builder.Services.AddSingleton<ITimeZoneService, TimeZoneService>();
+builder.Services.AddSingleton<ConnectionEventService>();
 
 // Scoped services are created once per client request (connection)
 builder.Services.AddScoped<IDriveService, DriveService>();

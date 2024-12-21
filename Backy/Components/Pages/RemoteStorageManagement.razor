@@ -10,6 +10,8 @@
 @inject IRemoteConnectionService RemoteConnectionService
 @inject ILoadingService LoadingService
 @inject ITimeZoneService TimeZoneService
+@inject ConnectionEventService ConnectionEventService
+@implements IDisposable
 @rendermode InteractiveServer
 
 <PageTitle>Remote Storage Management - Backy</PageTitle>
@@ -72,17 +74,45 @@ else
     // Lifecycle Methods
     protected override async Task OnInitializedAsync()
     {
+        // Subscribe to the event so we know when connections have changed
+        ConnectionEventService.ConnectionUpdated += OnConnectionUpdated;
         await LoadRemoteConnections();
+    }
+
+    // This is called whenever the RemoteConnectionService triggers "NotifyConnectionUpdated(...)"
+    private async void OnConnectionUpdated(Guid remoteConnectionId)
+    {
+        await InvokeAsync(async () =>
+        {
+            try
+            {
+                Logger.Log(LogLevel.Information, "Refreshing connection after push event.");
+                await LoadRemoteConnections();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error refreshing connection after push event.");
+            }
+        });
+    }
+
+
+    public void Dispose()
+    {
+        ConnectionEventService.ConnectionUpdated -= OnConnectionUpdated;
     }
 
     private async Task LoadRemoteConnections()
     {
+        DbContext.ChangeTracker.Clear(); // Clear the change tracker to avoid stale data
         RemoteConnections = await DbContext.RemoteConnections
         .Include(rc => rc.ScanSchedules)
         .Include(rc => rc.Filters)
         .AsSplitQuery()
         .ToListAsync();
     }
+
 
     // Event Handlers
     private async Task OpenAddRemoteConnectionModal()

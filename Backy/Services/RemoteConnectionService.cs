@@ -33,35 +33,38 @@ namespace Backy.Services
         private Task? _processingQueueTask;
         private readonly SemaphoreSlim _queueSemaphore = new SemaphoreSlim(1, 1);
         private readonly TimeZoneInfo _timeZoneInfo;
+        private readonly ConnectionEventService _connectionEventService;
 
         public RemoteConnectionService(
         IServiceScopeFactory serviceScopeFactory,
         ILogger<RemoteConnectionService> logger,
         IDataProtectionProvider dataProtectionProvider,
-        ITimeZoneService timeZoneService)
+        ITimeZoneService timeZoneService,
+        ConnectionEventService connectionEventService)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _logger = logger;
             _dataProtectionProvider = dataProtectionProvider;
             _timeZoneInfo = timeZoneService.GetConfiguredTimeZone();
+            _connectionEventService = connectionEventService;
         }
 
         public async Task<bool> ValidateSSHConnection(RemoteConnection connection, string password, string sshKey)
         {
             try
             {
-                _logger.LogInformation($"Validating SSH connection for host: {connection.Host}");
+                _logger.LogDebug($"Validating SSH connection for host: {connection.Host}");
 
                 Renci.SshNet.ConnectionInfo connectionInfo;
                 if (connection.AuthenticationMethod == RemoteConnection.AuthMethod.Password)
                 {
-                    _logger.LogInformation("Using password authentication.");
+                    _logger.LogDebug("Using password authentication.");
                     connectionInfo = new Renci.SshNet.ConnectionInfo(connection.Host, connection.Port, connection.Username,
                         new PasswordAuthenticationMethod(connection.Username, password));
                 }
                 else if (connection.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
                 {
-                    _logger.LogInformation("Using SSH key authentication.");
+                    _logger.LogDebug("Using SSH key authentication.");
                     var keyFile = new PrivateKeyFile(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sshKey)));
                     connectionInfo = new Renci.SshNet.ConnectionInfo(connection.Host, connection.Port, connection.Username,
                         new PrivateKeyAuthenticationMethod(connection.Username, keyFile));
@@ -74,7 +77,7 @@ namespace Backy.Services
                 using var client = new SshClient(connectionInfo);
                 await Task.Run(() => client.Connect());
                 var isConnected = client.IsConnected;
-                _logger.LogInformation($"SSH connection status for host {connection.Host}: {isConnected}");
+                _logger.LogDebug($"SSH connection status for host {connection.Host}: {isConnected}");
                 client.Disconnect();
                 return isConnected;
             }
@@ -89,17 +92,17 @@ namespace Backy.Services
         public async Task StartScan(Guid remoteConnectionId)
         {
             // Output log message
-            _logger.LogInformation($"Received request to start scan for connection ID: {remoteConnectionId}");
+            _logger.LogDebug($"Received request to start scan for connection ID: {remoteConnectionId}");
 
             await _queueSemaphore.WaitAsync();
             try
             {
-                _logger.LogInformation($"Adding connection ID {remoteConnectionId} to scan queue.");
+                _logger.LogDebug($"Adding connection ID {remoteConnectionId} to scan queue.");
                 await _scanQueue.Writer.WriteAsync(remoteConnectionId);
 
                 if (_processingQueueTask == null || _processingQueueTask.IsCompleted)
                 {
-                    _logger.LogInformation("Starting new task to process scan queue.");
+                    _logger.LogDebug("Starting new task to process scan queue.");
                     _processingQueueTask = Task.Run(ProcessQueue);
                 }
             }
@@ -110,17 +113,17 @@ namespace Backy.Services
             finally
             {
                 _queueSemaphore.Release();
-                _logger.LogInformation($"Released semaphore for connection ID {remoteConnectionId}.");
+                _logger.LogDebug($"Released semaphore for connection ID {remoteConnectionId}.");
             }
         }
 
         private async Task ProcessQueue()
         {
-            _logger.LogInformation("Started processing scan queue.");
+            _logger.LogDebug("Started processing scan queue.");
 
             await foreach (var remoteConnectionId in _scanQueue.Reader.ReadAllAsync())
             {
-                _logger.LogInformation($"Processing scan for connection ID: {remoteConnectionId}");
+                _logger.LogDebug($"Processing scan for connection ID: {remoteConnectionId}");
 
                 using (var scope = _serviceScopeFactory.CreateScope())
                 {
@@ -134,14 +137,14 @@ namespace Backy.Services
                         {
                             connection.ScanningActive = true;
                             await dbContext.SaveChangesAsync();
-                            _logger.LogInformation($"Set scanning active for connection: {connection.Name}");
+                            _logger.LogDebug($"Set scanning active for connection: {connection.Name}");
 
                             // Perform the scan
                             await PerformScan(dbContext, dataProtectionProvider, connection);
 
                             connection.ScanningActive = false;
                             await dbContext.SaveChangesAsync();
-                            _logger.LogInformation($"Completed scan for connection: {connection.Name}");
+                            _logger.LogDebug($"Completed scan for connection: {connection.Name}");
                         }
                         catch (Exception ex)
                         {
@@ -155,7 +158,7 @@ namespace Backy.Services
                 }
             }
 
-            _logger.LogInformation("Finished processing scan queue.");
+            _logger.LogDebug("Finished processing scan queue.");
         }
 
 
@@ -174,7 +177,7 @@ namespace Backy.Services
                 try
                 {
                     password = protector.Unprotect(connection.Password);
-                    _logger.LogInformation("Password decrypted successfully.");
+                    _logger.LogDebug("Password decrypted successfully.");
                 }
                 catch (Exception ex)
                 {
@@ -187,7 +190,7 @@ namespace Backy.Services
                 try
                 {
                     sshKey = protector.Unprotect(connection.SSHKey);
-                    _logger.LogInformation("SSH key decrypted successfully.");
+                    _logger.LogDebug("SSH key decrypted successfully.");
                 }
                 catch (Exception ex)
                 {
@@ -201,14 +204,14 @@ namespace Backy.Services
             {
                 connectionInfo = new Renci.SshNet.ConnectionInfo(connection.Host, connection.Port, connection.Username,
                     new PasswordAuthenticationMethod(connection.Username, password));
-                _logger.LogInformation("Using password authentication.");
+                _logger.LogDebug("Using password authentication.");
             }
             else if (connection.AuthenticationMethod == RemoteConnection.AuthMethod.SSHKey)
             {
                 var keyFile = new PrivateKeyFile(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(sshKey)));
                 connectionInfo = new Renci.SshNet.ConnectionInfo(connection.Host, connection.Port, connection.Username,
                     new PrivateKeyAuthenticationMethod(connection.Username, keyFile));
-                _logger.LogInformation("Using SSH key authentication.");
+                _logger.LogDebug("Using SSH key authentication.");
             }
             else
             {
@@ -222,7 +225,7 @@ namespace Backy.Services
                 connection.IsOnline = sftpClient.IsConnected;
                 connection.LastChecked = DateTimeOffset.UtcNow;
                 await dbContext.SaveChangesAsync(); // Changed to dbContext
-                _logger.LogInformation("SFTP client connected successfully.");
+                _logger.LogDebug("SFTP client connected successfully.");
 
                 // Load filters
                 var filters = await dbContext.RemoteFilters
@@ -326,11 +329,11 @@ namespace Backy.Services
                 foreach (var deletedFile in deletedFiles)
                 {
                     deletedFile.IsDeleted = true;
-                    _logger.LogInformation($"Marked file as deleted: {deletedFile.RelativePath}");
+                    _logger.LogDebug($"Marked file as deleted: {deletedFile.RelativePath}");
                 }
 
                 await dbContext.SaveChangesAsync(); // Changed to dbContext
-                _logger.LogInformation("Database changes saved successfully.");
+                _logger.LogDebug("Database changes saved successfully.");
             }
             catch (Exception ex)
             {
@@ -341,9 +344,13 @@ namespace Backy.Services
                 if (sftpClient.IsConnected)
                 {
                     sftpClient.Disconnect();
-                    _logger.LogInformation("SFTP client disconnected.");
+                    _logger.LogDebug("SFTP client disconnected.");
                 }
             }
+
+            // Log completion
+            _logger.LogInformation($"Scan completed for connection: {connection.Name}");
+            _connectionEventService.NotifyConnectionUpdated(connection.RemoteConnectionId);
         }
 
 
@@ -359,7 +366,7 @@ namespace Backy.Services
                     continue; // Skip logging and processing
                 }
 
-                _logger.LogInformation($"Found item: {item.FullName} - IsDirectory: {item.IsDirectory}");
+                _logger.LogDebug($"Found item: {item.FullName} - IsDirectory: {item.IsDirectory}");
 
                 if (item.IsDirectory)
                 {
