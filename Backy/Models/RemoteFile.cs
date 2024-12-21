@@ -17,7 +17,7 @@ namespace Backy.Models
 
         [Required]
         [Column(TypeName = "VARCHAR(512)")]
-        public string FullPath { get; set; } = string.Empty;
+        public string RelativePath { get; set; } = string.Empty;
 
         public long Size { get; set; }
 

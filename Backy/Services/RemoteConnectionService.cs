@@ -292,14 +292,14 @@ namespace Backy.Services
                     }
 
                     // Update or add the RemoteFile
-                    var existingFile = existingFiles.FirstOrDefault(rf => rf.FullPath == file.FullName);
+                    var existingFile = existingFiles.FirstOrDefault(rf => rf.RelativePath == relativePath);
                     if (existingFile == null)
                     {
                         var remoteFile = new RemoteFile
                         {
                             RemoteConnectionId = connection.RemoteConnectionId,
                             FileName = file.Name,
-                            FullPath = file.FullName,
+                            RelativePath = relativePath,
                             Size = file.Length,
                             BackupExists = false, // Update as per your backup logic
                             IsExcluded = isExcluded
@@ -322,11 +322,11 @@ namespace Backy.Services
                 }
 
                 // Mark files as deleted if they no longer exist
-                var deletedFiles = existingFiles.Where(ef => !files.Any(f => f.FullName == ef.FullPath));
+                var deletedFiles = existingFiles.Where(ef => !files.Any(f => f.FullName == ef.RelativePath));
                 foreach (var deletedFile in deletedFiles)
                 {
                     deletedFile.IsDeleted = true;
-                    _logger.LogInformation($"Marked file as deleted: {deletedFile.FullPath}");
+                    _logger.LogInformation($"Marked file as deleted: {deletedFile.RelativePath}");
                 }
 
                 await dbContext.SaveChangesAsync(); // Changed to dbContext
