@@ -21,6 +21,12 @@
                     <img src="/icons/hdd-network.svg" alt="Remote Connection Icon"
                         style="height: 24px; margin-right: 8px;" class="theme-icon" />
                     <span>@Model.Name</span>
+                    @if (Model.ScanningActive)
+                    {
+                        <span style="margin-left: 8px;">
+                            <Spinner Color="SpinnerColor.Primary" />
+                        </span>
+                    }
                 </div>
                 <!-- Middle Section: Backup Progress -->
                 <div class="col text-center">

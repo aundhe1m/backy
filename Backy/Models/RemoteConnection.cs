@@ -30,7 +30,7 @@ namespace Backy.Models
 
         public DateTimeOffset? LastChecked { get; set; }
 
-        public bool IsOnline { get; set; } = false;
+
 
         public enum AuthMethod
         {
@@ -42,7 +42,7 @@ namespace Backy.Models
         [Column(TypeName = "varchar(20)")]
         public AuthMethod AuthenticationMethod { get; set; } = AuthMethod.Password;
 
-        public bool ScanningActive { get; set; } = false;
+
         public int TotalFiles { get; set; }
         public int BackedUpFiles { get; set; }
         public long TotalSize { get; set; }
@@ -52,6 +52,10 @@ namespace Backy.Models
         public ICollection<RemoteScanSchedule> ScanSchedules { get; set; } = new List<RemoteScanSchedule>();
         public ICollection<RemoteFile> RemoteFiles { get; set; } = new List<RemoteFile>();
         public List<RemoteFilter> Filters { get; set; } = new List<RemoteFilter>();
+        [NotMapped]
+        public bool IsOnline { get; set; } = false;
+        [NotMapped]
+        public bool ScanningActive { get; set; } = false;
 
     }
 }

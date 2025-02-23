@@ -16,10 +16,16 @@ using System.Threading;
 
 namespace Backy.Services
 {
+    public enum ScanResult
+    {
+        ScanQueued,
+        ScanningOngoing,
+        ScanAlreadyQueued
+    }
     public interface IRemoteConnectionService
     {
         Task<bool> ValidateSSHConnection(RemoteConnection connection, string password, string sshKey);
-        Task StartScan(Guid remoteConnectionId);
+        Task<ScanResult> StartScan(Guid remoteConnectionId);
         Task StopScan(Guid remoteConnectionId);
         Task CheckSchedules(CancellationToken cancellationToken);
     }
@@ -47,7 +53,17 @@ namespace Backy.Services
             _dataProtectionProvider = dataProtectionProvider;
             _timeZoneInfo = timeZoneService.GetConfiguredTimeZone();
             _connectionEventService = connectionEventService;
+
         }
+
+        private enum ScanState
+        {
+            Queued,
+            Active
+        }
+
+        private readonly Dictionary<Guid, ScanState> _scanStatus = new Dictionary<Guid, ScanState>();
+
 
         public async Task<bool> ValidateSSHConnection(RemoteConnection connection, string password, string sshKey)
         {
@@ -89,14 +105,26 @@ namespace Backy.Services
         }
 
 
-        public async Task StartScan(Guid remoteConnectionId)
+        public async Task<ScanResult> StartScan(Guid remoteConnectionId)
         {
-            // Output log message
-            _logger.LogDebug($"Received request to start scan for connection ID: {remoteConnectionId}");
-
             await _queueSemaphore.WaitAsync();
             try
             {
+                if (_scanStatus.TryGetValue(remoteConnectionId, out var state))
+                {
+                    if (state == ScanState.Active)
+                    {
+                        _logger.LogDebug($"Scan already active for connection {remoteConnectionId}");
+                        return ScanResult.ScanningOngoing;
+                    }
+                    else if (state == ScanState.Queued)
+                    {
+                        _logger.LogDebug($"Scan already queued for connection {remoteConnectionId}");
+                        return ScanResult.ScanAlreadyQueued;
+                    }
+                }
+                // Not in the dictionary yet: mark as queued and add to channel.
+                _scanStatus.Add(remoteConnectionId, ScanState.Queued);
                 _logger.LogDebug($"Adding connection ID {remoteConnectionId} to scan queue.");
                 await _scanQueue.Writer.WriteAsync(remoteConnectionId);
 
@@ -105,17 +133,19 @@ namespace Backy.Services
                     _logger.LogDebug("Starting new task to process scan queue.");
                     _processingQueueTask = Task.Run(ProcessQueue);
                 }
+                return ScanResult.ScanQueued;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error while adding connection ID {remoteConnectionId} to scan queue.");
+                throw;
             }
             finally
             {
                 _queueSemaphore.Release();
-                _logger.LogDebug($"Released semaphore for connection ID {remoteConnectionId}.");
             }
         }
+
 
         private async Task ProcessQueue()
         {
@@ -123,7 +153,19 @@ namespace Backy.Services
 
             await foreach (var remoteConnectionId in _scanQueue.Reader.ReadAllAsync())
             {
-                _logger.LogDebug($"Processing scan for connection ID: {remoteConnectionId}");
+                // Mark the scan as Active.
+                await _queueSemaphore.WaitAsync();
+                try
+                {
+                    if (_scanStatus.ContainsKey(remoteConnectionId))
+                    {
+                        _scanStatus[remoteConnectionId] = ScanState.Active;
+                    }
+                }
+                finally
+                {
+                    _queueSemaphore.Release();
+                }
 
                 using (var scope = _serviceScopeFactory.CreateScope())
                 {
@@ -136,14 +178,14 @@ namespace Backy.Services
                         try
                         {
                             connection.ScanningActive = true;
-                            await dbContext.SaveChangesAsync();
+                            _connectionEventService.NotifyConnectionUpdated(connection.RemoteConnectionId);
                             _logger.LogDebug($"Set scanning active for connection: {connection.Name}");
 
                             // Perform the scan
                             await PerformScan(dbContext, dataProtectionProvider, connection);
 
                             connection.ScanningActive = false;
-                            await dbContext.SaveChangesAsync();
+                            _connectionEventService.NotifyConnectionUpdated(connection.RemoteConnectionId);
                             _logger.LogDebug($"Completed scan for connection: {connection.Name}");
                         }
                         catch (Exception ex)
@@ -156,10 +198,22 @@ namespace Backy.Services
                         _logger.LogWarning($"Connection ID {remoteConnectionId} not found in database.");
                     }
                 }
+                // Remove the connection from the tracking dictionary.
+                await _queueSemaphore.WaitAsync();
+                try
+                {
+                    _scanStatus.Remove(remoteConnectionId);
+                }
+                finally
+                {
+                    _queueSemaphore.Release();
+                }
             }
 
             _logger.LogDebug("Finished processing scan queue.");
+
         }
+
 
 
         private async Task PerformScan(ApplicationDbContext dbContext, IDataProtectionProvider dataProtectionProvider, RemoteConnection connection)

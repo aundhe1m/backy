@@ -363,8 +363,19 @@ else
 
     private async Task ScanNowConnection(Guid remoteConnectionId)
     {
-        await RemoteConnectionService.StartScan(remoteConnectionId);
-        ToastService.Notify(new ToastMessage(ToastType.Success, "Scan started."));
+        var result = await RemoteConnectionService.StartScan(remoteConnectionId);
+        switch (result)
+        {
+            case ScanResult.ScanQueued:
+                ToastService.Notify(new ToastMessage(ToastType.Success, "Scan queued."));
+                break;
+            case ScanResult.ScanningOngoing:
+                ToastService.Notify(new ToastMessage(ToastType.Info, "Scanning Ongoing."));
+                break;
+            case ScanResult.ScanAlreadyQueued:
+                ToastService.Notify(new ToastMessage(ToastType.Info, "Scan already in queue."));
+                break;
+        }
     }
 
     private async Task RefreshConnection(Guid remoteConnectionId)
