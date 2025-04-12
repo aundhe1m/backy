@@ -1,0 +1,17 @@
+[Unit]
+Description=Backy Agent Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/backy/agent
+ExecStart=/usr/bin/dotnet /opt/backy/agent/Backy.Agent.dll
+Restart=always
+RestartSec=10
+SyslogIdentifier=backy-agent
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+[Install]
+WantedBy=multi-user.target

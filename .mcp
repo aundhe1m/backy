@@ -1,0 +1,112 @@
+{
+    "project_name": "Backy",
+    "type": "cold_storage_backup_solution",
+    "language": "C#",
+    "framework": {
+        "main": "ASP.NET Core 8.0",
+        "ui": "Blazor Server",
+        "orm": "Entity Framework Core",
+        "database": "PostgreSQL"
+    },
+    "project_purpose": "Backy is designed for managing cold storage drive pools and providing a disaster recovery solution. It operates as a dedicated backup host that can index remote storage systems and maintain a searchable database of file locations across cold storage drives.",
+    "key_concepts": {
+        "drive_pools": {
+            "description": "RAID1-based storage pools created from physical drives",
+            "key_files": [
+                "Services/DriveService.cs",
+                "Models/Drive.cs",
+                "Models/PoolDrive.cs",
+                "Models/PoolGroup.cs"
+            ],
+            "status": "complete",
+            "core_operations": [
+                "Create/remove pools",
+                "Mount/unmount drives",
+                "Drive protection",
+                "Status monitoring"
+            ]
+        },
+        "remote_storage": {
+            "description": "SSH/SFTP connections to remote storage systems for file indexing",
+            "key_files": [
+                "Services/RemoteConnectionService.cs",
+                "Models/RemoteConnection.cs",
+                "Models/RemoteFile.cs",
+                "Models/RemoteFilter.cs"
+            ],
+            "status": "in_progress",
+            "core_operations": [
+                "SSH/SFTP connectivity",
+                "File indexing",
+                "Scheduled scans",
+                "Filter rules"
+            ]
+        },
+        "cold_storage_transfer": {
+            "description": "System for transferring files from remote storage to cold storage pools",
+            "status": "not_started",
+            "planned_features": [
+                "Transfer scheduling",
+                "Progress tracking",
+                "Verification",
+                "Recovery mapping"
+            ]
+        }
+    },
+    "code_organization": {
+        "components": {
+            "path": "/Components",
+            "purpose": "Blazor UI components and pages",
+            "key_patterns": "*.razor files define UI components and pages"
+        },
+        "services": {
+            "path": "/Services",
+            "purpose": "Business logic and system operations",
+            "key_patterns": "Service classes handle core functionality and system interactions"
+        },
+        "models": {
+            "path": "/Models",
+            "purpose": "Data models and DTOs",
+            "key_patterns": "Classes defining database entities and data transfer objects"
+        },
+        "data": {
+            "path": "/Data",
+            "purpose": "Database context and configurations",
+            "key_patterns": "Entity Framework context and database setup"
+        }
+    },
+    "important_files": {
+        "drive_management": {
+            "Services/DriveService.cs": "Core logic for drive pool operations",
+            "Models/Drive.cs": "Drive entity and related DTOs",
+            "Models/PoolGroup.cs": "Pool group configuration and status",
+            "Components/Pages/DriveManagement.razor": "Drive management UI"
+        },
+        "remote_storage": {
+            "Services/RemoteConnectionService.cs": "Remote storage connection handling",
+            "Models/RemoteConnection.cs": "Remote connection configuration",
+            "Components/Pages/RemoteStorageManagement.razor": "Remote storage UI"
+        }
+    },
+    "development_patterns": {
+        "error_handling": "Services return tuples with (Success, Message) or (Success, Message, Data)",
+        "async_operations": "Async/await used for all I/O operations",
+        "dependency_injection": "Services registered in Program.cs",
+        "database_operations": "Entity Framework Core with PostgreSQL",
+        "system_commands": "Executed via Process class with proper error handling"
+    },
+    "system_requirements": {
+        "os": "Linux with mdadm support",
+        "privileges": "Root access required for drive operations",
+        "runtime": ".NET 8.0",
+        "database": "PostgreSQL",
+        "tools": [
+            "mdadm",
+            "mount",
+            "umount",
+            "lsblk",
+            "lsof",
+            "wipefs"
+        ]
+    }
+}
