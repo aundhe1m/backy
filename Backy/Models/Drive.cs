@@ -22,6 +22,8 @@ namespace Backy.Models
 
         public bool IsMounted { get; set; } = false;
 
+        public bool IsProtected { get; set; } = false;
+
         public string IdLink { get; set; } = string.Empty;
 
         public List<PartitionInfo> Partitions { get; set; } = new List<PartitionInfo>();
@@ -126,5 +128,48 @@ namespace Backy.Models
 
         [JsonPropertyName("children")]
         public List<BlockDevice>? Children { get; set; }
+    }
+
+    public class PoolInfo
+    {
+        [JsonPropertyName("poolId")]
+        public string PoolId { get; set; } = string.Empty;
+        
+        [JsonPropertyName("poolGroupGuid")]
+        public Guid PoolGroupGuid { get; set; }
+        
+        [JsonPropertyName("label")]
+        public string Label { get; set; } = string.Empty;
+        
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = string.Empty;
+        
+        [JsonPropertyName("mountPath")]
+        public string MountPath { get; set; } = string.Empty;
+        
+        [JsonPropertyName("driveCount")]
+        public int DriveCount { get; set; }
+        
+        [JsonPropertyName("isMounted")]
+        public bool IsMounted { get; set; }
+        
+        // Added missing properties
+        [JsonPropertyName("poolGroupId")]
+        public int PoolGroupId { get; set; }
+        
+        [JsonPropertyName("drives")]
+        public List<PoolDriveInfo> Drives { get; set; } = new List<PoolDriveInfo>();
+    }
+    
+    public class PoolDriveInfo
+    {
+        [JsonPropertyName("serial")]
+        public string Serial { get; set; } = string.Empty;
+        
+        [JsonPropertyName("label")]
+        public string Label { get; set; } = string.Empty;
+        
+        [JsonPropertyName("isConnected")]
+        public bool IsConnected { get; set; }
     }
 }

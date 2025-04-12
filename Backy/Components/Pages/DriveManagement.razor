@@ -547,15 +547,72 @@
 
         bool changesMade = false; // Flag to track if any changes are made
 
-        // Update connected status and properties for drives in pools
+        // First, check with the Agent API which pools actually exist on the system
+        try {
+            // Get pool information from the Agent API
+            var poolsApiTask = DriveService.GetPoolsAsync();
+            
+            // Set up a timeout for the API call
+            var timeoutTask = Task.Delay(10000); // 10 seconds timeout
+            
+            // Wait for either the API call to complete or the timeout to occur
+            if (await Task.WhenAny(poolsApiTask, timeoutTask) == timeoutTask)
+            {
+                // API call timed out
+                Logger.LogWarning("Pool API call timed out. Some pools might be shown as offline.");
+            }
+            else
+            {
+                // API call succeeded
+                var existingPools = await poolsApiTask;
+                var existingPoolGuids = existingPools.Select(p => p.PoolGroupGuid).ToHashSet();
+                
+                // Mark pools that don't exist on the system as offline
+                foreach (var pool in PoolGroups)
+                {
+                    if (!existingPoolGuids.Contains(pool.PoolGroupGuid))
+                    {
+                        Logger.LogWarning($"Pool {pool.GroupLabel} (ID: {pool.PoolGroupId}) exists in database but not on system. Marking as offline.");
+                        pool.PoolStatus = "Offline";
+                        pool.PoolEnabled = false;
+                        changesMade = true;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error retrieving pools from Agent API. Will proceed with existing database pools.");
+        }
+
+        // Update size metrics for all enabled pools
+        foreach (var pool in PoolGroups.Where(p => p.PoolEnabled && !string.IsNullOrEmpty(p.MountPath)))
+        {
+            try
+            {
+                await DriveService.UpdatePoolSizeMetricsAsync(pool.PoolGroupGuid);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, $"Error updating size metrics for pool {pool.GroupLabel} (GUID: {pool.PoolGroupGuid})");
+            }
+        }
+
+        // Collect the pool drives for filtering out of new drives
+        var pooledDriveSerials = PoolGroups.SelectMany(pg => pg.Drives).Select(d => d.Serial).ToHashSet();
+
+        // Collect the protected drives for filtering
+        var protectedSerials = ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
+
+        // Process each pool group
         foreach (var pool in PoolGroups)
         {
-            // Check for duplicate drive IDs within the pool
+            // Check for duplicate drive IDs
             var duplicateDriveIds = pool.Drives
-            .GroupBy(d => d.Id)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
+                .GroupBy(d => d.Id)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
 
             if (duplicateDriveIds.Any())
             {
@@ -607,36 +664,61 @@
 
             if (pool.PoolEnabled)
             {
-                // Fetch Pool Status
-                string status = DriveService.FetchPoolStatus(pool.PoolGroupId);
-                if (pool.PoolStatus != status)
+                try
                 {
-                    pool.PoolStatus = status;
-                    changesMade = true;
-                }
-
-                if (!string.IsNullOrEmpty(pool.MountPath))
-                {
-                    var (size, used, available, usePercent) = DriveService.GetMountPointSize(pool.MountPath);
-
-                    if (size > 0 && (pool.Size != size || pool.Used != used || pool.Available != available || pool.UsePercent !=
-                    usePercent))
+                    // Skip status fetch for pools we already know are offline
+                    if (pool.PoolStatus == "Offline")
                     {
-                        pool.Size = size;
-                        pool.Used = used;
-                        pool.Available = available;
-                        pool.UsePercent = usePercent;
+                        continue;
+                    }
+                
+                    // Fetch Pool Status with a timeout
+                    var statusTask = Task.Run(() => DriveService.FetchPoolStatus(pool.PoolGroupId));
+                    var timeoutTask = Task.Delay(5000); // 5 seconds timeout
+                    
+                    if (await Task.WhenAny(statusTask, timeoutTask) == timeoutTask)
+                    {
+                        // Status fetch timed out
+                        Logger.LogWarning($"Status fetch for pool {pool.GroupLabel} timed out. Marking as Offline.");
+                        if (pool.PoolStatus != "Offline")
+                        {
+                            pool.PoolStatus = "Offline";
+                            changesMade = true;
+                        }
+                    }
+                    else
+                    {
+                        // Status fetch completed
+                        var status = await statusTask;
+                        if (pool.PoolStatus != status)
+                        {
+                            pool.PoolStatus = status;
+                            changesMade = true;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, $"Error fetching pool status for pool {pool.GroupLabel}. Marking as Offline.");
+                    if (pool.PoolStatus != "Offline")
+                    {
+                        pool.PoolStatus = "Offline";
                         changesMade = true;
                     }
                 }
             }
+            else
+            {
+                // If pool is disabled, set status to Offline
+                if (pool.PoolStatus != "Offline")
+                {
+                    pool.PoolStatus = "Offline";
+                    changesMade = true;
+                }
+            }
         }
 
-        // Identify New Drives: Active drives not in any pool and not protected
-        var pooledDriveSerials = PoolGroups.SelectMany(p => p.Drives).Select(d => d.Serial).ToHashSet();
-        var protectedSerials = ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
-
-        // Ensure uniqueness by grouping by Serial
+        // Collect drives not in a pool or protected
         NewDrives = activeDrives
         .Where(d => !pooledDriveSerials.Contains(d.Serial) && !protectedSerials.Contains(d.Serial))
         .GroupBy(d => d.Serial)

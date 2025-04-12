@@ -69,13 +69,13 @@ Current development status:
 
 ### Full Reset (Database and Migrations)
 ```shell
-docker compose down && \
-docker compose up -d && \
+docker compose -f ../docker-compose.yml down && \
+docker compose -f ../docker-compose.yml up -d && \
 dotnet build && \
 rm -rf Migrations/* && \
 dotnet ef migrations add InitialCreate && \
 dotnet ef database update && \
-sudo dotnet run --no-build
+dotnet run --no-build
 ```
 
 ### Quick Run
@@ -85,7 +85,7 @@ dotnet build && sudo dotnet run --no-build
 
 ### Unmount Pool Example
 ```shell
-sudo umount /mnt/backy/backup-3 && sudo mdadm --stop /dev/md0
+sudo umount /mnt/backy/ble && sudo mdadm --stop /dev/md127
 ```
 
 ## Configuration

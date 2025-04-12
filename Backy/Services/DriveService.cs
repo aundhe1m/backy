@@ -26,6 +26,8 @@ namespace Backy.Services
         Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(KillProcessesRequest request);
         Task<List<Drive>> UpdateActiveDrivesAsync();
         Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint);
+        Task<List<PoolInfo>> GetPoolsAsync();
+        Task UpdatePoolSizeMetricsAsync(Guid poolGroupGuid);
     }
 
     /// <summary>
@@ -154,9 +156,13 @@ namespace Backy.Services
         {
             string command = $"mdadm --detail /dev/md{poolGroupId}";
             var commandOutputs = new List<string>();
-            var (success, output) = ExecuteShellCommand(command, commandOutputs);
+            
+            // Add timeout to prevent UI hangs if the mdadm command stalls
+            var (success, output) = ExecuteShellCommandWithTimeout(command, commandOutputs, timeoutMilliseconds: 5000);
+            
             if (!success)
             {
+                _logger.LogWarning($"Failed to fetch pool status for md{poolGroupId} or timed out. Marking as Offline.");
                 return "Offline";
             }
             else
@@ -460,6 +466,9 @@ namespace Backy.Services
 
                 // Commit transaction
                 await transaction.CommitAsync();
+                
+                // Update the pool size metrics
+                await UpdatePoolSizeMetricsAsync(newPoolGroup.PoolGroupGuid);
 
                 return (true, $"Pool '{request.PoolLabel}' created successfully.", commandOutputs);
             }
@@ -648,6 +657,28 @@ namespace Backy.Services
 
             if (statusResult.success)
             {
+                // Update the pool size metrics after fetching the details
+                if (poolGroup.PoolEnabled && !string.IsNullOrEmpty(poolGroup.MountPath))
+                {
+                    try
+                    {
+                        var (size, used, available, usePercent) = GetMountPointSize(poolGroup.MountPath);
+                
+                        // Update the pool group with the new size metrics
+                        poolGroup.Size = size;
+                        poolGroup.Used = used;
+                        poolGroup.Available = available;
+                        poolGroup.UsePercent = usePercent;
+
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation($"Updated size metrics for pool group {poolGroup.GroupLabel} (GUID: {poolGroupGuid}): Size={size}, Used={used}, Available={available}, UsePercent={usePercent}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error updating size metrics for pool group {poolGroupGuid}");
+                    }
+                }
+
                 return (true, string.Empty, statusResult.message);
             }
             else
@@ -739,6 +770,9 @@ namespace Backy.Services
             poolGroup.PoolEnabled = true;
             poolGroup.MountPath = mountPath; // Ensure MountPath is updated
             await _context.SaveChangesAsync();
+
+            // Step 7: Update pool size metrics
+            await UpdatePoolSizeMetricsAsync(poolGroupGuid);
 
             _logger.LogInformation($"Pool '/dev/md{poolGroupId}' mounted successfully at '{mountPath}'.");
             return (true, $"Pool '/dev/md{poolGroupId}' mounted successfully at '{mountPath}'.");
@@ -930,6 +964,82 @@ namespace Backy.Services
             }
         }
 
+        /// <summary>
+        /// Retrieves a list of all pools in the system from the database.
+        /// </summary>
+        /// <returns>A list of <see cref="PoolInfo"/> objects.</returns>
+        public async Task<List<PoolInfo>> GetPoolsAsync()
+        {
+            try
+            {
+                // Get all pool groups from the database
+                var poolGroups = await _context.PoolGroups.Include(p => p.Drives).ToListAsync();
+                
+                var poolInfoList = new List<PoolInfo>();
+                
+                foreach (var pool in poolGroups)
+                {
+                    poolInfoList.Add(new PoolInfo
+                    {
+                        PoolId = $"md{pool.PoolGroupId}",
+                        PoolGroupGuid = pool.PoolGroupGuid,
+                        Label = pool.GroupLabel,
+                        Status = pool.PoolStatus,
+                        MountPath = pool.MountPath,
+                        DriveCount = pool.Drives.Count,
+                        IsMounted = pool.PoolEnabled
+                    });
+                }
+                
+                return poolInfoList;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving pools from database");
+                return new List<PoolInfo>();
+            }
+        }
+
+        /// <summary>
+        /// Updates the size metrics of a pool group by fetching the latest data from the Agent API.
+        /// </summary>
+        /// <param name="poolGroupGuid">The GUID of the pool group to update.</param>
+        public async Task UpdatePoolSizeMetricsAsync(Guid poolGroupGuid)
+        {
+            try
+            {
+                var poolGroup = await _context.PoolGroups.FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
+                if (poolGroup == null)
+                {
+                    _logger.LogWarning($"Pool group with GUID {poolGroupGuid} not found.");
+                    return;
+                }
+
+                // Skip if the pool is not enabled or the mount path is empty
+                if (!poolGroup.PoolEnabled || string.IsNullOrEmpty(poolGroup.MountPath))
+                {
+                    _logger.LogInformation($"Pool {poolGroup.GroupLabel} is not enabled or has no mount path. Skipping size metrics update.");
+                    return;
+                }
+
+                // Get current size metrics from the mounted filesystem
+                var (size, used, available, usePercent) = GetMountPointSize(poolGroup.MountPath);
+                
+                // Update the pool group with the new size metrics
+                poolGroup.Size = size;
+                poolGroup.Used = used;
+                poolGroup.Available = available;
+                poolGroup.UsePercent = usePercent;
+
+                await _context.SaveChangesAsync();
+                _logger.LogInformation($"Updated size metrics for pool group {poolGroup.GroupLabel} (GUID: {poolGroupGuid}): Size={size}, Used={used}, Available={available}, UsePercent={usePercent}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating size metrics for pool group {poolGroupGuid}");
+            }
+        }
+
         // ---------------------------
         // Private Helper Methods
         // ---------------------------
@@ -1053,6 +1163,97 @@ namespace Backy.Services
                 else
                 {
                     _logger.LogWarning($"Command failed with exit code {exitCode}. Output: {output}");
+                    return (false, output.Trim());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Command execution failed: {ex.Message}");
+                if (outputList != null)
+                {
+                    outputList.Add($"Error executing command: {ex.Message}");
+                }
+                return (false, "An error occurred while executing the command.");
+            }
+        }
+
+        /// <summary>
+        /// Executes a shell command with a timeout to prevent hanging.
+        /// </summary>
+        /// <param name="command">The shell command to execute.</param>
+        /// <param name="outputList">A list to capture the command's output.</param>
+        /// <param name="timeoutMilliseconds">The timeout in milliseconds.</param>
+        /// <returns>A tuple indicating success status and the combined output message.</returns>
+        private (bool success, string message) ExecuteShellCommandWithTimeout(string command, List<string>? outputList = null, int timeoutMilliseconds = 10000)
+        {
+            outputList ??= new List<string>();
+            string output = string.Empty;
+            bool success = false;
+            
+            try
+            {
+                _logger.LogInformation($"Executing command with {timeoutMilliseconds}ms timeout: {command}");
+                
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "bash",
+                        Arguments = $"-c \"{command}\"",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                    },
+                };
+                
+                var processTask = Task.Run(() => {
+                    process.Start();
+                    string stdout = process.StandardOutput.ReadToEnd();
+                    string stderr = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    return (stdout, stderr, process.ExitCode);
+                });
+                
+                // Wait for the process to complete or timeout
+                if (processTask.Wait(timeoutMilliseconds))
+                {
+                    var result = processTask.Result;
+                    output = result.stdout + result.stderr;
+                    success = result.ExitCode == 0;
+                }
+                else
+                {
+                    try
+                    {
+                        // Process didn't complete within the timeout, attempt to kill it
+                        if (!process.HasExited)
+                        {
+                            process.Kill();
+                            _logger.LogWarning($"Command execution timed out after {timeoutMilliseconds}ms: {command}");
+                            output = $"Command timed out after {timeoutMilliseconds}ms";
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error killing process: {ex.Message}");
+                    }
+                }
+
+                if (outputList != null)
+                {
+                    outputList.Add($"$ {command}");
+                    outputList.Add(output);
+                }
+
+                if (success)
+                {
+                    _logger.LogInformation($"Command executed successfully. Output: {output}");
+                    return (true, output.Trim());
+                }
+                else
+                {
+                    _logger.LogWarning($"Command failed or timed out. Output: {output}");
                     return (false, output.Trim());
                 }
             }

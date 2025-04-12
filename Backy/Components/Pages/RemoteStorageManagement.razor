@@ -242,7 +242,7 @@ else
     private async Task UpdateFiltersAsync(RemoteConnection existingConnection, List<RemoteFilter> updatedFilters)
     {
         // Load existing filters
-        <!-- await DbContext.Entry(existingConnection).Collection(c => c.Filters).LoadAsync();
+        await DbContext.Entry(existingConnection).Collection(c => c.Filters).LoadAsync();
 
         // Find filters to remove
         var filtersToRemove = existingConnection.Filters
@@ -252,33 +252,33 @@ else
         // Remove filters
         foreach (var filter in filtersToRemove)
         {
-        existingConnection.Filters.Remove(filter);
-        DbContext.RemoteFilters.Remove(filter);
+            existingConnection.Filters.Remove(filter);
+            DbContext.RemoteFilters.Remove(filter);
         }
 
         // Update existing filters and add new ones
         foreach (var updatedFilter in updatedFilters)
         {
-        var existingFilter = existingConnection.Filters.FirstOrDefault(f => f.Id == updatedFilter.Id);
-        if (existingFilter != null)
-        {
-        // Update existing filter
-        existingFilter.Pattern = updatedFilter.Pattern;
-        existingFilter.IsInclude = updatedFilter.IsInclude;
+            var existingFilter = existingConnection.Filters.FirstOrDefault(f => f.Id == updatedFilter.Id);
+            if (existingFilter != null)
+            {
+                // Update existing filter
+                existingFilter.Pattern = updatedFilter.Pattern;
+                existingFilter.IsInclude = updatedFilter.IsInclude;
+            }
+            else
+            {
+                // Create a new filter and add it to the existingConnection
+                var newFilter = new RemoteFilter
+                {
+                    Pattern = updatedFilter.Pattern,
+                    IsInclude = updatedFilter.IsInclude,
+                    RemoteConnectionId = existingConnection.RemoteConnectionId,
+                    RemoteConnection = existingConnection
+                };
+                existingConnection.Filters.Add(newFilter);
+            }
         }
-        else
-        {
-        // Create a new filter and add it to the existingConnection
-        var newFilter = new RemoteFilter
-        {
-        Pattern = updatedFilter.Pattern,
-        IsInclude = updatedFilter.IsInclude,
-        RemoteConnectionId = existingConnection.RemoteConnectionId,
-        RemoteConnection = existingConnection
-        };
-        existingConnection.Filters.Add(newFilter);
-        }
-        } -->
     }
 
     private async Task OnFiltersEdited()

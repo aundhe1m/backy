@@ -1,10 +1,13 @@
 // File: Backy/Models/PoolGroup.cs
-
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace Backy.Models
 {
+    /// <summary>
+    /// Represents a group of drives configured as a RAID array
+    /// </summary>
     public class PoolGroup
     {
         [Key]
