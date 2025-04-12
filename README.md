@@ -3,8 +3,8 @@
 ## Nuke DB and run
 
 ```shell
-docker compose -f /home/aundhe1m/backy-project/backy/docker-compose.yml down && \
-docker compose -f /home/aundhe1m/backy-project/backy/docker-compose.yml up -d && \
+docker compose -f /home/aundhe1m/backy/docker-compose.yml down && \
+docker compose -f /home/aundhe1m/backy/docker-compose.yml up -d && \
 echo "BUILD" && \
 dotnet build && \
 echo "NUKE MIGRATION" && \
