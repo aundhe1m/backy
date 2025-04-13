@@ -13,7 +13,6 @@ services:
       
       # Agent Configuration
       BACKY_AGENT_URL: "http://host.docker.internal:5151"
-      BACKY_AGENT_TIMEOUT_SECONDS: "30"
       
       # # Retry Policy Configuration
       # BACKY_AGENT_MAX_RETRIES: "3"
@@ -37,7 +36,7 @@ services:
       - backy-keys:/app/keys
     # Add health check to verify container is working
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5015/health"]
       interval: 30s
       timeout: 10s
       retries: 3

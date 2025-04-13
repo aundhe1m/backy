@@ -91,7 +91,8 @@ dotnet build && sudo dotnet run --no-build
 
 ### Unmount Pool Example
 ```shell
-sudo umount /mnt/backy/ble && sudo mdadm --stop /dev/md127
+# Check mdadm number and mountpath with `lsblk`
+sudo umount /mnt/backy/7a0391a4-2c55-4df8-883f-52d526363199 && sudo mdadm --stop /dev/md0
 ```
 
 ## Configuration

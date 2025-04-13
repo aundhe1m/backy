@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Backy.Models;
 using Microsoft.Extensions.Logging;
@@ -58,7 +59,10 @@ namespace Backy.Services
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true
             };
-            
+
+            // Add custom converter for handling null GUIDs
+            _jsonOptions.Converters.Add(new NullableGuidConverter());
+
             _logger.LogInformation("BackyAgentClient initialized with base URL: {BaseUrl}", finalBaseUrl);
         }
         
@@ -700,6 +704,26 @@ namespace Backy.Services
             }
 
             _isDisposed = true;
+        }
+
+        /// <summary>
+        /// A custom JsonConverter for handling null GUID values.
+        /// </summary>
+        private class NullableGuidConverter : JsonConverter<Guid>
+        {
+            public override Guid Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            {
+                if (reader.TokenType == JsonTokenType.Null)
+                {
+                    return Guid.Empty;
+                }
+                return reader.GetGuid();
+            }
+
+            public override void Write(Utf8JsonWriter writer, Guid value, JsonSerializerOptions options)
+            {
+                writer.WriteStringValue(value);
+            }
         }
     }
     
