@@ -1,0 +1,59 @@
+services:
+  backy-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5015:80"  # Exposing container port 80 to host port 5015
+    environment:
+      # Database Connection
+      DB_CONNECTION_STRING: "Host=db;Database=backy-db;Username=backy-user;Password=prettysecurepassword"
+      
+      # Agent Configuration
+      BACKY_AGENT_URL: "http://host.docker.internal:5152"
+      BACKY_AGENT_TIMEOUT_SECONDS: "30"
+      
+      # Retry Policy Configuration
+      BACKY_AGENT_MAX_RETRIES: "3"
+      BACKY_AGENT_RETRY_DELAY_MS: "1000"
+      
+      # General Application Settings
+      ASPNETCORE_ENVIRONMENT: "Development"
+      LOGGING_LEVEL_DEFAULT: "Information"
+      LOGGING_LEVEL_MICROSOFT: "Warning"
+      
+      # Data Protection Keys directory path
+      ASPNETCORE_DataProtection__KeyDirectory: "/app/keys"
+      
+      # Debugging configuration
+      DOTNET_PRINT_TELEMETRY_MESSAGE: "false"
+      ASPNETCORE_URLS: "http://+:80"  # Ensure ASP.NET Core listens on all interfaces
+    volumes:
+      # For application data persistence
+      - backy-data:/app/data
+      # For data protection keys persistence
+      - backy-keys:/app/keys
+    # Add health check to verify container is working
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backy-network
+      - default  # Connect to the default network where db is located
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Ensures host.docker.internal works in Linux containers
+      
+networks:
+  backy-network:
+    driver: bridge
+    
+volumes:
+  backy-data:
+  backy-keys:  # Add this volume for data protection keys

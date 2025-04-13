@@ -8,9 +8,16 @@ using Polly;
 using Polly.Extensions.Http;
 using Polly.Timeout;
 using System;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Backy.Configuration;
+using System.Text.RegularExpressions;
 
 // Create a builder for the web application
 var builder = WebApplication.CreateBuilder(args);
+
+// Add this line after the builder is created
+builder.ConfigureEnvironmentVariableMapping();
 
 // ---------------------------
 // Service Configuration
@@ -85,6 +92,13 @@ builder.Services.AddHostedService<DriveRefreshService>();
 // Add data protection services for safeguarding data
 builder.Services.AddDataProtection();
 
+// Register ConfigurationPrinter
+builder.Services.AddSingleton<ConfigurationPrinter>();
+
+// Add health checks
+builder.Services.AddHealthChecks()
+    .AddCheck<BackyAgentHealthCheck>("backy_agent_connection");
+
 // Build the web application
 var app = builder.Build();
 
@@ -110,12 +124,40 @@ app.UseAntiforgery();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
+// Add a health endpoint for container orchestration
+app.MapGet("/health", () => "Healthy");
+
+// Map health endpoint with detailed output
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        
+        var response = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description
+            })
+        };
+        
+        await context.Response.WriteAsJsonAsync(response);
+    }
+});
+
 // Apply any pending database migrations and ensure the database is created
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
 }
+
+// Print essential configuration at startup
+app.Services.GetRequiredService<ConfigurationPrinter>().PrintAllConfiguration();
 
 // Run the web application
 app.Run();

@@ -156,6 +156,41 @@ The goal is to separate the drive management functionality from the main Backy a
 ### Task 2.3: Containerization
 - Create Dockerfile for Backy application
 - Update docker-compose.yml:
+  - Configure environment variables for application settings
+  - Add volume for data persistence
+  - Set up network configuration
+  - Configure agent connectivity using host.docker.internal
+  - Add dependency on database service
+- Docker environment variables include:
+  - Database connection string
+  - Agent configuration (URL, API key, timeout)
+  - Retry policy parameters
+  - Logging settings
+  - Application environment
+- Configuration hierarchy:
+  - Environment variables (highest precedence)
+  - Configuration files in the container
+  - Default values in code
+
+#### Implementation Details
+1. Dockerfile Structure:
+   - Based on .NET 7.0 image
+   - Multi-stage build for smaller final image
+   - Proper exposure of necessary ports
+   - Configuration via environment variables
+
+2. Docker Compose Setup:
+   - Main docker-compose.yml includes Backy-specific compose file
+   - Service dependency configuration
+   - Network configuration for secure communication
+   - Volume mounting for persistent data
+   - Environment variable injection
+
+3. Environment Variable Mapping:
+   - All essential configuration parameters exposed as environment variables
+   - Naming follows .NET configuration pattern (e.g., BackyAgent__ApiKey)
+   - Default values provided for development convenience
+   - Sensitive values configurable through environment
 
 ## Phase 3: Mock Agent Development
 
@@ -210,8 +245,10 @@ The goal is to separate the drive management functionality from the main Backy a
 
 5. Complete containerization
    - Test container networking
-   - Verify mount point access
-   - Test with different configurations
+   - Verify agent communication using host.docker.internal
+   - Implement volume mapping for data persistence
+   - Test with different environment configurations
+   - Verify that configuration overrides work properly
 
 6. Implement mock agent
    - Use for automated testing

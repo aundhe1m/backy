@@ -7,3 +7,18 @@ services:
       POSTGRES_PASSWORD: prettysecurepassword
     ports:
       - 5432:5432
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backy-user -d backy-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# Include Backy application compose file
+include:
+  - ./Backy/docker-compose.yml
+
+networks:
+  default:
+    name: backy-main-network
