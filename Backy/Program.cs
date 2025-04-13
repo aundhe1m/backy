@@ -50,7 +50,12 @@ builder.Services.AddSingleton<ConnectionEventService>();
 builder.Services.Configure<BackyAgentConfig>(builder.Configuration.GetSection("BackyAgent"));
 
 // Configure HttpClient for Backy Agent with resilience policies
-builder.Services.AddHttpClient<IBackyAgentClient, BackyAgentClient>()
+builder.Services.AddHttpClient<IBackyAgentClient, BackyAgentClient>((serviceProvider, client) => 
+{
+    // Access IConfiguration from service provider to pass it to the client
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    // BackyAgentClient constructor now receives IConfiguration from the factory
+})
     .AddPolicyHandler((services, request) => 
     {
         var config = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<BackyAgentConfig>>().Value;

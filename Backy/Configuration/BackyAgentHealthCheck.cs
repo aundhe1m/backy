@@ -15,7 +15,8 @@ public class BackyAgentHealthCheck : IHealthCheck
     
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        var agentUrl = _configuration["BACKY_AGENT_URL"];
+        // Try both configuration keys for backward compatibility
+        var agentUrl = _configuration["BackyAgent:Url"] ?? _configuration["BACKY_AGENT_URL"];
         
         if (string.IsNullOrEmpty(agentUrl))
         {
@@ -27,9 +28,8 @@ public class BackyAgentHealthCheck : IHealthCheck
             using var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(5);
             
-            // Just ping the URL to see if it's reachable
-            // In a real implementation, you'd call a health endpoint on the agent
-            var response = await httpClient.GetAsync($"{agentUrl}/health", cancellationToken);
+            // Call the specific health endpoint of the agent
+            var response = await httpClient.GetAsync($"{agentUrl}/api/v1/status", cancellationToken);
             
             if (response.IsSuccessStatusCode)
             {

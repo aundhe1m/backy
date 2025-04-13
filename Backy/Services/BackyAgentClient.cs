@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Backy.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 
 namespace Backy.Services
 {
@@ -19,22 +20,37 @@ namespace Backy.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<BackyAgentClient> _logger;
         private readonly JsonSerializerOptions _jsonOptions;
+        private readonly IConfiguration _configuration;
         private bool _isDisposed;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="BackyAgentClient"/> class.
         /// </summary>
-        public BackyAgentClient(HttpClient httpClient, IOptions<BackyAgentConfig> options, ILogger<BackyAgentClient> logger)
+        public BackyAgentClient(
+            HttpClient httpClient, 
+            IOptions<BackyAgentConfig> options, 
+            ILogger<BackyAgentClient> logger,
+            IConfiguration configuration)
         {
-            var config = options.Value;
-            
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             
-            // Configure HttpClient
-            _httpClient.BaseAddress = new Uri(config.BaseUrl);
-            _httpClient.Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds);
-            _httpClient.DefaultRequestHeaders.Add("X-Api-Key", config.ApiKey);
+            // Log available configuration values for debugging
+            var configuredUrl = _configuration["BACKY_AGENT_URL"] ?? _configuration["BackyAgent:Url"];
+            var optionsUrl = options.Value.BaseUrl;
+            
+            _logger.LogDebug("Configuration sources for Backy Agent URL:");
+            _logger.LogDebug("  - Environment/appsettings: {ConfigUrl}", configuredUrl);
+            _logger.LogDebug("  - Options value: {OptionsUrl}", optionsUrl);
+            
+            // Use the most specific configuration source available
+            var finalBaseUrl = configuredUrl ?? optionsUrl;
+            
+            // Configure HttpClient using the determined URL
+            _httpClient.BaseAddress = new Uri(finalBaseUrl);
+            _httpClient.Timeout = TimeSpan.FromSeconds(options.Value.TimeoutSeconds);
+            _httpClient.DefaultRequestHeaders.Add("X-Api-Key", options.Value.ApiKey);
             
             // Configure JSON serialization options
             _jsonOptions = new JsonSerializerOptions
@@ -43,7 +59,7 @@ namespace Backy.Services
                 PropertyNameCaseInsensitive = true
             };
             
-            _logger.LogInformation("BackyAgentClient initialized with base URL: {BaseUrl}", config.BaseUrl);
+            _logger.LogInformation("BackyAgentClient initialized with base URL: {BaseUrl}", finalBaseUrl);
         }
         
         /// <summary>

@@ -67,6 +67,12 @@ Current development status:
 
 ## Development Commands
 
+### Create migration
+
+```shell
+dotnet ef migrations add "$(date +%Y%m%d_%H%M%S)" --project ./Backy
+```
+
 ### Full Reset (Database and Migrations)
 ```shell
 docker compose -f ../docker-compose.yml down && \
