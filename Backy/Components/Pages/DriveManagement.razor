@@ -6,6 +6,7 @@
 @inject NavigationManager NavigationManager
 @inject ModalService ModalService
 @inject ToastService ToastService
+@implements IDisposable
 @rendermode InteractiveServer
 
 <PageTitle>Drive Management - Backy</PageTitle>
@@ -26,8 +27,15 @@
     <span>
         <!-- Refresh Button -->
         <Tooltip Title="Refresh" Color="TooltipColor.Dark">
-            <button class="btn btn-info" @onclick="LoadDrives">
-                <img src="/icons/arrow-clockwise.svg" alt="Refresh" style="height: 24px;" class="theme-icon" />
+            <button class="btn btn-info" @onclick="ManualRefresh" disabled="@isBackgroundRefreshing">
+                @if (isBackgroundRefreshing)
+                {
+                    <Spinner Type="SpinnerType.Grow" Size="SpinnerSize.Small" Color="SpinnerColor.Light" />
+                }
+                else
+                {
+                    <img src="/icons/arrow-clockwise.svg" alt="Refresh" style="height: 24px;" class="theme-icon" />
+                }
             </button>
         </Tooltip>
 
@@ -365,6 +373,8 @@
     private List<Drive> NewDrives { get; set; } = new List<Drive>();
     private List<ProtectedDrive> ProtectedDrives { get; set; } = new List<ProtectedDrive>();
     private List<Drive> SelectedDrives { get; set; } = new List<Drive>();
+    private bool isBackgroundRefreshing = false;
+    private Timer? backgroundRefreshTimer;
 
     // Create Pool Request
     private CreatePoolRequest CreatePoolRequest { get; set; } = new CreatePoolRequest
@@ -502,7 +512,108 @@
         createPoolEditContext = new EditContext(CreatePoolRequest);
         renamePoolEditContext = new EditContext(RenamePoolRequest);
         Logger.LogInformation("Drive Management page initialized.");
-        await LoadDrives();
+        
+        // Load initial data from the database
+        await LoadDataFromDatabase();
+        
+        // Start a timer to poll for database changes
+        StartDatabasePollingTimer();
+        
+        // Trigger a background refresh from the agent
+        _ = BackgroundRefresh();
+    }
+
+    private void StartDatabasePollingTimer()
+    {
+        // Create a timer that checks for database updates every 10 seconds
+        backgroundRefreshTimer = new Timer(async _ => 
+        {
+            await LoadDataFromDatabase();
+            await InvokeAsync(StateHasChanged);
+        }, null, 10000, 10000); // 10 second delay, 10 second interval
+    }
+
+    public void Dispose()
+    {
+        // Clean up the timer when the component is disposed
+        backgroundRefreshTimer?.Dispose();
+        backgroundRefreshTimer = null;
+    }
+
+    /// <summary>
+    /// Load data directly from the database without waiting for the API
+    /// </summary>
+    private async Task LoadDataFromDatabase()
+    {
+        try
+        {
+            Logger.LogInformation("Loading data from database...");
+            
+            // Load pool groups with their drives
+            PoolGroups = await DbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
+            Logger.LogInformation($"Loaded {PoolGroups.Count} pool groups from the database.");
+            
+            // Load protected drives
+            ProtectedDrives = await DbContext.ProtectedDrives.ToListAsync();
+            Logger.LogInformation($"Loaded {ProtectedDrives.Count} protected drives from the database.");
+            
+            // Get active drives from drive service with minimal API calls
+            var activeDrives = await DriveService.UpdateActiveDrivesAsync();
+            Logger.LogInformation($"Retrieved {activeDrives.Count} active drives.");
+            
+            // Filter out drives that are already in pools or protected
+            var pooledDriveSerials = PoolGroups.SelectMany(pg => pg.Drives).Select(d => d.Serial).ToHashSet();
+            var protectedSerials = ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
+            
+            NewDrives = activeDrives
+                .Where(d => !pooledDriveSerials.Contains(d.Serial) && !protectedSerials.Contains(d.Serial))
+                .GroupBy(d => d.Serial)
+                .Select(g => g.First())
+                .ToList();
+            
+            Logger.LogInformation($"Found {NewDrives.Count} new drives after filtering.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading data from database.");
+        }
+    }
+
+    /// <summary>
+    /// Manually triggered full refresh that shows loading overlay
+    /// </summary>
+    private async Task ManualRefresh()
+    {
+        try
+        {
+            await LoadingService.ShowLoading();
+            await LoadDrives();
+        }
+        finally
+        {
+            await LoadingService.HideLoading();
+        }
+    }
+
+    /// <summary>
+    /// Background refresh that doesn't block the UI with a loading overlay
+    /// </summary>
+    private async Task BackgroundRefresh()
+    {
+        if (isBackgroundRefreshing)
+            return;
+            
+        try
+        {
+            isBackgroundRefreshing = true;
+            await InvokeAsync(StateHasChanged);
+            await LoadDrives();
+        }
+        finally
+        {
+            isBackgroundRefreshing = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     // ---------------------------
@@ -516,17 +627,12 @@
     {
         try
         {
-            await LoadingService.ShowLoading();
             await OrganizeDrives();
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading drives.");
             ToastService.Notify(new(ToastType.Danger, $"Error: {ex.Message}."));
-        }
-        finally
-        {
-            await LoadingService.HideLoading();
         }
     }
 

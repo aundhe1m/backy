@@ -79,6 +79,9 @@ builder.Services.AddScoped<IRemoteConnectionService, RemoteConnectionService>();
 // Register the background service for monitoring schedules
 builder.Services.AddHostedService<ScheduleMonitorService>();
 
+// Register the background service for refreshing drive data
+builder.Services.AddHostedService<DriveRefreshService>();
+
 // Add data protection services for safeguarding data
 builder.Services.AddDataProtection();
 
