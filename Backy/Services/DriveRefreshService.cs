@@ -73,11 +73,11 @@ namespace Backy.Services
                 using var scope = _scopeFactory.CreateScope();
                 
                 // Get the required services
-                var driveService = scope.ServiceProvider.GetRequiredService<IDriveService>();
+                var AppDriveService = scope.ServiceProvider.GetRequiredService<IAppDriveService>();
                 var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                 
                 // Get the active drives from the Backy Agent
-                var activeDrives = await driveService.UpdateActiveDrivesAsync();
+                var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
                 _logger.LogInformation($"Retrieved {activeDrives.Count} active drives from the agent.");
                 
                 // Get existing pool groups from the database
@@ -93,7 +93,7 @@ namespace Backy.Services
 
                 try {
                     // Get pool information from the Agent API
-                    var existingPools = await driveService.GetPoolsAsync();
+                    var existingPools = await AppDriveService.GetPoolsAsync();
                     var existingPoolGuids = existingPools.Select(p => p.PoolGroupGuid).ToHashSet();
                     
                     // Mark pools that don't exist on the system as offline
@@ -118,7 +118,7 @@ namespace Backy.Services
                 {
                     try
                     {
-                        await driveService.UpdatePoolSizeMetricsAsync(pool.PoolGroupGuid);
+                        await AppDriveService.UpdatePoolSizeMetricsAsync(pool.PoolGroupGuid);
                     }
                     catch (Exception ex)
                     {
@@ -203,7 +203,7 @@ namespace Backy.Services
                             }
                         
                             // Fetch Pool Status with a timeout
-                            var statusTask = Task.Run(() => driveService.FetchPoolStatus(pool.PoolGroupId));
+                            var statusTask = Task.Run(() => AppDriveService.FetchPoolStatus(pool.PoolGroupId));
                             var timeoutTask = Task.Delay(5000); // 5 seconds timeout
                             
                             if (await Task.WhenAny(statusTask, timeoutTask) == timeoutTask)

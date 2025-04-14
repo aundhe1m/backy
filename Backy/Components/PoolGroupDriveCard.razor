@@ -190,7 +190,7 @@
     protected ToastService ToastService { get; set; } = default!;
 
     [Inject]
-    IDriveService DriveService { get; set; } = default!;
+    IAppDriveService AppDriveService { get; set; } = default!;
 
     // ---------------------------
     // Private Fields
@@ -275,11 +275,11 @@
     }
 
     /// <summary>
-    /// Shows the pool status by fetching details from the DriveService and displaying them in a modal.
+    /// Shows the pool status by fetching details from the AppDriveService and displaying them in a modal.
     /// </summary>
     private async Task ShowPoolStatus()
     {
-        var result = await DriveService.GetPoolDetailAsync(Model.PoolGroupGuid);
+        var result = await AppDriveService.GetPoolDetailAsync(Model.PoolGroupGuid);
         if (result.Success)
         {
             PoolStatusOutput = result.Output;

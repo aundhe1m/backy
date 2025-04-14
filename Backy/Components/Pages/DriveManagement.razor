@@ -2,7 +2,7 @@
 @inject ApplicationDbContext DbContext
 @inject ILogger<DriveManagement> Logger
 @inject ILoadingService LoadingService
-@inject IDriveService DriveService
+@inject IAppDriveService AppDriveService
 @inject NavigationManager NavigationManager
 @inject ModalService ModalService
 @inject ToastService ToastService
@@ -558,7 +558,7 @@
             Logger.LogInformation($"Loaded {ProtectedDrives.Count} protected drives from the database.");
             
             // Get active drives from drive service with minimal API calls
-            var activeDrives = await DriveService.UpdateActiveDrivesAsync();
+            var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
             Logger.LogInformation($"Retrieved {activeDrives.Count} active drives.");
             
             // Filter out drives that are already in pools or protected
@@ -642,7 +642,7 @@
     /// </summary>
     private async Task OrganizeDrives()
     {
-        var activeDrives = await DriveService.UpdateActiveDrivesAsync();
+        var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
         Logger.LogInformation($"Found {activeDrives.Count} active drives.");
 
         PoolGroups = await DbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
@@ -656,7 +656,7 @@
         // First, check with the Agent API which pools actually exist on the system
         try {
             // Get pool information from the Agent API
-            var poolsApiTask = DriveService.GetPoolsAsync();
+            var poolsApiTask = AppDriveService.GetPoolsAsync();
             
             // Set up a timeout for the API call
             var timeoutTask = Task.Delay(10000); // 10 seconds timeout
@@ -696,7 +696,7 @@
         {
             try
             {
-                await DriveService.UpdatePoolSizeMetricsAsync(pool.PoolGroupGuid);
+                await AppDriveService.UpdatePoolSizeMetricsAsync(pool.PoolGroupGuid);
             }
             catch (Exception ex)
             {
@@ -779,7 +779,7 @@
                     }
                 
                     // Fetch Pool Status with a timeout
-                    var statusTask = Task.Run(() => DriveService.FetchPoolStatus(pool.PoolGroupId));
+                    var statusTask = Task.Run(() => AppDriveService.FetchPoolStatus(pool.PoolGroupId));
                     var timeoutTask = Task.Delay(5000); // 5 seconds timeout
                     
                     if (await Task.WhenAny(statusTask, timeoutTask) == timeoutTask)
@@ -853,7 +853,7 @@
         try
         {
             Logger.LogInformation($"Attempting to protect drive with serial: {serial}");
-            var result = await DriveService.ProtectDriveAsync(serial);
+            var result = await AppDriveService.ProtectDriveAsync(serial);
             if (result.Success)
             {
                 Logger.LogInformation($"Drive {serial} protected successfully.");
@@ -882,7 +882,7 @@
         try
         {
             Logger.LogInformation($"Attempting to unprotect drive with serial: {serial}");
-            var result = await DriveService.UnprotectDriveAsync(serial);
+            var result = await AppDriveService.UnprotectDriveAsync(serial);
             if (result.Success)
             {
                 Logger.LogInformation($"Drive {serial} unprotected successfully.");
@@ -1018,7 +1018,7 @@
             CreatePoolResultMessage = null;
             CreatePoolResultSuccess = null;
 
-            var (success, message, outputs) = await DriveService.CreatePoolAsync(CreatePoolRequest);
+            var (success, message, outputs) = await AppDriveService.CreatePoolAsync(CreatePoolRequest);
             CommandOutputs.AddRange(outputs);
             CreatePoolResultMessage = $"{message}";
             if (success)
@@ -1054,7 +1054,7 @@
         try
         {
             await LoadingService.ShowLoading();
-            var result = await DriveService.UnmountPoolAsync(poolGroup.PoolGroupGuid);
+            var result = await AppDriveService.UnmountPoolAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
                 ToastService.Notify(new ToastMessage(ToastType.Success, $"{result.Message}"));
@@ -1067,7 +1067,7 @@
                     // Fetch processes using mount point
                     currentPoolGroupGuidForUnmount = poolGroup.PoolGroupGuid;
                     var mountPoint = poolGroup.MountPath;
-                    ProcessList = await DriveService.GetProcessesUsingMountPointAsync(mountPoint);
+                    ProcessList = await AppDriveService.GetProcessesUsingMountPointAsync(mountPoint);
                     await processListModal.ShowAsync();
                 }
                 else
@@ -1117,7 +1117,7 @@
                     Action = "UnmountPool"
                 };
 
-            var killResult = await DriveService.KillProcessesAsync(request);
+            var killResult = await AppDriveService.KillProcessesAsync(request);
 
             if (killResult.Success)
             {
@@ -1161,7 +1161,7 @@
         try
         {
             await LoadingService.ShowLoading();
-            var result = await DriveService.RemovePoolGroupAsync(poolGroup.PoolGroupGuid);
+            var result = await AppDriveService.RemovePoolGroupAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
                 ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
@@ -1192,7 +1192,7 @@
         try
         {
             await LoadingService.ShowLoading();
-            var result = await DriveService.MountPoolAsync(poolGroup.PoolGroupGuid);
+            var result = await AppDriveService.MountPoolAsync(poolGroup.PoolGroupGuid);
             if (result.Success)
             {
                 ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
@@ -1262,7 +1262,7 @@
             await LoadingService.ShowLoading();
             if (drive.PoolGroup != null && drive.DevPath != null)
             {
-                var result = await DriveService.ForceAddDriveAsync(drive.Id, drive.PoolGroup.PoolGroupGuid, drive.DevPath);
+                var result = await AppDriveService.ForceAddDriveAsync(drive.Id, drive.PoolGroup.PoolGroupGuid, drive.DevPath);
                 if (result.Success)
                 {
                     ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
@@ -1317,7 +1317,7 @@
             RenameResultMessage = null;
             RenameResultSuccess = null;
 
-            var (success, message) = await DriveService.RenamePoolGroupAsync(RenamePoolRequest);
+            var (success, message) = await AppDriveService.RenamePoolGroupAsync(RenamePoolRequest);
             RenameResultMessage = message;
 
             if (success)

@@ -10,7 +10,7 @@ namespace Backy.Services
     /// <summary>
     /// Defines the contract for drive-related operations.
     /// </summary>
-    public interface IDriveService
+    public interface IAppDriveService
     {
         string FetchPoolStatus(int poolGroupId);
         (long Size, long Used, long Available, string UsePercent) GetMountPointSize(string mountPoint);
@@ -33,24 +33,24 @@ namespace Backy.Services
     /// <summary>
     /// Implements drive-related operations, including managing pools and handling drive protection.
     /// </summary>
-    public class DriveService : IDriveService
+    public class AppDriveService : IAppDriveService
     {
         // ---------------------------
         // Private Fields
         // ---------------------------
         private readonly ApplicationDbContext _context;
-        private readonly ILogger<DriveService> _logger;
+        private readonly ILogger<AppDriveService> _logger;
 
         // ---------------------------
         // Constructor
         // ---------------------------
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="DriveService"/> class.
+        /// Initializes a new instance of the <see cref="AppDriveService"/> class.
         /// </summary>
         /// <param name="context">The application database context.</param>
         /// <param name="logger">The logger instance.</param>
-        public DriveService(ApplicationDbContext context, ILogger<DriveService> logger)
+        public AppDriveService(ApplicationDbContext context, ILogger<AppDriveService> logger)
         {
             _context = context;
             _logger = logger;

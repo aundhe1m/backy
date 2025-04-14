@@ -10,18 +10,18 @@ using Microsoft.Extensions.Logging;
 namespace Backy.Services
 {
     /// <summary>
-    /// Implementation of IDriveService that delegates operations to the Backy Agent via the API client.
+    /// Implementation of IAppDriveService that delegates operations to the Backy Agent via the API client.
     /// </summary>
-    public class AgentDriveService : IDriveService
+    public class AgentAppDriveService : IAppDriveService
     {
         private readonly IBackyAgentClient _agentClient;
         private readonly ApplicationDbContext _context;
-        private readonly ILogger<AgentDriveService> _logger;
+        private readonly ILogger<AgentAppDriveService> _logger;
 
-        public AgentDriveService(
+        public AgentAppDriveService(
             IBackyAgentClient agentClient,
             ApplicationDbContext context,
-            ILogger<AgentDriveService> logger)
+            ILogger<AgentAppDriveService> logger)
         {
             _agentClient = agentClient ?? throw new ArgumentNullException(nameof(agentClient));
             _context = context ?? throw new ArgumentNullException(nameof(context));

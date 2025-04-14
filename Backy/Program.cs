@@ -83,7 +83,7 @@ builder.Services.AddHttpClient<IBackyAgentClient, BackyAgentClient>((serviceProv
     .AddPolicyHandler(Policy.TimeoutAsync<HttpResponseMessage>(TimeSpan.FromSeconds(60)));
 
 // Register the Backy Agent drive service instead of the local one
-builder.Services.AddScoped<IDriveService, AgentDriveService>();
+builder.Services.AddScoped<IAppDriveService, AgentAppDriveService>();
 
 // Other scoped services are created once per client request (connection)
 builder.Services.AddScoped<IRemoteConnectionService, RemoteConnectionService>();
