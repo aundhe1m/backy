@@ -2,17 +2,6 @@
 
 The Backy Agent is a standalone API service that manages drive operations for the Backy backup solution. It runs separately from the main Backy application and provides a RESTful API for drive and pool management operations.
 
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Building the Agent](#building-the-agent)
-3. [Running the Agent](#running-the-agent)
-4. [Installation](#installation)
-5. [Configuration](#configuration)
-6. [API Reference](#api-reference)
-7. [Using Swagger](#using-swagger)
-8. [Troubleshooting](#troubleshooting)
-
 ## Overview
 
 The Backy Agent provides system-level access to drives and RAID operations through a secure API. It allows the main Backy application to:
@@ -21,8 +10,9 @@ The Backy Agent provides system-level access to drives and RAID operations throu
 - Create, mount, unmount, and remove RAID1 pools
 - Monitor processes using mount points
 - Kill processes when necessary
+- Track resync progress for RAID arrays
 
-The Agent is designed to be run with elevated privileges (typically as root) since it needs to interact with system devices and execute commands like `mdadm`, `mount`, etc.
+The Agent is designed to be run with elevated privileges (typically as root) since it needs to interact with system devices and read system files like `/proc/mdstat` and `/sys/block`.
 
 ## Building the Agent
 
@@ -62,7 +52,7 @@ cd /path/to/backy/Backy.Agent
 sudo dotnet run
 ```
 
-The `sudo` command is necessary because the agent needs elevated privileges to perform drive operations.
+The `sudo` command is necessary because the agent needs elevated privileges to perform drive operations and read system files.
 
 With the default development settings, the agent will:
 - Run on port 5151
@@ -160,6 +150,30 @@ The agent is configured through `appsettings.json` and `appsettings.Development.
 | `AgentSettings:ApiKey` | API key for authentication | default-api-key-change-me-in-production |
 | `AgentSettings:ExcludedDrives` | Array of drive paths to exclude | ["/dev/sda"] |
 | `AgentSettings:DisableApiAuthentication` | Whether to disable API authentication | false (true in Development) |
+| `AgentSettings:FileCacheTimeToLiveSeconds` | How long to cache file reads | 5 |
+
+### Logging Configuration
+
+The agent uses structured logging with different log levels:
+
+| Log Level | Purpose | Examples |
+|-----------|---------|----------|
+| Debug | Detailed troubleshooting information | File parsing details, command execution details |
+| Information | Normal operational events | Pool creation, raid state changes |
+| Warning | Potential issues that don't cause failures | Metadata inconsistencies, temporary file access issues |
+| Error | Actual error conditions | File read failures, parsing errors |
+
+Configure log levels in appsettings.json:
+
+```json
+"Logging": {
+  "LogLevel": {
+    "Default": "Information",
+    "Microsoft.AspNetCore": "Warning",
+    "Backy.Agent.Services.FileMonitoring": "Debug"
+  }
+}
+```
 
 ### Development vs. Production
 
@@ -217,8 +231,7 @@ Get detailed status of a specific drive.
   "status": "available",
   "inPool": false,
   "poolId": null,
-  "mountPoint": null,
-  "processes": []
+  "mountPoint": null
 }
 ```
 
@@ -232,16 +245,30 @@ Lists all existing mdadm pools on the system.
 [
   {
     "poolId": "md0",
-    "poolGroupId": 1,
     "poolGroupGuid": "550e8400-e29b-41d4-a716-446655440000",
     "label": "backup-1",
-    "status": "Active",
+    "status": "active",
     "mountPath": "/mnt/backy/backup-1",
     "isMounted": true,
-    "driveCount": 2
+    "drives": [
+      {
+        "serial": "WD-123456",
+        "label": "backup-1-1",
+        "isConnected": true
+      },
+      {
+        "serial": "WD-789012",
+        "label": "backup-1-2",
+        "isConnected": true
+      }
+    ],
+    "resyncPercentage": 12.6,
+    "resyncTimeEstimate": 132.2
   }
 ]
 ```
+
+The `resyncPercentage` property can be null if a resync operation is not in progress.
 
 #### POST /api/v1/pools
 Create a new RAID1 pool.
@@ -256,12 +283,11 @@ Create a new RAID1 pool.
     "WD-789012": "backup-1-2"
   },
   "mountPath": "/mnt/backy/backup-1",
-  "poolGroupId": 1,
   "poolGroupGuid": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-The `poolGroupId` and `poolGroupGuid` fields are optional and help maintain consistent pool identification across system reboots.
+`poolGroupGuid` field to maintain consistent pool identification across system reboots.
 
 **Response:**
 ```json
@@ -274,7 +300,7 @@ The `poolGroupId` and `poolGroupGuid` fields are optional and help maintain cons
 }
 ```
 
-#### GET /api/v1/pools/{poolId}
+#### GET /api/v1/pools/{poolGroupGuid}
 Get pool status and details. Returns a 404 status if the pool doesn't exist.
 
 **Response:**
@@ -286,11 +312,13 @@ Get pool status and details. Returns a 404 status if the pool doesn't exist.
   "available": 947776051200,
   "usePercent": "5%",
   "mountPath": "/mnt/backy/backup-1",
+  "resyncPercentage": 12.6,
+  "resyncTimeEstimate": 132.2,
   "drives": [{"serial": "WD-123456", "label": "backup-1-1", "status": "active"}]
 }
 ```
 
-#### POST /api/v1/pools/{poolId}/mount
+#### POST /api/v1/pools/{poolGroupGuid}/mount
 Mount a pool.
 
 **Request:**
@@ -308,38 +336,41 @@ Mount a pool.
 }
 ```
 
-#### POST /api/v1/pools/{poolId}/unmount
+#### POST /api/v1/pools/{poolGroupGuid}/unmount
 Unmount a pool.
 
 **Response:**
 ```json
 {
   "success": true,
+  "busy": false,
   "commandOutputs": ["command outputs"]
 }
 ```
 
-#### POST /api/v1/pools/{poolId}/remove
-Remove a pool completely.
+#### DELETE /api/v1/pools/{poolGroupGuid}
+Remove a pool completely, including its metadata.
 
 **Response:**
 ```json
 {
   "success": true,
+  "busy": false,
   "commandOutputs": ["command outputs"]
 }
 ```
 
-#### POST /api/v1/pools/metadata/remove
+The `busy` value is set to `true` if the removal was unsuccessful because it was busy.
+
+> Note: The legacy POST endpoint `/api/v1/pools/{poolGroupGuid}/remove` can be removed.
+
+#### DELETE /api/v1/pools/{poolGroupGuid}/metadata
 Remove pool metadata mapping information.
 
 **Request:**
 ```json
 {
-  "poolId": "md0",
-  "poolGroupId": 1,
-  "poolGroupGuid": "550e8400-e29b-41d4-a716-446655440000",
-  "removeAll": false
+  "poolGroupGuid": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
@@ -352,6 +383,20 @@ At least one of the identifier fields or `removeAll` must be specified.
   "message": "Metadata removed successfully"
 }
 ```
+
+#### DELETE /api/v1/pools/metadata
+Remove all pool metadata mapping information.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Metadata removed successfully"
+}
+```
+
+> Note: The legacy POST endpoint `/api/v1/pools/metadata/remove` can be removed.
+
 
 #### POST /api/v1/pools/metadata/validate
 Validate and update pool metadata by checking if mdadm device names match the actual system devices.
@@ -469,19 +514,42 @@ Now all requests made through the Swagger UI will include your API key.
 4. Click "Execute"
 5. View the response below the request
 
-## Pool Metadata System
+## Implementation Details
 
-### Overview
+### File-Based Monitoring
+
+The Backy Agent uses direct file access from `/proc` and `/sys` directories to gather system information, rather than executing commands and parsing their outputs. This approach provides:
+
+- Better performance (no process spawning overhead)
+- More reliable data collection
+- Real-time monitoring capabilities
+- Reduced dependency on external tools
+
+#### Key Files Monitored
+
+1. **`/proc/mdstat`**
+   - Contains information about all RAID arrays
+   - Updated in real-time by the kernel
+   - Provides status, component drives, and resync progress
+
+2. **`/sys/block`**
+   - Contains device information for all block devices
+   - Provides device properties including size, model, vendor, and serial
+   - Includes MD-specific information in the `/md` subdirectory for RAID arrays
+
+### Pool Metadata System
+
+#### Overview
 
 The Backy Agent includes a metadata system that helps maintain persistent pool identification across system reboots. Since mdadm device numbers (md0, md1, etc.) can change when the system restarts, the agent stores metadata mappings between:
 
 - mdadm device names (e.g., md0, md1)
-- Stable identifiers: poolGroupId and poolGroupGuid
+- Stable identifier:  poolGroupGuid
 - Drive serial numbers and labels
 
 This metadata is stored in a JSON file at `/var/lib/backy/pool-metadata.json`.
 
-### Use Cases
+#### Use Cases
 
 The metadata system is particularly useful for:
 
@@ -489,13 +557,12 @@ The metadata system is particularly useful for:
 2. **Drive Identification**: Associate specific physical drives with pools
 3. **User-friendly Labels**: Maintain friendly names for drives and pools
 
-### Metadata Structure
+#### Metadata Structure
 
 ```json
 {
   "pools": [
     {
-      "poolGroupId": 1,
       "poolGroupGuid": "550e8400-e29b-41d4-a716-446655440000",
       "mdDeviceName": "md0",
       "label": "backup-1",
@@ -512,11 +579,11 @@ The metadata system is particularly useful for:
 }
 ```
 
-### Pool Metadata Validation
+#### Pool Metadata Validation
 
 The Backy Agent automatically validates and fixes pool metadata at startup to ensure consistency between the metadata file and the actual system state. This is particularly important after system reboots when mdadm device numbers may change.
 
-#### Automatic Validation
+##### Automatic Validation
 
 When the Backy Agent starts, it:
 1. Reads the pool metadata from `/var/lib/backy/pool-metadata.json`
@@ -527,7 +594,7 @@ When the Backy Agent starts, it:
 
 This automation ensures that poolGroupGuid-based operations continue to work reliably even after system reboots or mdadm device name changes.
 
-#### Manual Validation
+##### Manual Validation
 
 You can manually trigger metadata validation through the API:
 ```bash
@@ -545,6 +612,10 @@ When mounting a pool by GUID, if the original mdadm device is no longer availabl
 4. Update the metadata with the new device name
 
 This creates a seamless experience when working with the GUID-based API, even when underlying device names change.
+
+#### Resync Progress Monitoring
+
+The agent tracks resync progress for RAID arrays by monitoring the `/proc/mdstat` file. When a resync operation is in progress, the `resyncPercentage` property is included in the pool API responses, allowing applications to display progress to users.
 
 #### Mount Path Protection
 
@@ -582,6 +653,7 @@ The agent prevents mounting pools to paths already in use by other pools, avoidi
 - Check if the drive is in the excluded drives list
 - Verify the drive is detected by the system: `lsblk`
 - Ensure the drive has a serial number: `lsblk -o NAME,SERIAL`
+- Check if the agent can read from `/sys/block/[device]`
 
 #### Pool creation fails
 
@@ -619,6 +691,7 @@ The agent prevents mounting pools to paths already in use by other pools, avoidi
   - `GET /api/v1/pools/guid/{poolGroupGuid}`
   - `POST /api/v1/pools/guid/{poolGroupGuid}/mount`
   - `POST /api/v1/pools/guid/{poolGroupGuid}/unmount`
+  - `DELETE /api/v1/pools/guid/{poolGroupGuid}`
 - Check if the metadata file exists and is valid: `/var/lib/backy/pool-metadata.json`
 - Verify drive serials match what's in the metadata: `lsblk -o NAME,SERIAL`
 
@@ -640,12 +713,18 @@ The agent prevents mounting pools to paths already in use by other pools, avoidi
    cat /proc/mdstat
    ```
 
-4. Test API directly with curl:
+4. Check system file contents directly:
+   ```bash
+   cat /proc/mdstat
+   ls -l /sys/block/*/device/serial
+   ```
+
+5. Test API directly with curl:
    ```bash
    curl -X GET "http://localhost:5151/api/v1/drives" -H "X-Api-Key: your-api-key"
    ```
 
-5. Manually execute commands to verify system functionality:
+6. Manually execute commands to verify system functionality:
    ```bash
    sudo mdadm --detail /dev/mdX
    sudo mount | grep mdX

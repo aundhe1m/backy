@@ -11,7 +11,7 @@ public interface IDriveService
     Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint);
     Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(ProcessesRequest request);
     Task<(long Size, long Used, long Available, string UsePercent)> GetMountPointSizeAsync(string mountPoint);
-    Task<string> GetPoolStatusAsync(string poolId);
+    Task<string> GetPoolStatusAsync(string mdDeviceName);
 }
 
 public class DriveService : IDriveService
@@ -104,7 +104,7 @@ public class DriveService : IDriveService
                         {
                             string mdDevice = match.Groups[1].Value;
                             driveStatus.InPool = true;
-                            driveStatus.PoolId = mdDevice;
+                            driveStatus.MdDeviceName = mdDevice;
                             driveStatus.Status = "in_raid";
                             
                             // Check mount point
@@ -312,11 +312,11 @@ public class DriveService : IDriveService
         }
     }
 
-    public async Task<string> GetPoolStatusAsync(string poolId)
+    public async Task<string> GetPoolStatusAsync(string mdDeviceName)
     {
         try
         {
-            var result = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{poolId}");
+            var result = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDeviceName}");
             if (!result.Success)
             {
                 return "Offline";
@@ -337,7 +337,7 @@ public class DriveService : IDriveService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pool status for {PoolId}", poolId);
+            _logger.LogError(ex, "Error getting pool status for {MdDeviceName}", mdDeviceName);
             return "Error";
         }
     }

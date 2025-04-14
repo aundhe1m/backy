@@ -84,6 +84,8 @@ builder.Services.Configure<AgentSettings>(builder.Configuration.GetSection("Agen
 builder.Services.AddSingleton<ISystemCommandService, SystemCommandService>();
 builder.Services.AddScoped<IDriveService, DriveService>();
 builder.Services.AddScoped<IPoolService, PoolService>();
+builder.Services.AddMemoryCache(); // Add memory cache for file content caching
+builder.Services.AddSingleton<IMdStatReader, MdStatReader>();
 
 // Register hosted service for pool metadata validation at startup
 builder.Services.AddHostedService<PoolMetadataValidationService>();

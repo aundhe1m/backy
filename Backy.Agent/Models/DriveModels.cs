@@ -55,8 +55,11 @@ public class DriveStatus
     [JsonPropertyName("inPool")]
     public bool InPool { get; set; }
     
-    [JsonPropertyName("poolId")]
-    public string? PoolId { get; set; }
+    [JsonPropertyName("poolGroupGuid")]
+    public Guid? PoolGroupGuid { get; set; }
+    
+    [JsonPropertyName("mdDeviceName")]
+    public string? MdDeviceName { get; set; }
     
     [JsonPropertyName("mountPoint")]
     public string? MountPoint { get; set; }
@@ -100,8 +103,11 @@ public class PoolCreationResponse
     [JsonPropertyName("success")]
     public bool Success { get; set; }
     
-    [JsonPropertyName("poolId")]
-    public string? PoolId { get; set; }
+    [JsonPropertyName("poolGroupGuid")]
+    public Guid PoolGroupGuid { get; set; }
+    
+    [JsonPropertyName("mdDeviceName")]
+    public string? MdDeviceName { get; set; }
     
     [JsonPropertyName("mountPath")]
     public string? MountPath { get; set; }
@@ -132,6 +138,12 @@ public class PoolDetailResponse
     
     [JsonPropertyName("mountPath")]
     public string MountPath { get; set; } = string.Empty;
+    
+    [JsonPropertyName("resyncPercentage")]
+    public double? ResyncPercentage { get; set; }
+    
+    [JsonPropertyName("resyncTimeEstimate")]
+    public double? ResyncTimeEstimate { get; set; }
     
     [JsonPropertyName("drives")]
     public List<PoolDriveStatus> Drives { get; set; } = new();

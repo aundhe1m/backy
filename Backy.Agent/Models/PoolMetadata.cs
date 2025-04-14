@@ -22,38 +22,51 @@ public class PoolMetadata
     /// <summary>
     /// The mdadm device name (e.g., md0, md1)
     /// </summary>
+    [JsonPropertyName("mdDeviceName")]
     public string MdDeviceName { get; set; } = string.Empty;
     
     /// <summary>
     /// User-friendly name for the pool
     /// </summary>
+    [JsonPropertyName("label")]
     public string Label { get; set; } = string.Empty;
     
     /// <summary>
     /// Legacy Pool Group ID (deprecated, use PoolGroupGuid instead)
     /// </summary>
+    [JsonPropertyName("poolGroupId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? PoolGroupId { get; set; }
     
     /// <summary>
     /// Unique identifier for the pool group, stable across reboots
     /// </summary>
+    [JsonPropertyName("poolGroupGuid")]
     public Guid PoolGroupGuid { get; set; } = Guid.NewGuid();
     
     /// <summary>
     /// Serial numbers of drives in the pool
     /// </summary>
+    [JsonPropertyName("driveSerials")]
     public List<string> DriveSerials { get; set; } = new List<string>();
     
     /// <summary>
     /// Mapping of drive serial numbers to user-friendly labels
     /// </summary>
+    [JsonPropertyName("driveLabels")]
     public Dictionary<string, string> DriveLabels { get; set; } = new Dictionary<string, string>();
     
     /// <summary>
     /// Last known mount path
     /// </summary>
+    [JsonPropertyName("lastMountPath")]
     public string LastMountPath { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Creation date of the pool
+    /// </summary>
+    [JsonPropertyName("createdAt")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -61,11 +74,11 @@ public class PoolMetadata
 /// </summary>
 public class PoolListItem
 {
-    [JsonPropertyName("poolId")]
-    public string PoolId { get; set; } = string.Empty;
+    [JsonPropertyName("mdDeviceName")]
+    public string MdDeviceName { get; set; } = string.Empty;
     
     [JsonPropertyName("poolGroupGuid")]
-    public Guid? PoolGroupGuid { get; set; }
+    public Guid PoolGroupGuid { get; set; }
     
     [JsonPropertyName("label")]
     public string Label { get; set; } = string.Empty;
@@ -79,8 +92,11 @@ public class PoolListItem
     [JsonPropertyName("isMounted")]
     public bool IsMounted { get; set; }
     
-    [JsonPropertyName("driveCount")]
-    public int DriveCount { get; set; }
+    [JsonPropertyName("resyncPercentage")]
+    public double? ResyncPercentage { get; set; }
+    
+    [JsonPropertyName("resyncTimeEstimate")]
+    public double? ResyncTimeEstimate { get; set; }
     
     [JsonPropertyName("drives")]
     public List<PoolDriveSummary> Drives { get; set; } = new List<PoolDriveSummary>();
@@ -115,17 +131,6 @@ public class PoolCreationRequestExtended : PoolCreationRequest
 /// </summary>
 public class PoolMetadataRemovalRequest
 {
-    /// <summary>
-    /// The mdadm device name (e.g., md0, md1)
-    /// </summary>
-    [JsonPropertyName("poolId")]
-    public string? PoolId { get; set; }
-    
-    /// <summary>
-    /// Legacy Pool Group ID (deprecated, use PoolGroupGuid instead)
-    /// </summary>
-    public int? PoolGroupId { get; set; }
-    
     /// <summary>
     /// Unique identifier for the pool group
     /// </summary>

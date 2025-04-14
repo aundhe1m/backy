@@ -1,5 +1,6 @@
 using Backy.Agent.Models;
 using Backy.Agent.Services;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Backy.Agent.Endpoints;
 
@@ -33,18 +34,17 @@ public static class PoolEndpoints
             operation.Description = @"Returns information about all mdadm RAID arrays on the system.
 
 Each pool includes the following information:
-- poolId: The mdadm device name (e.g., md0)
 - poolGroupGuid: Stable identifier for the pool across reboots
 - label: A user-friendly name for the pool
 - status: Current status (Active, Degraded, etc.)
 - mountPath: Current mount path (if mounted)
 - isMounted: Whether the pool is currently mounted
-- driveCount: Number of drives in the array";
+- drives: Array of drives in the pool with serial numbers and connection status";
             return operation;
         });
 
         // POST /api/v1/pools - Create a new RAID1 pool
-        group.MapPost("/", async (PoolCreationRequestExtended request, IPoolService poolService) =>
+        group.MapPost("/", async ([FromBody] PoolCreationRequestExtended request, IPoolService poolService) =>
         {
             try
             {
@@ -64,7 +64,7 @@ Each pool includes the following information:
                 return Results.Ok(new PoolCreationResponse
                 {
                     Success = true,
-                    PoolId = result.PoolId,
+                    PoolGroupGuid = result.PoolGroupGuid,
                     MountPath = result.MountPath,
                     Status = "Active",
                     CommandOutputs = result.Outputs
@@ -119,60 +119,8 @@ Notes:
             return operation;
         });
 
-        // GET /api/v1/pools/{poolId} - Get pool status and details by mdadm device
-        group.MapGet("/{poolId}", async (string poolId, IPoolService poolService) =>
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(poolId))
-                {
-                    return Results.BadRequest(new ErrorResponse
-                    {
-                        Error = new ErrorDetail
-                        {
-                            Code = "VALIDATION_ERROR",
-                            Message = "Pool ID is required"
-                        }
-                    });
-                }
-
-                var result = await poolService.GetPoolDetailAsync(poolId);
-                if (!result.Success)
-                {
-                    return Results.NotFound(new ErrorResponse
-                    {
-                        Error = new ErrorDetail
-                        {
-                            Code = "NOT_FOUND",
-                            Message = result.Message
-                        }
-                    });
-                }
-                
-                return Results.Ok(result.PoolDetail);
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem(
-                    detail: ex.Message,
-                    title: "Error retrieving pool details",
-                    statusCode: 500);
-            }
-        })
-        .WithName("GetPoolDetails")
-        .WithOpenApi(operation =>
-        {
-            operation.Summary = "Get pool status and details by mdadm device ID";
-            operation.Description = @"Returns details about the pool including status, size, usage, and drive information.
-This endpoint will return a 404 status code if the pool does not exist.
-
-Note that the pool ID in the URL refers to the mdadm device name (e.g., md0).
-For stable identification across reboots, use the /guid/{poolGroupGuid} endpoint instead.";
-            return operation;
-        });
-
-        // GET /api/v1/pools/guid/{poolGroupGuid} - Get pool status and details by GUID
-        group.MapGet("/guid/{poolGroupGuid}", async (Guid poolGroupGuid, IPoolService poolService) =>
+        // GET /api/v1/pools/{poolGroupGuid} - Get pool status and details by GUID
+        group.MapGet("/{poolGroupGuid}", async (Guid poolGroupGuid, IPoolService poolService) =>
         {
             try
             {
@@ -216,15 +164,14 @@ For stable identification across reboots, use the /guid/{poolGroupGuid} endpoint
         {
             operation.Summary = "Get pool status and details by pool GUID";
             operation.Description = @"Returns details about the pool including status, size, usage, and drive information
-using the stable poolGroupGuid identifier. This is the recommended approach for the frontend application
-as it provides consistent identification across system reboots.
+using the stable poolGroupGuid identifier.
 
 This endpoint will return a 404 status code if the pool does not exist.";
             return operation;
         });
 
-        // POST /api/v1/pools/guid/{poolGroupGuid}/mount - Mount a pool by GUID
-        group.MapPost("/guid/{poolGroupGuid}/mount", async (Guid poolGroupGuid, MountRequest request, IPoolService poolService) =>
+        // POST /api/v1/pools/{poolGroupGuid}/mount - Mount a pool by GUID
+        group.MapPost("/{poolGroupGuid}/mount", async (Guid poolGroupGuid, [FromBody] MountRequest request, IPoolService poolService) =>
         {
             try
             {
@@ -273,7 +220,6 @@ This endpoint will return a 404 status code if the pool does not exist.";
         {
             operation.Summary = "Mount a pool by GUID";
             operation.Description = @"Assembles a RAID array and mounts it at the specified path using the stable poolGroupGuid identifier.
-This is the recommended approach for the frontend application.
 
 Request Example:
 ```json
@@ -284,8 +230,8 @@ Request Example:
             return operation;
         });
 
-        // POST /api/v1/pools/guid/{poolGroupGuid}/unmount - Unmount a pool by GUID
-        group.MapPost("/guid/{poolGroupGuid}/unmount", async (Guid poolGroupGuid, IPoolService poolService) =>
+        // DELETE /api/v1/pools/{poolGroupGuid}/mount - Unmount a pool by GUID
+        group.MapDelete("/{poolGroupGuid}/mount", async (Guid poolGroupGuid, IPoolService poolService) =>
         {
             try
             {
@@ -338,8 +284,8 @@ This is the recommended approach for the frontend application.";
             return operation;
         });
 
-        // POST /api/v1/pools/guid/{poolGroupGuid}/remove - Remove a pool by GUID
-        group.MapPost("/guid/{poolGroupGuid}/remove", async (Guid poolGroupGuid, IPoolService poolService) =>
+        // DELETE /api/v1/pools/{poolGroupGuid} - Remove a pool by GUID
+        group.MapDelete("/{poolGroupGuid}", async (Guid poolGroupGuid, IPoolService poolService) =>
         {
             try
             {
@@ -368,6 +314,10 @@ This is the recommended approach for the frontend application.";
                         }
                     });
                 }
+                
+                // After successfully removing the pool, also remove its metadata
+                var metadataRequest = new PoolMetadataRemovalRequest { PoolGroupGuid = poolGroupGuid };
+                await poolService.RemovePoolMetadataAsync(metadataRequest);
 
                 return Results.Ok(new CommandResponse
                 {
@@ -394,41 +344,33 @@ This operation automatically:
 1. Unmounts the pool (if mounted)
 2. Stops the RAID array
 3. Wipes filesystem signatures from the member drives
-4. Removes the RAID device";
+4. Removes the RAID device
+5. Removes the pool metadata";
             return operation;
         });
 
-        // POST /api/v1/pools/metadata/remove - Remove pool metadata
-        group.MapPost("/metadata/remove", async (PoolMetadataRemovalRequest request, IPoolService poolService) =>
+        // DELETE /api/v1/pools/metadata/{poolGroupGuid} - Remove specific pool metadata by GUID
+        group.MapDelete("/metadata/{poolGroupGuid}", async (Guid poolGroupGuid, IPoolService poolService) =>
         {
             try
             {
-                if (request == null)
+                if (poolGroupGuid == Guid.Empty)
                 {
                     return Results.BadRequest(new ErrorResponse
                     {
                         Error = new ErrorDetail
                         {
                             Code = "VALIDATION_ERROR",
-                            Message = "Request body is required"
+                            Message = "Valid Pool GUID is required"
                         }
                     });
                 }
 
-                // Validate request - at least one identifier or removeAll must be specified
-                if (!request.RemoveAll && 
-                    string.IsNullOrEmpty(request.PoolId) && 
-                    request.PoolGroupGuid == null)
+                var request = new PoolMetadataRemovalRequest
                 {
-                    return Results.BadRequest(new ErrorResponse
-                    {
-                        Error = new ErrorDetail
-                        {
-                            Code = "VALIDATION_ERROR",
-                            Message = "Either removeAll must be true or at least one identifier (poolId or poolGroupGuid) must be specified"
-                        }
-                    });
-                }
+                    PoolGroupGuid = poolGroupGuid,
+                    RemoveAll = false
+                };
 
                 var result = await poolService.RemovePoolMetadataAsync(request);
                 if (!result.Success)
@@ -453,42 +395,59 @@ This operation automatically:
                     statusCode: 500);
             }
         })
-        .WithName("RemovePoolMetadata")
+        .WithName("RemovePoolMetadataByGuid")
         .WithOpenApi(operation =>
         {
-            operation.Summary = "Remove pool metadata";
-            operation.Description = @"Removes mapping metadata between poolId and poolGroupGuid. 
-Use this endpoint to remove specific metadata entries or clear all metadata.
-
-Request Examples:
-
-Remove by specific pool ID:
-```json
-{
-  ""poolId"": ""md0"",
-  ""removeAll"": false
-}
-```
-
-Remove by poolGroupGuid:
-```json
-{
-  ""poolGroupGuid"": ""550e8400-e29b-41d4-a716-446655440000"",
-  ""removeAll"": false
-}
-```
-
-Remove all metadata:
-```json
-{
-  ""removeAll"": true
-}
-```";
+            operation.Summary = "Remove specific pool metadata by GUID";
+            operation.Description = @"Removes metadata entry for a specific pool identified by its GUID.
+This operation only removes the metadata mapping and does not affect the actual RAID array.";
             return operation;
         });
 
-        // POST /api/v1/pools/metadata/validate - Validate and update pool metadata
-        group.MapPost("/metadata/validate", async (IPoolService poolService) =>
+        // DELETE /api/v1/pools/metadata - Remove all pool metadata
+        group.MapDelete("/metadata", async (IPoolService poolService) =>
+        {
+            try
+            {
+                var request = new PoolMetadataRemovalRequest
+                {
+                    RemoveAll = true
+                };
+
+                var result = await poolService.RemovePoolMetadataAsync(request);
+                if (!result.Success)
+                {
+                    return Results.BadRequest(new ErrorResponse
+                    {
+                        Error = new ErrorDetail
+                        {
+                            Code = "VALIDATION_ERROR",
+                            Message = result.Message
+                        }
+                    });
+                }
+
+                return Results.Ok(new { success = true, message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(
+                    detail: ex.Message,
+                    title: "Error removing pool metadata",
+                    statusCode: 500);
+            }
+        })
+        .WithName("RemoveAllPoolMetadata")
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Remove all pool metadata";
+            operation.Description = @"Removes all stored pool metadata entries.
+This operation only removes the metadata mappings and does not affect the actual RAID arrays.";
+            return operation;
+        });
+
+        // PUT /api/v1/pools/metadata/validate - Validate and update pool metadata
+        group.MapPut("/metadata/validate", async (IPoolService poolService) =>
         {
             try
             {
@@ -532,17 +491,5 @@ The endpoint will check each pool's drive serials against the current mdadm arra
             return operation;
         });
 
-        // Keep the legacy endpoints for backward compatibility
-        MapLegacyPoolEndpoints(app);
-    }
-
-    private static void MapLegacyPoolEndpoints(WebApplication app)
-    {
-        // Legacy endpoint implementations for backward compatibility
-        var group = app.MapGroup("/api/v1/pools")
-            .WithTags("Legacy Pools");
-
-        // Add any legacy endpoints here if needed
-        // This empty implementation fixes the compiler error while allowing for future additions
     }
 }
