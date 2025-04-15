@@ -32,13 +32,6 @@ public class PoolMetadata
     public string Label { get; set; } = string.Empty;
     
     /// <summary>
-    /// Legacy Pool Group ID (deprecated, use PoolGroupGuid instead)
-    /// </summary>
-    [JsonPropertyName("poolGroupId")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public int? PoolGroupId { get; set; }
-    
-    /// <summary>
     /// Unique identifier for the pool group, stable across reboots
     /// </summary>
     [JsonPropertyName("poolGroupGuid")]

@@ -10,6 +10,7 @@ public class MdStatReader : IMdStatReader
     private const string MDSTAT_FILE_PATH = "/proc/mdstat";
     private readonly ILogger<MdStatReader> _logger;
     private readonly IMemoryCache _cache;
+    private readonly IFileSystemInfoService _fileSystemInfoService;
     private readonly ISystemCommandService _commandService;
     private readonly AgentSettings _settings;
     private const string METADATA_FILE_PATH = "/var/lib/backy/pool-metadata.json";
@@ -17,14 +18,31 @@ public class MdStatReader : IMdStatReader
     // Cache key for the mdstat information
     private const string MDSTAT_CACHE_KEY = "MdStatInfo";
     
+    // Pre-compiled regex patterns for better performance
+    private static readonly Regex PersonalitiesRegex = new(@"Personalities : (.+)", RegexOptions.Compiled);
+    private static readonly Regex PersonalityItemRegex = new(@"\[(.*?)\]", RegexOptions.Compiled);
+    private static readonly Regex UnusedDevicesRegex = new(@"unused devices:(.*?)$", RegexOptions.Compiled);
+    private static readonly Regex MdDeviceRegex = new(@"^(md\d+)\s*:.+", RegexOptions.Compiled);
+    private static readonly Regex StatusRegex = new(@": (\w+) (raid\d+|linear|multipath) (.+)", RegexOptions.Compiled);
+    private static readonly Regex SimpleStatusRegex = new(@": (\w+) (.+)", RegexOptions.Compiled);
+    private static readonly Regex DeviceRegex = new(@"(.+)\[(.+)\]", RegexOptions.Compiled);
+    private static readonly Regex DevicesListRegex = new(@"(\w+)\[\d+\]", RegexOptions.Compiled);
+    private static readonly Regex SizeRegex = new(@"(\d+) blocks", RegexOptions.Compiled);
+    private static readonly Regex RaidStatusRegex = new(@"\[(\d+)/(\d+)\] \[([^\]]+)\]", RegexOptions.Compiled);
+    private static readonly Regex ResyncProgressRegex = new(@"= *([0-9.]+)% \((\d+)/(\d+)\)", RegexOptions.Compiled);
+    private static readonly Regex FinishTimeRegex = new(@"finish=([0-9.]+)min", RegexOptions.Compiled);
+    private static readonly Regex SpeedRegex = new(@"speed=([0-9.]+[KMG])/sec", RegexOptions.Compiled);
+    
     public MdStatReader(
         ILogger<MdStatReader> logger,
         IMemoryCache cache,
+        IFileSystemInfoService fileSystemInfoService,
         ISystemCommandService commandService,
         IOptions<AgentSettings> options)
     {
         _logger = logger;
         _cache = cache;
+        _fileSystemInfoService = fileSystemInfoService;
         _commandService = commandService;
         _settings = options.Value;
     }
@@ -46,16 +64,12 @@ public class MdStatReader : IMdStatReader
         try
         {
             // Use file-based approach as primary method
-            string mdstatContent;
+            string mdstatContent = await _fileSystemInfoService.ReadFileAsync(MDSTAT_FILE_PATH, false);
             
-            if (File.Exists(MDSTAT_FILE_PATH))
+            if (string.IsNullOrEmpty(mdstatContent))
             {
-                mdstatContent = await File.ReadAllTextAsync(MDSTAT_FILE_PATH);
-            }
-            else
-            {
-                // Fall back to command-based approach if file is not accessible
-                _logger.LogWarning("Could not access {FilePath}, falling back to command execution", MDSTAT_FILE_PATH);
+                // Fall back to command-based approach if file read fails
+                _logger.LogWarning("Could not read {FilePath} directly, falling back to command execution", MDSTAT_FILE_PATH);
                 var result = await _commandService.ExecuteCommandAsync("cat /proc/mdstat");
                 
                 if (!result.Success)
@@ -151,11 +165,11 @@ public class MdStatReader : IMdStatReader
         var personalitiesLine = lines.FirstOrDefault(l => l.StartsWith("Personalities :"));
         if (personalitiesLine != null)
         {
-            var personalitiesMatch = Regex.Match(personalitiesLine, @"Personalities : (.+)");
+            var personalitiesMatch = PersonalitiesRegex.Match(personalitiesLine);
             if (personalitiesMatch.Success)
             {
                 var personalitiesText = personalitiesMatch.Groups[1].Value;
-                mdStatInfo.Personalities = Regex.Matches(personalitiesText, @"\[(.*?)\]")
+                mdStatInfo.Personalities = PersonalityItemRegex.Matches(personalitiesText)
                     .Cast<Match>()
                     .Select(m => m.Groups[1].Value)
                     .ToList();
@@ -166,7 +180,7 @@ public class MdStatReader : IMdStatReader
         var unusedLine = lines.FirstOrDefault(l => l.StartsWith("unused devices:"));
         if (unusedLine != null)
         {
-            var unusedMatch = Regex.Match(unusedLine, @"unused devices:(.*?)$");
+            var unusedMatch = UnusedDevicesRegex.Match(unusedLine);
             if (unusedMatch.Success)
             {
                 var unusedText = unusedMatch.Groups[1].Value.Trim();
@@ -181,7 +195,7 @@ public class MdStatReader : IMdStatReader
         for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
-            var mdMatch = Regex.Match(line, @"^(md\d+)\s*:.+");
+            var mdMatch = MdDeviceRegex.Match(line);
             
             if (mdMatch.Success)
             {
@@ -189,7 +203,7 @@ public class MdStatReader : IMdStatReader
                 var arrayInfo = new MdArrayInfo { DeviceName = deviceName };
                 
                 // Parse active/inactive state and RAID level
-                var statusMatch = Regex.Match(line, @": (\w+) (raid\d+|linear|multipath) (.+)");
+                var statusMatch = StatusRegex.Match(line);
                 if (statusMatch.Success)
                 {
                     arrayInfo.State = statusMatch.Groups[1].Value; // active, inactive
@@ -198,7 +212,7 @@ public class MdStatReader : IMdStatReader
                 }
                 else
                 {
-                    var simpleStatusMatch = Regex.Match(line, @": (\w+) (.+)");
+                    var simpleStatusMatch = SimpleStatusRegex.Match(line);
                     if (simpleStatusMatch.Success)
                     {
                         arrayInfo.State = simpleStatusMatch.Groups[1].Value;
@@ -207,11 +221,11 @@ public class MdStatReader : IMdStatReader
                 }
                 
                 // Extract component devices
-                var deviceMatch = Regex.Match(line, @"(.+)\[(.+)\]");
+                var deviceMatch = DeviceRegex.Match(line);
                 if (deviceMatch.Success)
                 {
                     var devicesText = deviceMatch.Groups[1].Value;
-                    var devices = Regex.Matches(devicesText, @"(\w+)\[\d+\]")
+                    var devices = DevicesListRegex.Matches(devicesText)
                         .Cast<Match>()
                         .Select(m => m.Groups[1].Value)
                         .ToList();
@@ -225,7 +239,7 @@ public class MdStatReader : IMdStatReader
                     var sizeLine = lines[i + 1].Trim();
                     
                     // Parse array size
-                    var sizeMatch = Regex.Match(sizeLine, @"(\d+) blocks");
+                    var sizeMatch = SizeRegex.Match(sizeLine);
                     if (sizeMatch.Success)
                     {
                         var blockCount = long.Parse(sizeMatch.Groups[1].Value);
@@ -233,7 +247,7 @@ public class MdStatReader : IMdStatReader
                     }
                     
                     // Parse RAID status like [2/2] [UU]
-                    var raidStatusMatch = Regex.Match(sizeLine, @"\[(\d+)/(\d+)\] \[([^\]]+)\]");
+                    var raidStatusMatch = RaidStatusRegex.Match(sizeLine);
                     if (raidStatusMatch.Success)
                     {
                         arrayInfo.ActiveDevices = int.Parse(raidStatusMatch.Groups[1].Value);
@@ -252,21 +266,21 @@ public class MdStatReader : IMdStatReader
                     arrayInfo.ResyncInProgress = true;
                     
                     // Parse resync percentage
-                    var resyncMatch = Regex.Match(resyncLine, @"= *([0-9.]+)% \((\d+)/(\d+)\)");
+                    var resyncMatch = ResyncProgressRegex.Match(resyncLine);
                     if (resyncMatch.Success)
                     {
                         arrayInfo.ResyncPercentage = double.Parse(resyncMatch.Groups[1].Value);
                     }
                     
                     // Parse finish time estimate
-                    var finishMatch = Regex.Match(resyncLine, @"finish=([0-9.]+)min");
+                    var finishMatch = FinishTimeRegex.Match(resyncLine);
                     if (finishMatch.Success)
                     {
                         arrayInfo.ResyncTimeEstimate = double.Parse(finishMatch.Groups[1].Value);
                     }
                     
                     // Parse speed
-                    var speedMatch = Regex.Match(resyncLine, @"speed=([0-9.]+[KMG])/sec");
+                    var speedMatch = SpeedRegex.Match(resyncLine);
                     if (speedMatch.Success)
                     {
                         arrayInfo.ResyncSpeed = speedMatch.Groups[1].Value;
@@ -287,12 +301,12 @@ public class MdStatReader : IMdStatReader
     {
         try
         {
-            if (!File.Exists(METADATA_FILE_PATH))
+            if (!_fileSystemInfoService.FileExists(METADATA_FILE_PATH))
             {
                 return new List<PoolMetadata>();
             }
             
-            var json = await File.ReadAllTextAsync(METADATA_FILE_PATH);
+            var json = await _fileSystemInfoService.ReadFileAsync(METADATA_FILE_PATH);
             var metadata = System.Text.Json.JsonSerializer.Deserialize<PoolMetadataCollection>(json);
             return metadata?.Pools ?? new List<PoolMetadata>();
         }

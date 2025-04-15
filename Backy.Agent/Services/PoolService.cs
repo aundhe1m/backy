@@ -30,6 +30,8 @@ public class PoolService : IPoolService
     private readonly IDriveService _driveService;
     private readonly IMdStatReader _mdStatReader;
     private readonly ILogger<PoolService> _logger;
+    private readonly IFileSystemInfoService _fileSystemInfoService;
+    private readonly IDriveInfoService _driveInfoService;
 
     // Metadata file path
     private const string METADATA_FILE_PATH = "/var/lib/backy/pool-metadata.json";
@@ -38,12 +40,16 @@ public class PoolService : IPoolService
         ISystemCommandService commandService,
         IDriveService driveService,
         IMdStatReader mdStatReader,
-        ILogger<PoolService> logger)
+        ILogger<PoolService> logger,
+        IFileSystemInfoService fileSystemInfoService,
+        IDriveInfoService driveInfoService)
     {
         _commandService = commandService;
         _driveService = driveService;
         _mdStatReader = mdStatReader;
         _logger = logger;
+        _fileSystemInfoService = fileSystemInfoService;
+        _driveInfoService = driveInfoService;
     }
 
     public async Task<List<PoolListItem>> GetAllPoolsAsync()
@@ -183,7 +189,14 @@ public class PoolService : IPoolService
                 if (metadata != null && metadata.DriveSerials != null && metadata.DriveSerials.Count > 0)
                 {
                     // Get the current serials in the pool
-                    var existingSerials = poolItem.Drives.Select(d => d.Serial).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var existingSerials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var drive in poolItem.Drives)
+                    {
+                        if (!string.IsNullOrEmpty(drive.Serial))
+                        {
+                            existingSerials.Add(drive.Serial);
+                        }
+                    }
                     
                     // Find any serials in the metadata that aren't in the pool yet
                     foreach (var serial in metadata.DriveSerials)
@@ -378,14 +391,143 @@ public class PoolService : IPoolService
     {
         try
         {
-            // Resolve the mdDeviceName from the GUID
-            var mdDeviceName = await ResolveMdDeviceAsync(poolGroupGuid);
-            if (string.IsNullOrEmpty(mdDeviceName))
+            // Get array information from MdStatReader directly using GUID
+            var arrayInfo = await _mdStatReader.GetArrayInfoByGuidAsync(poolGroupGuid);
+            if (arrayInfo == null)
             {
-                return (false, $"No pool found with GUID '{poolGroupGuid}'", new PoolDetailResponse());
+                return (false, $"Pool with GUID '{poolGroupGuid}' not found", new PoolDetailResponse());
             }
             
-            return await GetPoolDetailByMdDeviceAsync(mdDeviceName);
+            // Resolve the mdDeviceName from the array info
+            string mdDeviceName = arrayInfo.DeviceName;
+
+            // Get metadata for this pool
+            var metadata = await GetPoolMetadataByGuidAsync(poolGroupGuid);
+            
+            var response = new PoolDetailResponse
+            {
+                Status = arrayInfo.IsActive ? "active" : "inactive"
+            };
+            
+            // Add resync information if available
+            if (arrayInfo.ResyncInProgress)
+            {
+                response.ResyncPercentage = arrayInfo.ResyncPercentage;
+                response.ResyncTimeEstimate = arrayInfo.ResyncTimeEstimate;
+                
+                // Update status to indicate resync
+                if (response.Status == "active")
+                {
+                    response.Status = "resync";
+                }
+            }
+
+            // Get mount point information using DriveInfoService
+            var mountedFilesystems = await _driveInfoService.GetMountedFilesystemsAsync();
+            var mdMount = mountedFilesystems.FirstOrDefault(m => m.Device.Contains($"/dev/{mdDeviceName}"));
+            
+            if (mdMount != null)
+            {
+                response.MountPath = mdMount.MountPoint;
+                
+                // Get size information if mounted
+                var sizeInfo = await _driveService.GetMountPointSizeAsync(response.MountPath);
+                response.Size = sizeInfo.Size;
+                response.Used = sizeInfo.Used;
+                response.Available = sizeInfo.Available;
+                response.UsePercent = sizeInfo.UsePercent;
+            }
+            
+            // Get all drives in the system for looking up by name
+            var drivesResult = await _driveService.GetDrivesAsync();
+            var deviceNameToDriveMap = new Dictionary<string, BlockDevice>(StringComparer.OrdinalIgnoreCase);
+            
+            if (drivesResult?.Blockdevices != null)
+            {
+                foreach (var drive in drivesResult.Blockdevices.Where(d => d.Type == "disk"))
+                {
+                    // Store device by name for lookups
+                    if (!string.IsNullOrEmpty(drive.Name))
+                    {
+                        deviceNameToDriveMap[drive.Name] = drive;
+                    }
+                }
+            }
+            
+            // Add each component drive to the response
+            var addedSerials = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // Track which serials we've added
+            
+            // First add drives from arrayInfo.Devices - these are currently connected
+            foreach (var devicePath in arrayInfo.Devices)
+            {
+                string status = "unknown";
+                int deviceIndex = arrayInfo.Devices.IndexOf(devicePath);
+                
+                // Get status from array info
+                if (deviceIndex < arrayInfo.Status.Length)
+                {
+                    string statusLetter = arrayInfo.Status[deviceIndex];
+                    status = statusLetter == "U" ? "active" : 
+                             statusLetter == "_" ? "failed" :
+                             statusLetter == "S" ? "spare" : "unknown";
+                }
+                
+                // Get drive details using our device map
+                string serial = "unknown";
+                string label = $"{mdDeviceName}-{response.Drives.Count + 1}";
+                
+                if (deviceNameToDriveMap.TryGetValue(devicePath, out var blockDevice) && 
+                    !string.IsNullOrEmpty(blockDevice.Serial))
+                {
+                    serial = blockDevice.Serial;
+                    
+                    // Get label from metadata if available
+                    if (metadata != null && metadata.DriveLabels.ContainsKey(serial))
+                    {
+                        label = metadata.DriveLabels[serial];
+                    }
+                    
+                    addedSerials.Add(serial);
+                }
+                
+                response.Drives.Add(new PoolDriveStatus
+                {
+                    Serial = serial,
+                    Label = label,
+                    Status = status
+                });
+            }
+            
+            // Then add drives from metadata that aren't in arrayInfo.Devices (possibly disconnected)
+            if (metadata != null && metadata.DriveSerials != null)
+            {
+                foreach (var serial in metadata.DriveSerials)
+                {
+                    if (string.IsNullOrEmpty(serial) || addedSerials.Contains(serial))
+                    {
+                        continue;
+                    }
+                    
+                    // This drive is in the metadata but not in the array 
+                    // (either disconnected or failed)
+                    string label = $"{mdDeviceName}-{response.Drives.Count + 1}";
+                    if (metadata.DriveLabels.ContainsKey(serial))
+                    {
+                        label = metadata.DriveLabels[serial];
+                    }
+                    
+                    response.Drives.Add(new PoolDriveStatus
+                    {
+                        Serial = serial,
+                        Label = label,
+                        Status = "disconnected"
+                    });
+                    
+                    addedSerials.Add(serial);
+                }
+            }
+            
+            return (true, "Pool details retrieved successfully", response);
         }
         catch (Exception ex)
         {
@@ -933,7 +1075,6 @@ public class PoolService : IPoolService
             // Remove existing entry for this pool, if any
             allMetadata.Pools.RemoveAll(p => 
                 p.MdDeviceName == metadata.MdDeviceName ||
-                (metadata.PoolGroupId > 0 && p.PoolGroupId == metadata.PoolGroupId) ||
                 (metadata.PoolGroupGuid != Guid.Empty && p.PoolGroupGuid == metadata.PoolGroupGuid));
             
             // Add new metadata
@@ -1024,31 +1165,12 @@ public class PoolService : IPoolService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pool metadata by ID");
+            _logger.LogError(ex, "Error getting pool metadata by device name");
             return null;
         }
     }
 
-    public async Task<PoolMetadata?> GetPoolMetadataByGroupIdAsync(int poolGroupId)
-    {
-        try
-        {
-            if (!File.Exists(METADATA_FILE_PATH))
-            {
-                return null;
-            }
-            
-            var allMetadata = await LoadMetadataAsync();
-            return allMetadata.Pools.FirstOrDefault(p => p.PoolGroupId == poolGroupId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting pool metadata by group ID");
-            return null;
-        }
-    }
-
-    public async Task<PoolMetadata?> GetPoolMetadataByGroupGuidAsync(Guid poolGroupGuid)
+    public async Task<PoolMetadata?> GetPoolMetadataByGuidAsync(Guid poolGroupGuid)
     {
         try
         {
@@ -1062,56 +1184,7 @@ public class PoolService : IPoolService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting pool metadata by group GUID");
-            return null;
-        }
-    }
-
-    public async Task<PoolMetadata?> GetPoolMetadataByGuidAsync(Guid poolGroupGuid)
-    {
-        // Delegate to the existing implementation
-        return await GetPoolMetadataByGroupGuidAsync(poolGroupGuid);
-    }
-
-    public async Task<string?> ResolveMdDeviceAsync(int? poolGroupId, Guid? poolGroupGuid)
-    {
-        try
-        {
-            // First try to find by ID
-            if (poolGroupId.HasValue && poolGroupId.Value > 0)
-            {
-                var metadata = await GetPoolMetadataByGroupIdAsync(poolGroupId.Value);
-                if (metadata != null)
-                {
-                    // Verify that the pool still exists
-                    var checkResult = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{metadata.MdDeviceName}");
-                    if (checkResult.Success)
-                    {
-                        return metadata.MdDeviceName;
-                    }
-                }
-            }
-            
-            // If not found, try by GUID
-            if (poolGroupGuid.HasValue && poolGroupGuid.Value != Guid.Empty)
-            {
-                var metadata = await GetPoolMetadataByGroupGuidAsync(poolGroupGuid.Value);
-                if (metadata != null)
-                {
-                    // Verify that the pool still exists
-                    var checkResult = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{metadata.MdDeviceName}");
-                    if (checkResult.Success)
-                    {
-                        return metadata.MdDeviceName;
-                    }
-                }
-            }
-            
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error resolving pool ID");
+            _logger.LogError(ex, "Error getting pool metadata by GUID");
             return null;
         }
     }
@@ -1139,7 +1212,7 @@ public class PoolService : IPoolService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error resolving pool ID");
+            _logger.LogError(ex, "Error resolving pool device name");
             return null;
         }
     }
@@ -1168,17 +1241,17 @@ public class PoolService : IPoolService
         }
     }
 
-    private async Task<PoolMetadataCollection> LoadMetadataAsync()
+    public async Task<PoolMetadataCollection> LoadMetadataAsync()
     {
         try
         {
-            if (!File.Exists(METADATA_FILE_PATH))
+            if (!_fileSystemInfoService.FileExists(METADATA_FILE_PATH))
             {
                 _logger.LogInformation("Pool metadata file not found at {FilePath}, creating a new one", METADATA_FILE_PATH);
                 
                 // Ensure metadata directory exists
                 var metadataDir = Path.GetDirectoryName(METADATA_FILE_PATH);
-                if (!string.IsNullOrEmpty(metadataDir) && !Directory.Exists(metadataDir))
+                if (!string.IsNullOrEmpty(metadataDir) && !_fileSystemInfoService.DirectoryExists(metadataDir))
                 {
                     Directory.CreateDirectory(metadataDir);
                     _logger.LogInformation("Created metadata directory at {DirectoryPath}", metadataDir);
@@ -1202,7 +1275,8 @@ public class PoolService : IPoolService
                 return newMetadata;
             }
             
-            string existingJson = await File.ReadAllTextAsync(METADATA_FILE_PATH);
+            // Use FileSystemInfoService to read the file
+            string existingJson = await _fileSystemInfoService.ReadFileAsync(METADATA_FILE_PATH);
             var metadata = System.Text.Json.JsonSerializer.Deserialize<PoolMetadataCollection>(existingJson);
             
             return metadata ?? new PoolMetadataCollection();
@@ -1395,84 +1469,20 @@ public class PoolService : IPoolService
         
         try
         {
-            // Parse mdstat to find the md devices
-            var mdNameRegex = new System.Text.RegularExpressions.Regex(@"^(md\d+)\s*:");
-            var deviceRegex = new System.Text.RegularExpressions.Regex(@"\s(\w+)\[\d+\]");
+            // Get all MD arrays from MdStatReader
+            var mdStatInfo = await _mdStatReader.GetMdStatInfoAsync();
             
-            string? currentMdDevice = null;
-            var lines = mdstatOutput.Split('\n');
-            
-            foreach (var line in lines)
+            foreach (var (deviceName, arrayInfo) in mdStatInfo.Arrays)
             {
-                // Check if this line defines an md device
-                var mdNameMatch = mdNameRegex.Match(line);
-                if (mdNameMatch.Success)
+                result[deviceName] = new HashSet<string>();
+                
+                foreach (var devicePath in arrayInfo.Devices)
                 {
-                    currentMdDevice = mdNameMatch.Groups[1].Value;
-                    result[currentMdDevice] = new HashSet<string>();
-                }
-                else if (currentMdDevice != null)
-                {
-                    // Look for device references like 'sda[0]'
-                    var deviceMatches = deviceRegex.Matches(line);
-                    foreach (System.Text.RegularExpressions.Match deviceMatch in deviceMatches)
+                    // Find the corresponding block device
+                    var device = blockDevices.FirstOrDefault(d => d.Name == devicePath);
+                    if (device != null && !string.IsNullOrEmpty(device.Serial))
                     {
-                        string deviceName = deviceMatch.Groups[1].Value;
-                        
-                        // Find the corresponding block device
-                        var device = blockDevices.FirstOrDefault(d => d.Name == deviceName);
-                        if (device != null && !string.IsNullOrEmpty(device.Serial))
-                        {
-                            // Add the serial to our map
-                            result[currentMdDevice].Add(device.Serial);
-                        }
-                    }
-                }
-            }
-            
-            // For each md device, if we don't have any drives yet, try to get them from mdadm --detail
-            foreach (var mdDevice in result.Keys.ToList())
-            {
-                if (result[mdDevice].Count == 0)
-                {
-                    var detailResult = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDevice}");
-                    if (detailResult.Success)
-                    {
-                        var detailLines = CleanCommandOutput(detailResult.Output).Split('\n');
-                        foreach (var line in detailLines)
-                        {
-                            // Look for lines that mention /dev/ but not /dev/md
-                            if (line.Contains("/dev/") && !line.Contains("/dev/md"))
-                            {
-                                var parts = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                                if (parts.Length >= 4)
-                                {
-                                    // Get the device path
-                                    string devicePath = parts[parts.Length - 1];
-                                    string deviceName = System.IO.Path.GetFileName(devicePath);
-                                    
-                                    // Find the corresponding block device
-                                    var device = blockDevices.FirstOrDefault(d => d.Name == deviceName);
-                                    if (device != null && !string.IsNullOrWhiteSpace(device.Serial))
-                                    {
-                                        result[mdDevice].Add(device.Serial);
-                                    }
-                                    else
-                                    {
-                                        // Try to use lsblk to get the serial for this specific device
-                                        var lsblk = await _commandService.ExecuteCommandAsync($"lsblk -n -o SERIAL /dev/{deviceName}");
-                                        if (lsblk.Success)
-                                        {
-                                            string serial = CleanCommandOutput(lsblk.Output).Trim();
-                                            if (!string.IsNullOrWhiteSpace(serial))
-                                            {
-                                                result[mdDevice].Add(serial);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        result[deviceName].Add(device.Serial);
                     }
                 }
             }

@@ -19,14 +19,23 @@ public class DriveService : IDriveService
     private readonly ISystemCommandService _commandService;
     private readonly ILogger<DriveService> _logger;
     private readonly AgentSettings _settings;
+    private readonly IFileSystemInfoService _fileSystemInfoService;
+    private readonly IDriveInfoService _driveInfoService;
+    private readonly IMdStatReader _mdStatReader;
 
     public DriveService(
         ISystemCommandService commandService,
         ILogger<DriveService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IFileSystemInfoService fileSystemInfoService,
+        IDriveInfoService driveInfoService,
+        IMdStatReader mdStatReader)
     {
         _commandService = commandService;
         _logger = logger;
+        _fileSystemInfoService = fileSystemInfoService;
+        _driveInfoService = driveInfoService;
+        _mdStatReader = mdStatReader;
         
         // Bind configuration to AgentSettings
         _settings = new AgentSettings();
@@ -37,7 +46,7 @@ public class DriveService : IDriveService
     {
         try
         {
-            // Use lsblk to find drives with JSON output for consistent parsing
+            // We'll still use lsblk for JSON output as it provides the most complete drive information
             var result = await _commandService.ExecuteCommandAsync(
                 "lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL,FSTYPE,PATH,ID-LINK");
             
@@ -88,53 +97,41 @@ public class DriveService : IDriveService
                 return driveStatus;
             }
             
-            // Check if drive is part of a RAID array
-            var mdstatResult = await _commandService.ExecuteCommandAsync("cat /proc/mdstat");
-            if (mdstatResult.Success)
+            // Use MdStatReader to check if drive is part of a RAID array
+            var mdStatInfo = await _mdStatReader.GetMdStatInfoAsync();
+            
+            foreach (var (mdDeviceName, arrayInfo) in mdStatInfo.Arrays)
             {
-                // Parse mdstat to find RAID arrays and their components
-                var mdstatLines = mdstatResult.Output.Split('\n');
-                foreach (var line in mdstatLines)
+                // Check if the array contains this drive
+                if (arrayInfo.Devices.Contains(drive.Name ?? ""))
                 {
-                    if (line.StartsWith("md") && line.Contains(drive.Name ?? ""))
+                    driveStatus.InPool = true;
+                    driveStatus.MdDeviceName = mdDeviceName;
+                    driveStatus.Status = "in_raid";
+                    
+                    // Check mount point using mounted filesystems
+                    var mountedFilesystems = await _driveInfoService.GetMountedFilesystemsAsync();
+                    var mdMount = mountedFilesystems.FirstOrDefault(m => m.Device.Contains($"/dev/{mdDeviceName}"));
+                    
+                    if (mdMount != null)
                     {
-                        // Extract md device name
-                        var match = Regex.Match(line, @"^(md\d+)");
-                        if (match.Success)
-                        {
-                            string mdDevice = match.Groups[1].Value;
-                            driveStatus.InPool = true;
-                            driveStatus.MdDeviceName = mdDevice;
-                            driveStatus.Status = "in_raid";
-                            
-                            // Check mount point
-                            var mountsResult = await _commandService.ExecuteCommandAsync("mount | grep " + mdDevice);
-                            if (mountsResult.Success)
-                            {
-                                var mountMatch = Regex.Match(mountsResult.Output, $@"/dev/{mdDevice} on (.*?) type");
-                                if (mountMatch.Success)
-                                {
-                                    driveStatus.MountPoint = mountMatch.Groups[1].Value;
-                                }
-                            }
-                            break;
-                        }
+                        driveStatus.MountPoint = mdMount.MountPoint;
                     }
+                    
+                    break;
                 }
             }
             
             // If not in a pool, check if mounted directly
             if (!driveStatus.InPool && !string.IsNullOrEmpty(drive.Path))
             {
-                var mountResult = await _commandService.ExecuteCommandAsync($"mount | grep '{drive.Path}'");
-                if (mountResult.Success)
+                var mountedFilesystems = await _driveInfoService.GetMountedFilesystemsAsync();
+                var driveMount = mountedFilesystems.FirstOrDefault(m => m.Device.Equals(drive.Path, StringComparison.OrdinalIgnoreCase));
+                
+                if (driveMount != null)
                 {
-                    var mountMatch = Regex.Match(mountResult.Output, $@"{drive.Path} on (.*?) type");
-                    if (mountMatch.Success)
-                    {
-                        driveStatus.MountPoint = mountMatch.Groups[1].Value;
-                        driveStatus.Status = "mounted";
-                    }
+                    driveStatus.MountPoint = driveMount.MountPoint;
+                    driveStatus.Status = "mounted";
                 }
             }
             
@@ -159,6 +156,7 @@ public class DriveService : IDriveService
         
         try
         {
+            // We'll still use the lsof command here as there's no direct file-based alternative
             var result = await _commandService.ExecuteCommandAsync($"lsof +f -- {mountPoint}");
             if (!result.Success)
             {
@@ -256,54 +254,8 @@ public class DriveService : IDriveService
     {
         try
         {
-            // Execute df command to get filesystem usage information
-            var result = await _commandService.ExecuteCommandAsync($"df -PB1 {mountPoint}");
-            if (!result.Success)
-            {
-                _logger.LogWarning("Failed to get mount point size for {MountPoint}: {Error}", 
-                    mountPoint, result.Output);
-                return (0, 0, 0, "0%");
-            }
-            
-            // Parse df output
-            var lines = result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            if (lines.Length < 2) // Header + at least one line
-            {
-                _logger.LogWarning("Unexpected df output format for {MountPoint}", mountPoint);
-                return (0, 0, 0, "0%");
-            }
-            
-            // The second line contains the data
-            var dataLine = lines[1];
-            var parts = Regex.Split(dataLine.Trim(), @"\s+");
-            if (parts.Length < 6)
-            {
-                _logger.LogWarning("Unexpected df output format for {MountPoint}", mountPoint);
-                return (0, 0, 0, "0%");
-            }
-            
-            // Extract size information
-            if (!long.TryParse(parts[1], out long size))
-            {
-                _logger.LogWarning("Failed to parse size: {Size}", parts[1]);
-                size = 0;
-            }
-            
-            if (!long.TryParse(parts[2], out long used))
-            {
-                _logger.LogWarning("Failed to parse used: {Used}", parts[2]);
-                used = 0;
-            }
-            
-            if (!long.TryParse(parts[3], out long available))
-            {
-                _logger.LogWarning("Failed to parse available: {Available}", parts[3]);
-                available = 0;
-            }
-            
-            string usePercent = parts[4];
-            
-            return (size, used, available, usePercent);
+            // Use DriveInfoService to get disk space information
+            return await _driveInfoService.GetDiskSpaceInfoAsync(mountPoint);
         }
         catch (Exception ex)
         {
@@ -316,42 +268,29 @@ public class DriveService : IDriveService
     {
         try
         {
-            var result = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDeviceName}");
-            if (!result.Success)
+            // Use MdStatReader to get array information
+            var arrayInfo = await _mdStatReader.GetArrayInfoAsync(mdDeviceName);
+            
+            if (arrayInfo == null)
             {
                 return "Offline";
             }
             
-            // Parse the output to get the State line
-            var lines = result.Output.Split('\n');
-            foreach (var line in lines)
+            // Map the array state to a status
+            return arrayInfo.State.ToLower() switch
             {
-                if (line.Trim().StartsWith("State :"))
-                {
-                    var state = line.Substring(line.IndexOf(':') + 1).Trim();
-                    return MapRaidStateToStatus(state);
-                }
-            }
-            
-            return "Unknown";
+                "clean" => "Active",
+                var s when s.Contains("clean, resyncing") => "Resyncing",
+                var s when s.Contains("clean, degraded") => "Degraded",
+                var s when s.Contains("clean, degraded, recovering") => "Recovering",
+                var s when s.Contains("clean, failed") => "Failed",
+                _ => arrayInfo.IsActive ? "Active" : "Inactive"
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting pool status for {MdDeviceName}", mdDeviceName);
             return "Error";
         }
-    }
-    
-    private string MapRaidStateToStatus(string state)
-    {
-        return state.ToLower() switch
-        {
-            "clean" => "Active",
-            var s when s.Contains("clean, resyncing") => "Resyncing",
-            var s when s.Contains("clean, degraded") => "Degraded",
-            var s when s.Contains("clean, degraded, recovering") => "Recovering",
-            var s when s.Contains("clean, failed") => "Failed",
-            _ => "Unknown"
-        };
     }
 }
