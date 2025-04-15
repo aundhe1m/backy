@@ -12,6 +12,12 @@ public interface IDriveService
     Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(ProcessesRequest request);
     Task<(long Size, long Used, long Available, string UsePercent)> GetMountPointSizeAsync(string mountPoint);
     Task<string> GetPoolStatusAsync(string mdDeviceName);
+    
+    /// <summary>
+    /// Refreshes the cached drive information
+    /// </summary>
+    /// <returns>True if refresh was successful</returns>
+    Task<bool> RefreshDrivesAsync();
 }
 
 public class DriveService : IDriveService
@@ -22,6 +28,7 @@ public class DriveService : IDriveService
     private readonly IFileSystemInfoService _fileSystemInfoService;
     private readonly IDriveInfoService _driveInfoService;
     private readonly IMdStatReader _mdStatReader;
+    private readonly BackgroundDriveMonitoringService _driveMonitoringService;
 
     public DriveService(
         ISystemCommandService commandService,
@@ -29,13 +36,15 @@ public class DriveService : IDriveService
         IConfiguration configuration,
         IFileSystemInfoService fileSystemInfoService,
         IDriveInfoService driveInfoService,
-        IMdStatReader mdStatReader)
+        IMdStatReader mdStatReader,
+        BackgroundDriveMonitoringService driveMonitoringService)
     {
         _commandService = commandService;
         _logger = logger;
         _fileSystemInfoService = fileSystemInfoService;
         _driveInfoService = driveInfoService;
         _mdStatReader = mdStatReader;
+        _driveMonitoringService = driveMonitoringService;
         
         // Bind configuration to AgentSettings
         _settings = new AgentSettings();
@@ -46,31 +55,17 @@ public class DriveService : IDriveService
     {
         try
         {
-            // We'll still use lsblk for JSON output as it provides the most complete drive information
-            var result = await _commandService.ExecuteCommandAsync(
-                "lsblk -J -b -o NAME,SIZE,TYPE,MOUNTPOINT,UUID,SERIAL,VENDOR,MODEL,FSTYPE,PATH,ID-LINK");
+            // Get drives from the background service's cache instead of executing the command directly
+            var cachedDrives = _driveMonitoringService.GetCachedDrives();
             
-            if (!result.Success)
+            if (cachedDrives.Blockdevices == null)
             {
-                _logger.LogError("Failed to list block devices: {Error}", result.Output);
-                return new LsblkOutput { Blockdevices = new List<BlockDevice>() };
+                _logger.LogDebug("Drive cache is empty");
+                await _driveMonitoringService.RefreshDrivesAsync();
+                cachedDrives = _driveMonitoringService.GetCachedDrives();
             }
             
-            var lsblkOutput = JsonSerializer.Deserialize<LsblkOutput>(result.Output);
-            
-            // Filter to include only disk types and exclude excluded drives
-            if (lsblkOutput?.Blockdevices != null)
-            {
-                // Filter to include only type "disk" and exclude specified drives
-                lsblkOutput.Blockdevices = lsblkOutput.Blockdevices
-                    .Where(device => 
-                        device.Type == "disk" && // Only include disk types
-                        !_settings.ExcludedDrives.Any(excluded => 
-                            device.Path != null && device.Path.Equals(excluded, StringComparison.OrdinalIgnoreCase)))
-                    .ToList();
-            }
-            
-            return lsblkOutput ?? new LsblkOutput { Blockdevices = new List<BlockDevice>() };
+            return cachedDrives;
         }
         catch (Exception ex)
         {
@@ -292,5 +287,15 @@ public class DriveService : IDriveService
             _logger.LogError(ex, "Error getting pool status for {MdDeviceName}", mdDeviceName);
             return "Error";
         }
+    }
+    
+    /// <summary>
+    /// Refreshes the cached drive information
+    /// </summary>
+    /// <returns>True if refresh was successful</returns>
+    public async Task<bool> RefreshDrivesAsync()
+    {
+        _logger.LogInformation("Manual refresh of drives information requested");
+        return await _driveMonitoringService.RefreshDrivesAsync();
     }
 }

@@ -82,12 +82,18 @@ builder.Services.Configure<AgentSettings>(builder.Configuration.GetSection("Agen
 
 // Register services
 builder.Services.AddSingleton<ISystemCommandService, SystemCommandService>();
-builder.Services.AddSingleton<IFileSystemInfoService, FileSystemInfoService>(); // Add the new FileSystemInfoService
-builder.Services.AddScoped<IDriveInfoService, DriveInfoService>(); // Add the new DriveInfoService
-builder.Services.AddScoped<IDriveService, DriveService>();
-builder.Services.AddScoped<IPoolService, PoolService>();
+builder.Services.AddSingleton<IFileSystemInfoService, FileSystemInfoService>();
+builder.Services.AddScoped<IDriveInfoService, DriveInfoService>();
 builder.Services.AddMemoryCache(); // Add memory cache for file content caching
 builder.Services.AddSingleton<IMdStatReader, MdStatReader>();
+
+// Register the background drive monitoring service
+builder.Services.AddSingleton<BackgroundDriveMonitoringService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundDriveMonitoringService>());
+
+// Register DriveService after BackgroundDriveMonitoringService to ensure proper dependency resolution
+builder.Services.AddScoped<IDriveService, DriveService>();
+builder.Services.AddScoped<IPoolService, PoolService>();
 
 // Register hosted service for pool metadata validation at startup
 builder.Services.AddHostedService<PoolMetadataValidationService>();

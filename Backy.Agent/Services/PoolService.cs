@@ -674,6 +674,9 @@ public class PoolService : IPoolService
                 outputs.Add($"Warning: Failed to save pool metadata: {saveResult.Message}");
                 // Continue despite metadata save failure
             }
+            
+            // Trigger a refresh of the drive cache to reflect the changes
+            await _driveService.RefreshDrivesAsync();
 
             return (true, "Pool created successfully", metadata.PoolGroupGuid, poolDevice, mountPath, outputs);
         }
@@ -750,6 +753,9 @@ public class PoolService : IPoolService
                 await SavePoolMetadataAsync(metadata);
             }
             
+            // Trigger a refresh of the drive cache to reflect the changes
+            await _driveService.RefreshDrivesAsync();
+            
             return (true, $"Pool '{mdDeviceName}' mounted successfully at '{mountPath}'", outputs);
         }
         catch (Exception ex)
@@ -761,6 +767,15 @@ public class PoolService : IPoolService
     }
 
     public async Task<(bool Success, string Message, List<string> Outputs)> MountPoolByGuidAsync(
+        Guid poolGroupGuid, string mountPath)
+    {
+        var result = await MountPoolByGuidAsyncImpl(poolGroupGuid, mountPath);
+        await _driveService.RefreshDrivesAsync();
+        return result;
+    }
+
+    // Helper method to implement MountPoolByGuidAsync without the drive refresh
+    private async Task<(bool Success, string Message, List<string> Outputs)> MountPoolByGuidAsyncImpl(
         Guid poolGroupGuid, string mountPath)
     {
         var outputs = new List<string>();
@@ -938,6 +953,9 @@ public class PoolService : IPoolService
                 return (false, $"Failed to stop RAID array: {CleanCommandOutput(stopResult.Output)}", outputs);
             }
             
+            // Trigger a refresh of the drive cache to reflect the changes
+            await _driveService.RefreshDrivesAsync();
+            
             return (true, $"Pool '{mdDeviceName}' unmounted successfully", outputs);
         }
         catch (Exception ex)
@@ -960,7 +978,9 @@ public class PoolService : IPoolService
             }
             
             // Use the existing unmount method
-            return await UnmountPoolByMdDeviceAsync(mdDeviceName);
+            var result = await UnmountPoolByMdDeviceAsync(mdDeviceName);
+            
+            return result;
         }
         catch (Exception ex)
         {
@@ -1025,6 +1045,10 @@ public class PoolService : IPoolService
             outputs.Add($"$ {removeResult.Command}");
             outputs.Add(CleanCommandOutput(removeResult.Output));
             
+            // Trigger a refresh of the drive cache to reflect the changes
+            // Note: The unmount operation above should have already triggered a refresh, but we do it again to be safe
+            await _driveService.RefreshDrivesAsync();
+            
             // Even if the remove command fails (the device might already be gone), consider the operation successful
             
             return (true, $"Pool '{mdDeviceName}' removed successfully", outputs);
@@ -1049,7 +1073,9 @@ public class PoolService : IPoolService
             }
             
             // Use the existing remove method
-            return await RemovePoolByMdDeviceAsync(mdDeviceName);
+            var result = await RemovePoolByMdDeviceAsync(mdDeviceName);
+
+            return result;
         }
         catch (Exception ex)
         {

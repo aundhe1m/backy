@@ -83,5 +83,43 @@ public static class DriveEndpoints
             operation.Description = "Returns information about a drive's status, whether it's part of a pool, and processes using it.";
             return operation;
         });
+        
+        // POST /api/v1/drives/refresh - Force refresh of drive information cache
+        group.MapPost("/refresh", async (IDriveService driveService) =>
+        {
+            try
+            {
+                var success = await driveService.RefreshDrivesAsync();
+                
+                if (success)
+                {
+                    return Results.Ok(new { 
+                        success = true,
+                        message = "Drive information cache refreshed successfully" 
+                    });
+                }
+                else
+                {
+                    return Results.Problem(
+                        detail: "Failed to refresh drive information cache",
+                        title: "Refresh failed",
+                        statusCode: 500);
+                }
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(
+                    detail: ex.Message,
+                    title: "Error refreshing drive information cache",
+                    statusCode: 500);
+            }
+        })
+        .WithName("RefreshDriveCache")
+        .WithOpenApi(operation => 
+        {
+            operation.Summary = "Force refresh of drive information cache";
+            operation.Description = "Immediately refreshes the cached drive information that's normally updated periodically.";
+            return operation;
+        });
     }
 }

@@ -222,6 +222,19 @@ Lists all available drives, excluding specified ones. Only returns devices of ty
 }
 ```
 
+#### POST /api/v1/drives/refresh
+Force an immediate refresh of the drive information cache.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Drive information cache refreshed successfully"
+}
+```
+
+This endpoint is useful when you need the latest drive information after external changes to the system or when you want to ensure the cache is up-to-date.
+
 #### GET /api/v1/drives/{serial}/status
 Get detailed status of a specific drive.
 
@@ -516,6 +529,35 @@ Now all requests made through the Swagger UI will include your API key.
 
 ## Implementation Details
 
+### Background Drive Monitoring Service
+
+The Backy Agent uses a background service to efficiently maintain drive information:
+
+1. **Drive Information Caching**
+   - The `BackgroundDriveMonitoringService` runs as a hosted service that maintains a cache of drive information
+   - It executes the `lsblk` command periodically and stores the results in memory
+   - The service automatically refreshes drive information under these conditions:
+     - Every 1 minute
+     - At application startup
+     - After pool creation, mounting, unmounting, or removal operations
+     - Upon manual refresh requests via the API
+
+2. **Benefits**:
+   - Reduced system load by avoiding repeated execution of the `lsblk` command
+   - Faster response times for API calls that need drive information
+   - More consistent drive information across different API endpoints
+   - Reduced risk of throttling by the operating system due to too many process spawns
+
+3. **Manual Refresh**:
+   - Drive information can be refreshed on demand via the `/api/v1/drives/refresh` endpoint
+   - Useful after external changes to the system or when the most up-to-date information is critical
+
+4. **Implementation**:
+   - Uses semaphores to prevent concurrent refreshes
+   - Provides graceful handling of refresh requests with proper timeout handling
+   - Maintains timestamps for cache age tracking
+   - Properly filters excluded drives according to configuration
+
 ### File-Based Monitoring
 
 The Backy Agent uses direct file access from `/proc` and `/sys` directories to gather system information, rather than executing commands and parsing their outputs. This approach provides:
@@ -654,6 +696,17 @@ The agent prevents mounting pools to paths already in use by other pools, avoidi
 - Verify the drive is detected by the system: `lsblk`
 - Ensure the drive has a serial number: `lsblk -o NAME,SERIAL`
 - Check if the agent can read from `/sys/block/[device]`
+- Try refreshing the drive cache using the `/api/v1/drives/refresh` endpoint
+
+#### Drive information is stale or incorrect
+
+**Issue**: The drive information returned by the API is outdated or doesn't reflect recent changes.
+
+**Solutions**:
+- Use the `/api/v1/drives/refresh` endpoint to force a refresh of the cache
+- Check if the drive was changed or connected after the agent started
+- Verify that the background service is running by checking logs
+- Restart the agent if persistent issues occur
 
 #### Pool creation fails
 
@@ -722,6 +775,7 @@ The agent prevents mounting pools to paths already in use by other pools, avoidi
 5. Test API directly with curl:
    ```bash
    curl -X GET "http://localhost:5151/api/v1/drives" -H "X-Api-Key: your-api-key"
+   curl -X POST "http://localhost:5151/api/v1/drives/refresh" -H "X-Api-Key: your-api-key"
    ```
 
 6. Manually execute commands to verify system functionality:
