@@ -65,12 +65,14 @@ namespace Backy.Agent.Services
                 
                 long size = driveInfo.TotalSize;
                 long available = driveInfo.AvailableFreeSpace;
-                long used = size - available;
+                long totalFree = driveInfo.TotalFreeSpace;
+                long used = size - totalFree;
                 
                 // Calculate percentage used
                 double percentUsed = size > 0 ? (double)used / size * 100 : 0;
-                string usePercent = $"{Math.Round(percentUsed)}%";
+                string usePercent = $"{percentUsed:F2}%";
                 
+                _logger.LogDebug("Percent used: {PercentUsed}", percentUsed);
                 _logger.LogDebug("Disk space for {MountPoint}: Size={Size}, Used={Used}, Available={Available}, UsePercent={UsePercent}", 
                     mountPoint, size, used, available, usePercent);
                 

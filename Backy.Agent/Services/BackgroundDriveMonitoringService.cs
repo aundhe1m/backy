@@ -121,6 +121,18 @@ namespace Backy.Agent.Services
                     var lsblkOutput = System.Text.Json.JsonSerializer.Deserialize<LsblkOutput>(result.Output);
                     if (lsblkOutput != null)
                     {
+                        // Apply drive exclusions based on settings
+                        if (lsblkOutput.Blockdevices != null && _settings.ExcludedDrives.Any())
+                        {
+                            _logger.LogDebug("Filtering out excluded drives during refresh: {ExcludedDrives}", 
+                                string.Join(", ", _settings.ExcludedDrives));
+                            
+                            // Filter out drives that should be excluded
+                            lsblkOutput.Blockdevices = lsblkOutput.Blockdevices
+                                .Where(d => !ExcludeDrive(d))
+                                .ToList();
+                        }
+                        
                         _cachedDrives = lsblkOutput;
                         _lastRefreshTime = DateTime.UtcNow;
                         _logger.LogInformation("Drive information cache refreshed successfully with {Count} devices", 
@@ -149,6 +161,44 @@ namespace Backy.Agent.Services
                 _isRefreshing = false;
                 _refreshLock.Release();
             }
+        }
+
+        /// <summary>
+        /// Determines whether a drive should be excluded based on the configured exclusion patterns
+        /// </summary>
+        /// <param name="drive">The drive to check</param>
+        /// <returns>True if the drive should be excluded, false otherwise</returns>
+        private bool ExcludeDrive(BlockDevice drive)
+        {
+            if (drive == null || string.IsNullOrEmpty(drive.Name))
+                return false;
+            
+            // Check if drive name (with or without /dev/ prefix) matches any excluded drive
+            foreach (var excludedDrive in _settings.ExcludedDrives)
+            {
+                var normalizedDrivePattern = excludedDrive.TrimEnd('*');
+                var normalizedExcludedDrive = excludedDrive.StartsWith("/dev/") ? excludedDrive : $"/dev/{excludedDrive}";
+                
+                // Check full path match
+                if (!string.IsNullOrEmpty(drive.Path) && 
+                    (drive.Path.Equals(normalizedExcludedDrive, StringComparison.OrdinalIgnoreCase) ||
+                     (excludedDrive.EndsWith("*") && drive.Path.StartsWith(normalizedDrivePattern, StringComparison.OrdinalIgnoreCase))))
+                {
+                    return true;
+                }
+                
+                // Check name match (with or without /dev/ prefix)
+                var driveName = drive.Name;
+                var plainExcludedName = excludedDrive.Replace("/dev/", "");
+                
+                if (driveName.Equals(plainExcludedName, StringComparison.OrdinalIgnoreCase) ||
+                    (excludedDrive.EndsWith("*") && driveName.StartsWith(plainExcludedName.TrimEnd('*'), StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+            }
+            
+            return false;
         }
 
         /// <summary>

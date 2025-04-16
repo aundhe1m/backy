@@ -65,6 +65,17 @@ public class DriveService : IDriveService
                 cachedDrives = _driveMonitoringService.GetCachedDrives();
             }
             
+            // Apply exclusion filter based on settings
+            if (cachedDrives.Blockdevices != null && _settings.ExcludedDrives.Any())
+            {
+                _logger.LogDebug("Filtering out excluded drives: {ExcludedDrives}", string.Join(", ", _settings.ExcludedDrives));
+                
+                // Filter out drives that match any of the excluded patterns
+                cachedDrives.Blockdevices = cachedDrives.Blockdevices
+                    .Where(d => !ExcludeDrive(d))
+                    .ToList();
+            }
+            
             return cachedDrives;
         }
         catch (Exception ex)
@@ -72,6 +83,44 @@ public class DriveService : IDriveService
             _logger.LogError(ex, "Error while getting drives information");
             return new LsblkOutput { Blockdevices = new List<BlockDevice>() };
         }
+    }
+
+    /// <summary>
+    /// Determines whether a drive should be excluded based on the configured exclusion patterns
+    /// </summary>
+    /// <param name="drive">The drive to check</param>
+    /// <returns>True if the drive should be excluded, false otherwise</returns>
+    private bool ExcludeDrive(BlockDevice drive)
+    {
+        if (drive == null || string.IsNullOrEmpty(drive.Name))
+            return false;
+        
+        // Check if drive name (with or without /dev/ prefix) matches any excluded drive
+        foreach (var excludedDrive in _settings.ExcludedDrives)
+        {
+            var normalizedDrivePattern = excludedDrive.TrimEnd('*');
+            var normalizedExcludedDrive = excludedDrive.StartsWith("/dev/") ? excludedDrive : $"/dev/{excludedDrive}";
+            
+            // Check full path match
+            if (!string.IsNullOrEmpty(drive.Path) && 
+                (drive.Path.Equals(normalizedExcludedDrive, StringComparison.OrdinalIgnoreCase) ||
+                 (excludedDrive.EndsWith("*") && drive.Path.StartsWith(normalizedDrivePattern, StringComparison.OrdinalIgnoreCase))))
+            {
+                return true;
+            }
+            
+            // Check name match (with or without /dev/ prefix)
+            var driveName = drive.Name;
+            var plainExcludedName = excludedDrive.Replace("/dev/", "");
+            
+            if (driveName.Equals(plainExcludedName, StringComparison.OrdinalIgnoreCase) ||
+                (excludedDrive.EndsWith("*") && driveName.StartsWith(plainExcludedName.TrimEnd('*'), StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     public async Task<DriveStatus> GetDriveStatusAsync(string serial)
