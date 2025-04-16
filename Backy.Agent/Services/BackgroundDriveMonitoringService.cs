@@ -121,16 +121,25 @@ namespace Backy.Agent.Services
                     var lsblkOutput = System.Text.Json.JsonSerializer.Deserialize<LsblkOutput>(result.Output);
                     if (lsblkOutput != null)
                     {
-                        // Apply drive exclusions based on settings
-                        if (lsblkOutput.Blockdevices != null && _settings.ExcludedDrives.Any())
+                        if (lsblkOutput.Blockdevices != null)
                         {
-                            _logger.LogDebug("Filtering out excluded drives during refresh: {ExcludedDrives}", 
-                                string.Join(", ", _settings.ExcludedDrives));
-                            
-                            // Filter out drives that should be excluded
+                            // Filter to include only disk type devices and their children
+                            _logger.LogDebug("Filtering devices to include only disks and their children");
                             lsblkOutput.Blockdevices = lsblkOutput.Blockdevices
-                                .Where(d => !ExcludeDrive(d))
+                                .Where(d => d.Type?.ToLowerInvariant() == "disk")
                                 .ToList();
+
+                            // Apply drive exclusions based on settings
+                            if (_settings.ExcludedDrives.Any())
+                            {
+                                _logger.LogDebug("Filtering out excluded drives during refresh: {ExcludedDrives}", 
+                                    string.Join(", ", _settings.ExcludedDrives));
+                                
+                                // Filter out drives that should be excluded
+                                lsblkOutput.Blockdevices = lsblkOutput.Blockdevices
+                                    .Where(d => !ExcludeDrive(d))
+                                    .ToList();
+                            }
                         }
                         
                         _cachedDrives = lsblkOutput;

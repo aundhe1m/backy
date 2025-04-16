@@ -100,13 +100,14 @@ Example for a single drive with poolGroupGuid:
 Example for multiple drives:
 ```json
 {
-  ""label"": ""backup-2"",
-  ""driveSerials"": [""WD-WCAV5L386641"", ""SanDisk-AA12345678""],
+  ""label"": ""pool1"",
+  ""driveSerials"": [""drive-scsi1"", ""drive-scsi2""],
   ""driveLabels"": {
-    ""WD-WCAV5L386641"": ""backup-2-disk1"",
-    ""SanDisk-AA12345678"": ""backup-2-disk2""
+    ""drive-scsi1"": ""pool1-disk1"",
+    ""drive-scsi2"": ""pool1-disk2""
   },
-  ""mountPath"": ""/mnt/backy/backup-2""
+  ""mountPath"": ""/mnt/backy/3fa85f64-5717-4562-b3fc-2c963f66afa6"",
+  ""poolGroupGuid"": ""3fa85f64-5717-4562-b3fc-2c963f66afa6""
 }
 ```
 
