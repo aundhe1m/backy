@@ -50,7 +50,7 @@ namespace Backy.Agent.Services
         }
         
         /// <inheritdoc />
-        public async Task<(long Size, long Used, long Available, string UsePercent)> GetDiskSpaceInfoAsync(string mountPoint)
+        public Task<(long Size, long Used, long Available, string UsePercent)> GetDiskSpaceInfoAsync(string mountPoint)
         {
             try
             {
@@ -60,7 +60,7 @@ namespace Backy.Agent.Services
                 if (!driveInfo.IsReady)
                 {
                     _logger.LogWarning("Drive is not ready: {MountPoint}", mountPoint);
-                    return (0, 0, 0, "0%");
+                    return Task.FromResult((0L, 0L, 0L, "0%"));
                 }
                 
                 long size = driveInfo.TotalSize;
@@ -76,11 +76,12 @@ namespace Backy.Agent.Services
                 _logger.LogDebug("Disk space for {MountPoint}: Size={Size}, Used={Used}, Available={Available}, UsePercent={UsePercent}", 
                     mountPoint, size, used, available, usePercent);
                 
-                return (size, used, available, usePercent);
+                return Task.FromResult((size, used, available, usePercent));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting disk space info for {MountPoint}", mountPoint);
+                return Task.FromResult((0L, 0L, 0L, "0%"));
             }
         }
 
