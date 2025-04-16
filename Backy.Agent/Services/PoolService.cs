@@ -438,9 +438,11 @@ public class PoolService : IPoolService
                 response.UsePercent = sizeInfo.UsePercent;
             }
             
-            // Get all drives in the system for looking up by name
+            // Get all drives in the system for looking up by name and by serial
             var drivesResult = await _driveService.GetDrivesAsync();
             var deviceNameToDriveMap = new Dictionary<string, BlockDevice>(StringComparer.OrdinalIgnoreCase);
+            var serialToDriveMap = new Dictionary<string, BlockDevice>(StringComparer.OrdinalIgnoreCase);
+            var connectedDrives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             
             if (drivesResult?.Blockdevices != null)
             {
@@ -451,54 +453,96 @@ public class PoolService : IPoolService
                     {
                         deviceNameToDriveMap[drive.Name] = drive;
                     }
+
+                    // Store device by serial for lookups
+                    if (!string.IsNullOrEmpty(drive.Serial))
+                    {
+                        serialToDriveMap[drive.Serial] = drive;
+                        connectedDrives.Add(drive.Serial); // Track all connected drive serials
+                    }
                 }
             }
             
             // Add each component drive to the response
             var addedSerials = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // Track which serials we've added
             
-            // First add drives from arrayInfo.Devices - these are currently connected
-            foreach (var devicePath in arrayInfo.Devices)
+            // First add drives based on the array status characters [UU] directly from mdstat
+            // This is the most reliable source of drive status
+            if (arrayInfo.Status?.Length > 0)
             {
-                string status = "unknown";
-                int deviceIndex = arrayInfo.Devices.IndexOf(devicePath);
-                
-                // Get status from array info
-                if (deviceIndex < arrayInfo.Status.Length)
+                _logger.LogDebug("Array status for {MdDeviceName}: [{Status}]", 
+                    mdDeviceName, string.Join("", arrayInfo.Status));
+
+                // First pass: process drives we can directly map from arrayInfo.Devices
+                for (int i = 0; i < arrayInfo.Devices.Count; i++)
                 {
-                    string statusLetter = arrayInfo.Status[deviceIndex];
-                    status = statusLetter == "U" ? "active" : 
-                             statusLetter == "_" ? "failed" :
-                             statusLetter == "S" ? "spare" : "unknown";
-                }
-                
-                // Get drive details using our device map
-                string serial = "unknown";
-                string label = $"{mdDeviceName}-{response.Drives.Count + 1}";
-                
-                if (deviceNameToDriveMap.TryGetValue(devicePath, out var blockDevice) && 
-                    !string.IsNullOrEmpty(blockDevice.Serial))
-                {
-                    serial = blockDevice.Serial;
+                    string devicePath = arrayInfo.Devices[i];
+                    string status = "unknown";
                     
-                    // Get label from metadata if available
-                    if (metadata != null && metadata.DriveLabels.ContainsKey(serial))
+                    // If we have a status character for this device position
+                    if (i < arrayInfo.Status.Length)
+                    {
+                        // Map the status character to a human-readable status
+                        string statusLetter = arrayInfo.Status[i];
+                        status = statusLetter == "U" ? "active" : 
+                                 statusLetter == "_" ? "failed" :
+                                 statusLetter == "S" ? "spare" : "unknown";
+                    }
+                    
+                    // Try to lookup the device in our mapping
+                    string serial = "unknown";
+                    string label = $"{mdDeviceName}-{i+1}";
+                    bool foundDevice = false;
+                    
+                    // Method 1: Direct device name mapping
+                    if (deviceNameToDriveMap.TryGetValue(devicePath, out var blockDevice) && 
+                        !string.IsNullOrEmpty(blockDevice.Serial))
+                    {
+                        serial = blockDevice.Serial;
+                        foundDevice = true;
+                    }
+                    // Method 2: If we couldn't find by devicePath directly, try extracting the short name
+                    else
+                    {
+                        // Extract just the device name part (e.g., "sdc" from "/dev/sdc1")
+                        string shortName = devicePath;
+                        if (shortName.Contains("/"))
+                        {
+                            shortName = System.IO.Path.GetFileName(devicePath);
+                        }
+                        
+                        // Try with the short name
+                        if (deviceNameToDriveMap.TryGetValue(shortName, out blockDevice) &&
+                            !string.IsNullOrEmpty(blockDevice.Serial))
+                        {
+                            serial = blockDevice.Serial;
+                            foundDevice = true;
+                        }
+                    }
+                    
+                    // If we found the device, get its label
+                    if (foundDevice && metadata != null && metadata.DriveLabels.ContainsKey(serial))
                     {
                         label = metadata.DriveLabels[serial];
                     }
                     
-                    addedSerials.Add(serial);
+                    // Add the drive to our response
+                    response.Drives.Add(new PoolDriveStatus
+                    {
+                        Serial = serial,
+                        Label = label,
+                        Status = status
+                    });
+                    
+                    // Track that we've added this serial
+                    if (serial != "unknown")
+                    {
+                        addedSerials.Add(serial);
+                    }
                 }
-                
-                response.Drives.Add(new PoolDriveStatus
-                {
-                    Serial = serial,
-                    Label = label,
-                    Status = status
-                });
             }
-            
-            // Then add drives from metadata that aren't in arrayInfo.Devices (possibly disconnected)
+
+            // Add any drives from metadata that we haven't already added
             if (metadata != null && metadata.DriveSerials != null)
             {
                 foreach (var serial in metadata.DriveSerials)
@@ -508,19 +552,22 @@ public class PoolService : IPoolService
                         continue;
                     }
                     
-                    // This drive is in the metadata but not in the array 
-                    // (either disconnected or failed)
+                    // Determine status based on whether the drive is connected
+                    string status = connectedDrives.Contains(serial) ? "active" : "disconnected";
+                    
+                    // Get label from metadata
                     string label = $"{mdDeviceName}-{response.Drives.Count + 1}";
                     if (metadata.DriveLabels.ContainsKey(serial))
                     {
                         label = metadata.DriveLabels[serial];
                     }
                     
+                    // Add drive to response
                     response.Drives.Add(new PoolDriveStatus
                     {
                         Serial = serial,
                         Label = label,
-                        Status = "disconnected"
+                        Status = status
                     });
                     
                     addedSerials.Add(serial);
