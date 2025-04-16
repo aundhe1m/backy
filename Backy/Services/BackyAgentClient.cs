@@ -256,7 +256,8 @@ namespace Backy.Services
         {
             try
             {
-                var response = await _httpClient.GetAsync($"/api/v1/pools/guid/{poolGroupGuid}");
+                // Updated to use the new endpoint path format
+                var response = await _httpClient.GetAsync($"/api/v1/pools/{poolGroupGuid}");
                 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
@@ -294,7 +295,8 @@ namespace Backy.Services
             try
             {
                 var request = new MountRequest { MountPath = mountPath };
-                var response = await _httpClient.PostAsJsonAsync($"/api/v1/pools/guid/{poolGroupGuid}/mount", request, _jsonOptions);
+                // Updated to use the new endpoint path format
+                var response = await _httpClient.PostAsJsonAsync($"/api/v1/pools/{poolGroupGuid}/mount", request, _jsonOptions);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -330,7 +332,9 @@ namespace Backy.Services
         {
             try
             {
-                var response = await _httpClient.PostAsync($"/api/v1/pools/guid/{poolGroupGuid}/unmount", null);
+                // Updated to use DELETE method instead of POST as per updated API
+                var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/pools/{poolGroupGuid}/mount");
+                var response = await _httpClient.SendAsync(request);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -366,7 +370,9 @@ namespace Backy.Services
         {
             try
             {
-                var response = await _httpClient.PostAsync($"/api/v1/pools/guid/{poolGroupGuid}/remove", null);
+                // Updated to use DELETE method instead of POST as per updated API
+                var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/pools/{poolGroupGuid}");
+                var response = await _httpClient.SendAsync(request);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -480,7 +486,8 @@ namespace Backy.Services
                     DevPath = devPath
                 };
                 
-                var response = await _httpClient.PostAsJsonAsync($"/api/v1/pools/guid/{poolGroupGuid}/drives/add", request, _jsonOptions);
+                // Updated to use the new endpoint path format
+                var response = await _httpClient.PostAsJsonAsync($"/api/v1/pools/{poolGroupGuid}/drives/add", request, _jsonOptions);
                 
                 if (response.IsSuccessStatusCode)
                 {

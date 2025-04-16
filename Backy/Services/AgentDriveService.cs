@@ -40,7 +40,7 @@ namespace Backy.Services
                 return "Offline";
             }
             
-            // Call the agent to get the pool detail
+            // Call the agent to get the pool detail using the GUID
             var result = _agentClient.GetPoolDetailAsync(poolGroup.PoolGroupGuid).GetAwaiter().GetResult();
             if (!result.Success)
             {
@@ -57,7 +57,8 @@ namespace Backy.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error parsing pool status for pool ID {PoolGroupId}", poolGroupId);
+                _logger.LogError(ex, "Error parsing pool status for pool ID {PoolGroupId}, GUID {PoolGroupGuid}", 
+                    poolGroupId, poolGroup.PoolGroupGuid);
                 return "Error";
             }
         }

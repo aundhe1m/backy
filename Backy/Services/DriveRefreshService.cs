@@ -209,7 +209,7 @@ namespace Backy.Services
                             if (await Task.WhenAny(statusTask, timeoutTask) == timeoutTask)
                             {
                                 // Status fetch timed out
-                                _logger.LogWarning($"Status fetch for pool {pool.GroupLabel} timed out. Marking as Offline.");
+                                _logger.LogWarning($"Status fetch for pool {pool.GroupLabel} (GUID: {pool.PoolGroupGuid}) timed out. Marking as Offline.");
                                 if (pool.PoolStatus != "Offline")
                                 {
                                     pool.PoolStatus = "Offline";
