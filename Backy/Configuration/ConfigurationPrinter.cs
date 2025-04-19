@@ -108,13 +108,21 @@ public class ConfigurationPrinter
         // Check Kestrel configuration
         else if (!string.IsNullOrEmpty(_configuration["Kestrel:Endpoints:Http:Url"]))
         {
-            port = ExtractPortFromUrl(_configuration["Kestrel:Endpoints:Http:Url"]);
+            var kestrelUrl = _configuration["Kestrel:Endpoints:Http:Url"];
+            if (!string.IsNullOrEmpty(kestrelUrl))
+            {
+                port = ExtractPortFromUrl(kestrelUrl);
+            }
             portSource = "Kestrel configuration";
         }
         // Check ASP.NET Core URLs
         else if (!string.IsNullOrEmpty(_configuration["ASPNETCORE_URLS"]))
         {
-            port = ExtractPortFromUrl(_configuration["ASPNETCORE_URLS"]);
+            var aspNetCoreUrls = _configuration["ASPNETCORE_URLS"];
+            if (!string.IsNullOrEmpty(aspNetCoreUrls))
+            {
+                port = ExtractPortFromUrl(aspNetCoreUrls);
+            }
             portSource = "ASP.NET Core URLs";
         }
         // Use default port from docker-compose
