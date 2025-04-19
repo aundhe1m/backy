@@ -10,6 +10,29 @@ using Microsoft.Extensions.Logging;
 namespace Backy.Services
 {
     /// <summary>
+    /// Defines the contract for drive-related operations.
+    /// </summary>
+    public interface IAppDriveService
+    {
+        string FetchPoolStatus(int poolGroupId);
+        (long Size, long Used, long Available, string UsePercent) GetMountPointSize(string mountPoint);
+        Task<(bool Success, string Message)> ProtectDriveAsync(string serial);
+        Task<(bool Success, string Message)> UnprotectDriveAsync(string serial);
+        Task<(bool Success, string Message, List<string> Outputs)> CreatePoolAsync(CreatePoolRequest request);
+        Task<(bool Success, string Message)> UnmountPoolAsync(Guid poolGroupGuid);
+        Task<(bool Success, string Message)> RemovePoolGroupAsync(Guid poolGroupGuid);
+        Task<(bool Success, string Message)> MountPoolAsync(Guid poolGroupGuid);
+        Task<(bool Success, string Message)> RenamePoolGroupAsync(RenamePoolRequest request);
+        Task<(bool Success, string Message, string Output)> GetPoolDetailAsync(Guid poolGroupGuid);
+        Task<(bool Success, string Message)> ForceAddDriveAsync(int driveId, Guid poolGroupGuid, string devPath);
+        Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(KillProcessesRequest request);
+        Task<List<Drive>> UpdateActiveDrivesAsync();
+        Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint);
+        Task<List<PoolInfo>> GetPoolsAsync();
+        Task UpdatePoolSizeMetricsAsync(Guid poolGroupGuid);
+    }
+
+    /// <summary>
     /// Implementation of IAppDriveService that delegates operations to the Backy Agent via the API client.
     /// </summary>
     public class AgentAppDriveService : IAppDriveService
