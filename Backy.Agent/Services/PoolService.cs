@@ -50,6 +50,407 @@ public class PoolService : IPoolService
         _logger = logger;
         _fileSystemInfoService = fileSystemInfoService;
         _driveInfoService = driveInfoService;
+        
+        // Automatically validate and update pool metadata during initialization
+        // Using Task.Run to avoid blocking the constructor
+        Task.Run(AutoRecoverPoolsAsync);
+    }
+    
+    /// <summary>
+    /// Automatically validates and recovers pools during service initialization
+    /// </summary>
+    private async Task AutoRecoverPoolsAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Starting automatic pool recovery and validation");
+            
+            // Load the metadata
+            var allMetadata = await LoadMetadataAsync();
+            
+            if (allMetadata.Pools.Count == 0)
+            {
+                _logger.LogInformation("No pools found in metadata to recover");
+                return;
+            }
+            
+            // Get current active drives
+            var drivesResult = await _driveService.GetDrivesAsync();
+            if (drivesResult?.Blockdevices == null)
+            {
+                _logger.LogWarning("Failed to get active drives for pool recovery");
+                return;
+            }
+            
+            // Scan for existing MD arrays
+            var mdStat = await _mdStatReader.GetMdStatInfoAsync();
+            if (mdStat == null || mdStat.Arrays.Count == 0)
+            {
+                _logger.LogInformation("No MD arrays found on the system");
+            }
+            
+            // Get currently mounted filesystems
+            var mountedFilesystems = await _driveInfoService.GetMountedFilesystemsAsync();
+            var mountedMdDevices = mountedFilesystems
+                .Where(m => m.Device.StartsWith("/dev/md"))
+                .Select(m => System.IO.Path.GetFileName(m.Device))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            
+            _logger.LogInformation("Found {Count} mounted MD devices: {Devices}", 
+                mountedMdDevices.Count, string.Join(", ", mountedMdDevices));
+
+            // Create a mapping of drive serials to their corresponding block devices
+            var serialToDeviceMap = new Dictionary<string, BlockDevice>(StringComparer.OrdinalIgnoreCase);
+            foreach (var device in drivesResult.Blockdevices)
+            {
+                if (!string.IsNullOrEmpty(device.Serial))
+                {
+                    serialToDeviceMap[device.Serial] = device;
+                }
+            }
+            
+            // Create a mapping of drive serials to their current MD device
+            var serialToMdMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var mdToSerialsMap = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            
+            // First, identify all drives that are part of MD arrays
+            foreach (var device in drivesResult.Blockdevices)
+            {
+                // Check if this device has children that include an MD device
+                if (device.Children != null)
+                {
+                    foreach (var child in device.Children)
+                    {
+                        if (child.Name.StartsWith("md") && !string.IsNullOrEmpty(device.Serial))
+                        {
+                            serialToMdMap[device.Serial] = child.Name;
+                            
+                            // Also track which serials are part of each MD device
+                            if (!mdToSerialsMap.TryGetValue(child.Name, out var serials))
+                            {
+                                serials = new List<string>();
+                                mdToSerialsMap[child.Name] = serials;
+                            }
+                            
+                            serials.Add(device.Serial);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            _logger.LogDebug("Found {Count} drives that belong to MD arrays", serialToMdMap.Count);
+
+            // Process each pool in metadata
+            var processedMds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
+            foreach (var poolMetadata in allMetadata.Pools)
+            {
+                try
+                {
+                    int driveCount = poolMetadata.DriveSerials?.Count ?? 0;
+                    _logger.LogInformation("Processing pool {PoolGuid} ({MdDeviceName}) with {DriveCount} drives",
+                        poolMetadata.PoolGroupGuid, poolMetadata.MdDeviceName, driveCount);
+                    
+                    // Skip if no drive serials in metadata
+                    if (poolMetadata.DriveSerials == null || poolMetadata.DriveSerials.Count == 0)
+                    {
+                        _logger.LogWarning("Pool {PoolGuid} has no drive serials in metadata, skipping",
+                            poolMetadata.PoolGroupGuid);
+                        continue;
+                    }
+                    
+                    // Find the current MD device for this pool based on drive serials
+                    string? currentMdDevice = null;
+                    var matchingDriveSerials = poolMetadata.DriveSerials
+                        .Where(serial => !string.IsNullOrEmpty(serial) && serialToMdMap.ContainsKey(serial))
+                        .ToList();
+                    
+                    if (matchingDriveSerials.Count > 0)
+                    {
+                        // Get the MD device that contains these drives
+                        var mdDevices = matchingDriveSerials
+                            .Where(serial => serialToMdMap.ContainsKey(serial))
+                            .Select(serial => serialToMdMap[serial])
+                            .Distinct()
+                            .ToList();
+                        
+                        if (mdDevices.Count == 1)
+                        {
+                            // If all drives belong to the same MD device, use that
+                            currentMdDevice = mdDevices[0];
+                            _logger.LogInformation("Pool {PoolGuid} is currently using MD device {CurrentMdDevice}",
+                                poolMetadata.PoolGroupGuid, currentMdDevice);
+                        }
+                        else if (mdDevices.Count > 1)
+                        {
+                            // If drives belong to different MD devices, this is unexpected
+                            _logger.LogWarning("Pool {PoolGuid} has drives across multiple MD devices: {MdDevices}",
+                                poolMetadata.PoolGroupGuid, string.Join(", ", mdDevices));
+                                
+                            // Use the MD device with the most matching drives
+                            var mdCounts = new Dictionary<string, int>();
+                            foreach (var serial in matchingDriveSerials)
+                            {
+                                if (serialToMdMap.TryGetValue(serial, out var md))
+                                {
+                                    if (!mdCounts.ContainsKey(md))
+                                    {
+                                        mdCounts[md] = 0;
+                                    }
+                                    mdCounts[md]++;
+                                }
+                            }
+                            
+                            if (mdCounts.Any())
+                            {
+                                currentMdDevice = mdCounts.OrderByDescending(kv => kv.Value).First().Key;
+                                _logger.LogInformation("Selected MD device {CurrentMdDevice} with most matching drives",
+                                    currentMdDevice);
+                            }
+                        }
+                    }
+                    
+                    // If we found the current MD device for this pool
+                    if (!string.IsNullOrEmpty(currentMdDevice))
+                    {
+                        // Check if we've already processed this MD device
+                        if (processedMds.Contains(currentMdDevice))
+                        {
+                            _logger.LogInformation("MD device {CurrentMdDevice} already processed, skipping",
+                                currentMdDevice);
+                            continue;
+                        }
+                        
+                        // Update the metadata if necessary
+                        if (poolMetadata.MdDeviceName != currentMdDevice)
+                        {
+                            _logger.LogInformation("Updating pool {PoolGuid} metadata to use MD device {CurrentMdDevice} (was {OldMdDevice})",
+                                poolMetadata.PoolGroupGuid, currentMdDevice, poolMetadata.MdDeviceName);
+                                
+                            poolMetadata.MdDeviceName = currentMdDevice;
+                            await SavePoolMetadataAsync(poolMetadata);
+                        }
+                        
+                        // Check if the pool is already mounted
+                        bool isCurrentlyMounted = mountedMdDevices.Contains(currentMdDevice);
+                        if (isCurrentlyMounted)
+                        {
+                            _logger.LogInformation("Pool {PoolGuid} ({CurrentMdDevice}) is already mounted",
+                                poolMetadata.PoolGroupGuid, currentMdDevice);
+                                
+                            // Mark as processed
+                            processedMds.Add(currentMdDevice);
+                            continue;
+                        }
+                        
+                        // Auto-mount the pool only if IsMounted is true
+                        if (poolMetadata.IsMounted == true && !string.IsNullOrEmpty(poolMetadata.LastMountPath))
+                        {
+                            _logger.LogInformation("Auto-mounting pool {PoolGuid} ({CurrentMdDevice}) at {MountPath} because IsMounted=true",
+                                poolMetadata.PoolGroupGuid, currentMdDevice, poolMetadata.LastMountPath);
+                                
+                            // Ensure mount directory exists
+                            if (!_fileSystemInfoService.DirectoryExists(poolMetadata.LastMountPath))
+                            {
+                                Directory.CreateDirectory(poolMetadata.LastMountPath);
+                                _logger.LogInformation("Created mount directory at {MountPath}", poolMetadata.LastMountPath);
+                            }
+                            
+                            // Mount the pool directly without reassembly since it's already assembled
+                            var mountResult = await _commandService.ExecuteCommandAsync($"mount /dev/{currentMdDevice} {poolMetadata.LastMountPath}", true);
+                            
+                            if (mountResult.Success)
+                            {
+                                _logger.LogInformation("Successfully auto-mounted pool {PoolGuid} ({CurrentMdDevice}) at {MountPath}",
+                                    poolMetadata.PoolGroupGuid, currentMdDevice, poolMetadata.LastMountPath);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Failed to auto-mount pool {PoolGuid} ({CurrentMdDevice}) at {MountPath}: {Error}",
+                                    poolMetadata.PoolGroupGuid, currentMdDevice, poolMetadata.LastMountPath, 
+                                    mountResult.Output != null ? mountResult.Output.Trim() : (mountResult.Error != null ? mountResult.Error.ToString() : "Unknown error"));
+                            }
+                        }
+                        else
+                        {
+                            if (poolMetadata.IsMounted == false)
+                            {
+                                _logger.LogInformation("Skipping auto-mount for pool {PoolGuid} ({CurrentMdDevice}) because IsMounted is set to false in metadata",
+                                    poolMetadata.PoolGroupGuid, currentMdDevice);
+                            }
+                            else
+                            {
+                                _logger.LogInformation("Pool {PoolGuid} ({CurrentMdDevice}) is not mounted and has no LastMountPath, skipping auto-mount",
+                                    poolMetadata.PoolGroupGuid, currentMdDevice);
+                            }
+                        }
+                        
+                        // Mark as processed
+                        processedMds.Add(currentMdDevice);
+                    }
+                    else
+                    {
+                        // MD device not currently active, try to assemble it
+                        _logger.LogInformation("Pool {PoolGuid} ({MdDeviceName}) is not currently active, attempting to assemble",
+                            poolMetadata.PoolGroupGuid, poolMetadata.MdDeviceName);
+                            
+                        // Skip assembly if IsMounted is explicitly set to false
+                        if (poolMetadata.IsMounted == false)
+                        {
+                            _logger.LogInformation("Skipping assembly for pool {PoolGuid} ({MdDeviceName}) because IsMounted is set to false in metadata",
+                                poolMetadata.PoolGroupGuid, poolMetadata.MdDeviceName);
+                            continue;
+                        }
+                            
+                        // Find the device paths for the drives in this pool
+                        var devicePaths = new List<string>();
+                        foreach (var serial in poolMetadata.DriveSerials)
+                        {
+                            if (serialToDeviceMap.TryGetValue(serial, out var device))
+                            {
+                                string? devicePath = null;
+                                
+                                // Prefer ID-LINK or PATH if available
+                                if (!string.IsNullOrEmpty(device.IdLink))
+                                {
+                                    if (device.IdLink.StartsWith("/dev/"))
+                                        devicePath = device.IdLink;
+                                    else
+                                        devicePath = $"/dev/disk/by-id/{device.IdLink}";
+                                }
+                                else if (!string.IsNullOrEmpty(device.Path))
+                                {
+                                    devicePath = device.Path;
+                                }
+                                else if (!string.IsNullOrEmpty(device.Name))
+                                {
+                                    devicePath = $"/dev/{device.Name}";
+                                }
+                                
+                                if (!string.IsNullOrEmpty(devicePath))
+                                {
+                                    devicePaths.Add(devicePath);
+                                }
+                            }
+                        }
+                        
+                        if (devicePaths.Count > 0)
+                        {
+                            // Try to scan first
+                            await _commandService.ExecuteCommandAsync("mdadm --scan", true);
+                            
+                            // Try to assemble the array with auto-detection (no specific device name)
+                            var assembleResult = await _commandService.ExecuteCommandAsync(
+                                $"mdadm --assemble --scan {string.Join(" ", devicePaths)}", true);
+                                
+                            if (assembleResult.Success)
+                            {
+                                _logger.LogInformation("Successfully assembled pool {PoolGuid}, rescanning to find new MD device",
+                                    poolMetadata.PoolGroupGuid);
+                                    
+                                // Refresh the MD state to find the new device name
+                                var refreshedMdStat = await _mdStatReader.GetMdStatInfoAsync();
+                                
+                                // Find the MD device containing these drives
+                                foreach (var (mdName, arrayInfo) in refreshedMdStat.Arrays)
+                                {
+                                    // Skip if we've already processed this MD
+                                    if (processedMds.Contains(mdName))
+                                        continue;
+                                        
+                                    // Get the device paths for this array
+                                    var arrayDevicePaths = new List<string>();
+                                    foreach (var deviceName in arrayInfo.Devices)
+                                    {
+                                        arrayDevicePaths.Add($"/dev/{deviceName}");
+                                    }
+                                    
+                                    // Check if this array contains our drives
+                                    var intersection = devicePaths.Intersect(arrayDevicePaths, StringComparer.OrdinalIgnoreCase).ToList();
+                                    if (intersection.Count > 0)
+                                    {
+                                        _logger.LogInformation("Found MD device {MdName} containing {Count} of our drives",
+                                            mdName, intersection.Count);
+                                            
+                                        // Update the metadata
+                                        poolMetadata.MdDeviceName = mdName;
+                                        await SavePoolMetadataAsync(poolMetadata);
+                                        
+                                        // Try to mount it only if IsMounted is true
+                                        if (poolMetadata.IsMounted == true && !string.IsNullOrEmpty(poolMetadata.LastMountPath))
+                                        {
+                                            // Ensure mount directory exists
+                                            if (!_fileSystemInfoService.DirectoryExists(poolMetadata.LastMountPath))
+                                            {
+                                                Directory.CreateDirectory(poolMetadata.LastMountPath);
+                                            }
+                                            
+                                            // Mount the pool
+                                            var mountResult = await _commandService.ExecuteCommandAsync(
+                                                $"mount /dev/{mdName} {poolMetadata.LastMountPath}", true);
+                                                
+                                            if (mountResult.Success)
+                                            {
+                                                _logger.LogInformation("Successfully auto-mounted pool {PoolGuid} ({MdName}) at {MountPath}",
+                                                    poolMetadata.PoolGroupGuid, mdName, poolMetadata.LastMountPath);
+                                            }
+                                            else
+                                            {
+                                                _logger.LogWarning("Failed to auto-mount pool {PoolGuid} ({MdName}) at {MountPath}: {Error}",
+                                                    poolMetadata.PoolGroupGuid, mdName, poolMetadata.LastMountPath, 
+                                                    mountResult.Output != null ? mountResult.Output.Trim() : (mountResult.Error != null ? mountResult.Error.ToString() : "Unknown error"));
+                                            }
+                                        }
+                                        else
+                                        {
+                                            _logger.LogInformation("Skipping mount for assembled pool {PoolGuid} ({MdName}) because IsMounted is not set to true",
+                                                poolMetadata.PoolGroupGuid, mdName);
+                                        }
+                                        
+                                        // Mark as processed
+                                        processedMds.Add(mdName);
+                                        break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                string errorMessage = "";
+                                if (assembleResult.Error != null) 
+                                {
+                                    errorMessage = assembleResult.Error.ToString();
+                                }
+                                else if (assembleResult.Output != null)
+                                {
+                                    errorMessage = assembleResult.Output.Trim();
+                                }
+                                
+                                _logger.LogWarning("Failed to assemble pool {PoolGuid}: {Error}",
+                                    poolMetadata.PoolGroupGuid, errorMessage);
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Could not find device paths for any drives in pool {PoolGuid}",
+                                poolMetadata.PoolGroupGuid);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing pool {PoolGuid} during auto-recovery",
+                        poolMetadata.PoolGroupGuid);
+                }
+            }
+            
+            // Log summary
+            _logger.LogInformation("Auto-recovery completed. Processed {Count} MD devices", processedMds.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during automatic pool recovery");
+        }
     }
 
     public async Task<List<PoolListItem>> GetAllPoolsAsync()
@@ -120,7 +521,7 @@ public class PoolService : IPoolService
                 if (mountResult.Success)
                 {
                     var mountMatch = System.Text.RegularExpressions.Regex.Match(
-                        CleanCommandOutput(mountResult.Output), $@"/dev/{deviceName} on (.*?) type");
+                        CleanCommandOutput(mountResult.Output ?? string.Empty), $@"/dev/{deviceName} on (.*?) type");
                     
                     if (mountMatch.Success)
                     {
@@ -281,7 +682,7 @@ public class PoolService : IPoolService
             if (mountResult.Success)
             {
                 var match = System.Text.RegularExpressions.Regex.Match(
-                    CleanCommandOutput(mountResult.Output), $@"/dev/{mdDeviceName} on (.*?) type");
+                    CleanCommandOutput(mountResult.Output ?? string.Empty), $@"/dev/{mdDeviceName} on (.*?) type");
                 
                 if (match.Success)
                 {
@@ -319,7 +720,7 @@ public class PoolService : IPoolService
                     
                     // Try to get serial number using lsblk
                     var lsblk = await _commandService.ExecuteCommandAsync($"lsblk -n -o SERIAL /dev/{devicePath}");
-                    string serial = lsblk.Success ? CleanCommandOutput(lsblk.Output).Trim() : "unknown";
+                    string serial = lsblk.Success ? CleanCommandOutput(lsblk.Output ?? string.Empty).Trim() : "unknown";
                     
                     // Try to get label from metadata
                     string label = $"{mdDeviceName}-{response.Drives.Count + 1}";
@@ -340,7 +741,7 @@ public class PoolService : IPoolService
             {
                 // Fall back to parsing mdadm output
                 var mdadmDetail = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDeviceName}");
-                var lines = CleanCommandOutput(mdadmDetail.Output).Split('\n');
+                var lines = CleanCommandOutput(mdadmDetail.Output ?? string.Empty).Split('\n');
                 
                 foreach (var line in lines)
                 {
@@ -357,7 +758,7 @@ public class PoolService : IPoolService
                             // Try to get serial number
                             var deviceName = System.IO.Path.GetFileName(devicePath);
                             var lsblk = await _commandService.ExecuteCommandAsync($"lsblk -n -o SERIAL /dev/{deviceName}");
-                            string serial = lsblk.Success ? CleanCommandOutput(lsblk.Output).Trim() : "unknown";
+                            string serial = lsblk.Success ? CleanCommandOutput(lsblk.Output ?? string.Empty).Trim() : "unknown";
                             
                             // Try to get label from metadata
                             string label = $"{mdDeviceName}-{response.Drives.Count + 1}";
@@ -634,7 +1035,7 @@ public class PoolService : IPoolService
 
             // Find an available md device
             var mdstatResult = await _commandService.ExecuteCommandAsync("cat /proc/mdstat");
-            int poolId = GetNextAvailableMdDeviceId(CleanCommandOutput(mdstatResult.Output));
+            int poolId = GetNextAvailableMdDeviceId(mdstatResult.Output != null ? mdstatResult.Output : string.Empty);
             string poolDevice = $"md{poolId}";
 
             // Build mdadm command
@@ -711,7 +1112,8 @@ public class PoolService : IPoolService
                 DriveSerials = request.DriveSerials,
                 DriveLabels = request.DriveLabels ?? new Dictionary<string, string>(),
                 LastMountPath = mountPath,
-                PoolGroupGuid = poolGroupGuid ?? Guid.NewGuid()
+                PoolGroupGuid = poolGroupGuid ?? Guid.NewGuid(),
+                IsMounted = true // Set to true since we just mounted it
             };
             
             var saveResult = await SavePoolMetadataAsync(metadata);
@@ -789,14 +1191,26 @@ public class PoolService : IPoolService
 
             if (!mountResult.Success)
             {
-                return (false, $"Failed to mount filesystem: {CleanCommandOutput(mountResult.Output)}", outputs);
+                string errorMessage = "";
+                if (mountResult.Error != null) 
+                {
+                    errorMessage = mountResult.Error.ToString();
+                }
+                else if (mountResult.Output != null)
+                {
+                    errorMessage = mountResult.Output.Trim();
+                }
+                
+                _logger.LogWarning("Failed to mount filesystem: {Error}", errorMessage);
+                return (false, $"Failed to mount filesystem: {errorMessage}", outputs);
             }
             
             // Update mount path in metadata if successful
             var metadata = await GetPoolMetadataByMdDeviceAsync(mdDeviceName);
-            if (metadata != null && metadata.LastMountPath != mountPath)
+            if (metadata != null)
             {
                 metadata.LastMountPath = mountPath;
+                metadata.IsMounted = true; // Set the mounted flag
                 await SavePoolMetadataAsync(metadata);
             }
             
@@ -845,7 +1259,7 @@ public class PoolService : IPoolService
                 
                 // Find an available md device ID
                 var mdstatResult = await _commandService.ExecuteCommandAsync("cat /proc/mdstat");
-                int poolId = GetNextAvailableMdDeviceId(CleanCommandOutput(mdstatResult.Output));
+                int poolId = GetNextAvailableMdDeviceId(mdstatResult.Output != null ? mdstatResult.Output : string.Empty);
                 string newPoolDevice = $"md{poolId}";
                 
                 _logger.LogInformation("Using new mdadm device: {NewDeviceName}", newPoolDevice);
@@ -871,7 +1285,7 @@ public class PoolService : IPoolService
                 
                 // Try to get device paths for each drive in the metadata
                 var drivesResult = await _driveService.GetDrivesAsync();
-                var availableDrives = drivesResult.Blockdevices?.Where(d => 
+                var availableDrives = drivesResult?.Blockdevices?.Where(d => 
                     d.Type == "disk" && 
                     !string.IsNullOrEmpty(d.Serial) &&
                     metadata.DriveSerials.Contains(d.Serial)).ToList();
@@ -890,7 +1304,7 @@ public class PoolService : IPoolService
                             return $"/dev/{d.Name}"; // Use name as final fallback
                     });
                     
-                    assembleCommand += " " + string.Join(" ", devicePaths);
+                    assembleCommand += " " + String.Join(" ", devicePaths);
                 }
                 
                 // Execute the assemble command
@@ -900,7 +1314,18 @@ public class PoolService : IPoolService
                 
                 if (!assembleResult.Success)
                 {
-                    return (false, $"Failed to assemble RAID array: {CleanCommandOutput(assembleResult.Output)}", outputs);
+                    string errorMessage = "";
+                    if (assembleResult.Error != null) 
+                    {
+                        errorMessage = assembleResult.Error.ToString();
+                    }
+                    else if (assembleResult.Output != null)
+                    {
+                        errorMessage = assembleResult.Output.Trim();
+                    }
+                    
+                    _logger.LogWarning("Failed to assemble RAID array: {Error}", errorMessage);
+                    return (false, $"Failed to assemble RAID array: {errorMessage}", outputs);
                 }
                 
                 // Create mount directory
@@ -920,7 +1345,18 @@ public class PoolService : IPoolService
                 
                 if (!mountResult.Success)
                 {
-                    return (false, $"Failed to mount filesystem: {CleanCommandOutput(mountResult.Output)}", outputs);
+                    string errorMessage = "";
+                    if (mountResult.Error != null) 
+                    {
+                        errorMessage = mountResult.Error.ToString();
+                    }
+                    else if (mountResult.Output != null)
+                    {
+                        errorMessage = mountResult.Output.Trim();
+                    }
+                    
+                    _logger.LogWarning("Failed to mount filesystem: {Error}", errorMessage);
+                    return (false, $"Failed to mount filesystem: {errorMessage}", outputs);
                 }
                 
                 // Update the mount path in metadata
@@ -956,7 +1392,7 @@ public class PoolService : IPoolService
             if (mountResult.Success)
             {
                 var match = System.Text.RegularExpressions.Regex.Match(
-                    CleanCommandOutput(mountResult.Output), $@"/dev/{mdDeviceName} on (.*?) type");
+                    CleanCommandOutput(mountResult.Output ?? string.Empty), $@"/dev/{mdDeviceName} on (.*?) type");
                 
                 if (match.Success)
                 {
@@ -988,6 +1424,14 @@ public class PoolService : IPoolService
             if (!unmountResult.Success)
             {
                 return (false, $"Failed to unmount filesystem: {CleanCommandOutput(unmountResult.Output)}", outputs);
+            }
+            
+            // Update the metadata to set isMounted=false
+            var metadata = await GetPoolMetadataByMdDeviceAsync(mdDeviceName);
+            if (metadata != null)
+            {
+                metadata.IsMounted = false;
+                await SavePoolMetadataAsync(metadata);
             }
             
             // Stop the array
@@ -1061,7 +1505,7 @@ public class PoolService : IPoolService
             // Clean up drives by wiping filesystem signatures
             if (mdadmDetail.Success)
             {
-                var lines = CleanCommandOutput(mdadmDetail.Output).Split('\n');
+                var lines = CleanCommandOutput(mdadmDetail.Output ?? string.Empty).Split('\n');
                 foreach (var line in lines)
                 {
                     if (line.Trim().Contains("/dev/") && !line.Contains("md"))
@@ -1290,7 +1734,7 @@ public class PoolService : IPoolService
         }
     }
 
-    private async Task<(bool IsMountPathUsed, string? UsedByMdDeviceName)> IsMountPathInUseAsync(string mountPath)
+    private async Task<(bool IsMountPathInUse, string? UsedByMdDeviceName)> IsMountPathInUseAsync(string mountPath)
     {
         try
         {
@@ -1348,11 +1792,55 @@ public class PoolService : IPoolService
                 return newMetadata;
             }
             
-            // Use FileSystemInfoService to read the file
-            string existingJson = await _fileSystemInfoService.ReadFileAsync(METADATA_FILE_PATH);
-            var metadata = System.Text.Json.JsonSerializer.Deserialize<PoolMetadataCollection>(existingJson);
+            try 
+            {
+                // Use FileSystemInfoService to read the file
+                string existingJson = await _fileSystemInfoService.ReadFileAsync(METADATA_FILE_PATH);
+                
+                // Try to deserialize
+                var metadata = System.Text.Json.JsonSerializer.Deserialize<PoolMetadataCollection>(existingJson);
+                
+                if (metadata != null)
+                {
+                    return metadata;
+                }
+                
+                _logger.LogWarning("Deserialized pool metadata was null at {FilePath}, creating a new one", METADATA_FILE_PATH);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                _logger.LogError(ex, "Error deserializing pool metadata file at {FilePath}, the file is corrupt. Creating a new file.", METADATA_FILE_PATH);
+                
+                // Make a backup of the corrupt file if possible
+                try
+                {
+                    string backupPath = $"{METADATA_FILE_PATH}.corrupt.{DateTime.UtcNow:yyyyMMdd_HHmmss}";
+                    File.Copy(METADATA_FILE_PATH, backupPath);
+                    _logger.LogInformation("Created backup of corrupt metadata file at {BackupPath}", backupPath);
+                }
+                catch (Exception backupEx)
+                {
+                    _logger.LogWarning(backupEx, "Failed to create backup of corrupt metadata file");
+                }
+            }
             
-            return metadata ?? new PoolMetadataCollection();
+            // If we're here, either the file couldn't be deserialized or was null
+            // Create a new metadata collection
+            var newCollection = new PoolMetadataCollection
+            {
+                LastUpdated = DateTime.UtcNow
+            };
+            
+            // Save it to file
+            string newJson = System.Text.Json.JsonSerializer.Serialize(newCollection, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            
+            await File.WriteAllTextAsync(METADATA_FILE_PATH, newJson);
+            _logger.LogInformation("Created a new empty pool metadata file at {FilePath} to replace corrupt/null data", METADATA_FILE_PATH);
+            
+            return newCollection;
         }
         catch (Exception ex)
         {
@@ -1363,6 +1851,12 @@ public class PoolService : IPoolService
 
     private int GetNextAvailableMdDeviceId(string mdstatOutput)
     {
+        if (string.IsNullOrEmpty(mdstatOutput))
+        {
+            _logger.LogWarning("Empty mdstat output when getting next available device ID");
+            return 0; // Default to md0 if we can't parse mdstat
+        }
+        
         // Parse mdstat to find used md device IDs
         var usedIds = new HashSet<int>();
         var lines = CleanCommandOutput(mdstatOutput).Split('\n');
@@ -1381,7 +1875,7 @@ public class PoolService : IPoolService
         
         // Find the lowest unused ID
         int nextId = 0;
-        while (usedIds.Contains(nextId))
+        while (usedIds.Contains(nextId)) // Fixed "contains" to "Contains" (C# is case-sensitive)
         {
             nextId++;
         }
@@ -1390,9 +1884,9 @@ public class PoolService : IPoolService
     }
 
     // Utility method to clean command outputs by removing control characters and symbols
-    private string CleanCommandOutput(string output)
+    private string CleanCommandOutput(string? output)
     {
-        if (string.IsNullOrEmpty(output))
+        if (output == null)
             return string.Empty;
 
         // Remove progress indicators and backspace characters
@@ -1409,7 +1903,7 @@ public class PoolService : IPoolService
             .Select(line => line.TrimEnd())
             .ToArray();
         
-        return String.Join("\n", lines);
+        return string.Join("\n", lines);
     }
 
     /// <summary>
@@ -1448,7 +1942,7 @@ public class PoolService : IPoolService
             }
             
             // Build a map of actual md devices and their component drives
-            var mdDeviceMap = await BuildMdDeviceMapAsync(CleanCommandOutput(mdstatResult.Output), drivesResult.Blockdevices);
+            var mdDeviceMap = await BuildMdDeviceMapAsync(CleanCommandOutput(mdstatResult.Output ?? string.Empty), drivesResult.Blockdevices);
             
             // Count of entries that needed fixing
             int fixedEntries = 0;

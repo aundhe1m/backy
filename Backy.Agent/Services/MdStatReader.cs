@@ -208,24 +208,24 @@ public class MdStatReader : IMdStatReader
                 {
                     arrayInfo.State = statusMatch.Groups[1].Value; // active, inactive
                     arrayInfo.Level = statusMatch.Groups[2].Value; // raid0, raid1, etc.
-                    arrayInfo.IsActive = arrayInfo.State.Equals("active", StringComparison.OrdinalIgnoreCase);
+                    arrayInfo.IsActive = arrayInfo.State == "active";
                 }
                 else
                 {
+                    // Try simpler status regex for non-standard formats
                     var simpleStatusMatch = SimpleStatusRegex.Match(line);
                     if (simpleStatusMatch.Success)
                     {
                         arrayInfo.State = simpleStatusMatch.Groups[1].Value;
-                        arrayInfo.IsActive = arrayInfo.State.Equals("active", StringComparison.OrdinalIgnoreCase);
+                        arrayInfo.IsActive = arrayInfo.State == "active";
                     }
                 }
                 
-                // Extract component devices
+                // Parse device components
                 var deviceMatch = DeviceRegex.Match(line);
                 if (deviceMatch.Success)
                 {
-                    var devicesText = deviceMatch.Groups[1].Value;
-                    var devices = DevicesListRegex.Matches(devicesText)
+                    var devices = DevicesListRegex.Matches(deviceMatch.Groups[1].Value)
                         .Cast<Match>()
                         .Select(m => m.Groups[1].Value)
                         .ToList();
@@ -233,53 +233,75 @@ public class MdStatReader : IMdStatReader
                     arrayInfo.Devices = devices;
                 }
                 
-                // Look for the next line with array size and status
+                // Parse next line for size and status information
                 if (i + 1 < lines.Length)
                 {
-                    var sizeLine = lines[i + 1].Trim();
+                    var nextLine = lines[i + 1];
                     
-                    // Parse array size
-                    var sizeMatch = SizeRegex.Match(sizeLine);
+                    // Look for array size
+                    var sizeMatch = SizeRegex.Match(nextLine);
                     if (sizeMatch.Success)
                     {
-                        var blockCount = long.Parse(sizeMatch.Groups[1].Value);
-                        arrayInfo.ArraySize = blockCount * 1024; // Convert blocks to bytes
+                        if (long.TryParse(sizeMatch.Groups[1].Value, out long blocks))
+                        {
+                            // Convert blocks (usually 1K) to bytes
+                            arrayInfo.ArraySize = blocks * 1024;
+                        }
                     }
                     
-                    // Parse RAID status like [2/2] [UU]
-                    var raidStatusMatch = RaidStatusRegex.Match(sizeLine);
+                    // Look for RAID status [UU]
+                    var raidStatusMatch = RaidStatusRegex.Match(nextLine);
                     if (raidStatusMatch.Success)
                     {
-                        arrayInfo.ActiveDevices = int.Parse(raidStatusMatch.Groups[1].Value);
-                        arrayInfo.TotalDevices = int.Parse(raidStatusMatch.Groups[2].Value);
-                        arrayInfo.Status = raidStatusMatch.Groups[3].Value.Select(c => c.ToString()).ToArray();
+                        var activeDevices = int.Parse(raidStatusMatch.Groups[1].Value);
+                        var totalDevices = int.Parse(raidStatusMatch.Groups[2].Value);
+                        var statusString = raidStatusMatch.Groups[3].Value;
+                        
+                        arrayInfo.ActiveDevices = activeDevices;
+                        arrayInfo.TotalDevices = totalDevices;
+                        arrayInfo.Status = statusString.ToCharArray().Select(c => c.ToString()).ToArray();
+                        
+                        // Count working, failed, and spare devices based on status characters
+                        var workingDevices = statusString.Count(c => c == 'U');
+                        var failedDevices = statusString.Count(c => c == '_');
+                        var spareDevices = statusString.Count(c => c == 'S');
+                        
+                        arrayInfo.WorkingDevices = workingDevices;
+                        arrayInfo.FailedDevices = failedDevices;
+                        arrayInfo.SpareDevices = spareDevices;
                     }
                 }
                 
-                // Check for resync/recovery line
+                // Parse resync/recovery information from third line
                 if (i + 2 < lines.Length && (
                     lines[i + 2].Contains("resync") || 
                     lines[i + 2].Contains("recovery") || 
                     lines[i + 2].Contains("check")))
                 {
-                    var resyncLine = lines[i + 2].Trim();
+                    var resyncLine = lines[i + 2];
                     arrayInfo.ResyncInProgress = true;
                     
-                    // Parse resync percentage
+                    // Parse percentage complete
                     var resyncMatch = ResyncProgressRegex.Match(resyncLine);
                     if (resyncMatch.Success)
                     {
-                        arrayInfo.ResyncPercentage = double.Parse(resyncMatch.Groups[1].Value);
+                        if (double.TryParse(resyncMatch.Groups[1].Value, out double percentage))
+                        {
+                            arrayInfo.ResyncPercentage = percentage;
+                        }
                     }
                     
-                    // Parse finish time estimate
+                    // Parse estimated finish time
                     var finishMatch = FinishTimeRegex.Match(resyncLine);
                     if (finishMatch.Success)
                     {
-                        arrayInfo.ResyncTimeEstimate = double.Parse(finishMatch.Groups[1].Value);
+                        if (double.TryParse(finishMatch.Groups[1].Value, out double minutes))
+                        {
+                            arrayInfo.ResyncTimeEstimate = minutes;
+                        }
                     }
                     
-                    // Parse speed
+                    // Parse resync speed
                     var speedMatch = SpeedRegex.Match(resyncLine);
                     if (speedMatch.Success)
                     {
@@ -287,13 +309,14 @@ public class MdStatReader : IMdStatReader
                     }
                 }
                 
+                // Add the array info to the result
                 mdStatInfo.Arrays[deviceName] = arrayInfo;
             }
         }
         
         return mdStatInfo;
     }
-    
+
     /// <summary>
     /// Reads pool metadata from the configured file
     /// </summary>
@@ -303,16 +326,18 @@ public class MdStatReader : IMdStatReader
         {
             if (!_fileSystemInfoService.FileExists(METADATA_FILE_PATH))
             {
+                _logger.LogDebug("Pool metadata file not found at {FilePath}", METADATA_FILE_PATH);
                 return new List<PoolMetadata>();
             }
             
-            var json = await _fileSystemInfoService.ReadFileAsync(METADATA_FILE_PATH);
-            var metadata = System.Text.Json.JsonSerializer.Deserialize<PoolMetadataCollection>(json);
-            return metadata?.Pools ?? new List<PoolMetadata>();
+            string metadata = await _fileSystemInfoService.ReadFileAsync(METADATA_FILE_PATH);
+            
+            var metadataObject = System.Text.Json.JsonSerializer.Deserialize<PoolMetadataCollection>(metadata);
+            return metadataObject?.Pools ?? new List<PoolMetadata>();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reading pool metadata file");
+            _logger.LogError(ex, "Error reading pool metadata");
             return new List<PoolMetadata>();
         }
     }
