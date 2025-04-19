@@ -30,6 +30,8 @@ namespace Backy.Services
         Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint);
         Task<List<PoolInfo>> GetPoolsAsync();
         Task UpdatePoolSizeMetricsAsync(Guid poolGroupGuid);
+        Task<(bool Success, string Message, List<string> Outputs)> GetPoolOutputsAsync(Guid poolGroupGuid);
+        Task<PoolGroup?> MonitorPoolCreationWithPollingAsync(Guid poolGroupGuid, CancellationToken cancellationToken);
     }
 
     /// <summary>
@@ -150,7 +152,7 @@ namespace Backy.Services
         }
 
         /// <summary>
-        /// Creates a new pool based on the provided request data.
+        /// Creates a new pool based on the provided request data with asynchronous processing.
         /// </summary>
         public async Task<(bool Success, string Message, List<string> Outputs)> CreatePoolAsync(CreatePoolRequest request)
         {
@@ -169,34 +171,25 @@ namespace Backy.Services
             // Get the active drives information for use in creating the database records
             var activeDrives = await UpdateActiveDrivesAsync();
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            
             try 
             {
-                // Delegate to the agent client to create the pool
+                // Delegate to the agent client to create the pool asynchronously
                 var result = await _agentClient.CreatePoolAsync(request);
                 
                 if (result.Success)
                 {
-                    // Get information about the newly created pool
-                    var pools = await _agentClient.GetPoolsAsync();
-                    var newPool = pools.OrderByDescending(p => p.PoolGroupId).FirstOrDefault();
-                    
-                    if (newPool == null)
-                    {
-                        _logger.LogWarning("Pool was created but couldn't be found in the pool list.");
-                        await transaction.RollbackAsync();
-                        return (false, "Pool was created but couldn't be found in the pool list.", result.Outputs);
-                    }
-                    
-                    // Create PoolGroup and PoolDrive records in the database
+                    // Create a placeholder PoolGroup record in the database
                     var poolGroup = new PoolGroup
                     {
-                        PoolGroupId = newPool.PoolGroupId,
-                        PoolGroupGuid = newPool.PoolGroupGuid,
+                        PoolGroupGuid = result.PoolGroupGuid, // Use the GUID from the async response
                         GroupLabel = request.PoolLabel,
-                        MountPath = newPool.MountPath,
-                        PoolEnabled = true,
+                        MountPath = $"/mnt/backy/{result.PoolGroupGuid}",
+                        PoolEnabled = false, // Will be enabled when creation completes
+                        PoolStatus = "creating", // Status indicating the pool is being created
+                        Size = 0,
+                        Used = 0,
+                        Available = 0, 
+                        UsePercent = "0%",
                         Drives = new List<PoolDrive>()
                     };
                     
@@ -231,9 +224,9 @@ namespace Backy.Services
                             Model = activeDrive.Model,
                             Size = activeDrive.Size,
                             IsConnected = true,
-                            IsMounted = true,
+                            IsMounted = false, // Not yet mounted
                             DevPath = activeDrive.IdLink,
-                            PoolGroupGuid = newPool.PoolGroupGuid,
+                            PoolGroupGuid = result.PoolGroupGuid,
                             PoolGroup = poolGroup
                         };
                         
@@ -242,18 +235,15 @@ namespace Backy.Services
                     
                     _context.PoolGroups.Add(poolGroup);
                     await _context.SaveChangesAsync();
-                    await transaction.CommitAsync();
                     
-                    return (true, $"Pool '{request.PoolLabel}' created successfully.", result.Outputs);
+                    return (true, $"Pool '{request.PoolLabel}' creation started.", result.Outputs);
                 }
                 
-                await transaction.RollbackAsync();
                 return (false, result.Message, result.Outputs);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating pool or saving pool data to database.");
-                await transaction.RollbackAsync();
                 return (false, $"Error creating pool: {ex.Message}", new List<string>());
             }
         }
@@ -677,6 +667,164 @@ namespace Backy.Services
             {
                 _logger.LogError(ex, $"Error updating size metrics for pool group {poolGroupGuid}");
             }
+        }
+
+        /// <summary>
+        /// Gets the command outputs from an asynchronous pool creation operation.
+        /// </summary>
+        /// <param name="poolGroupGuid">The GUID of the pool group</param>
+        /// <returns>A tuple with success status, message, and command outputs</returns>
+        public async Task<(bool Success, string Message, List<string> Outputs)> GetPoolOutputsAsync(Guid poolGroupGuid)
+        {
+            try
+            {
+                // Delegate to the agent client
+                var result = await _agentClient.GetPoolCreationOutputsAsync(poolGroupGuid);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting pool outputs for pool group {PoolGroupGuid}", poolGroupGuid);
+                return (false, $"Error retrieving pool outputs: {ex.Message}", new List<string>());
+            }
+        }
+
+        /// <summary>
+        /// Monitors the creation of a pool with exponential backoff polling.
+        /// </summary>
+        /// <param name="poolGroupGuid">The GUID of the pool group to monitor</param>
+        /// <param name="cancellationToken">A cancellation token to allow cancelling the monitoring</param>
+        /// <returns>The completed PoolGroup if successful, or null if the pool creation failed or was cancelled</returns>
+        public async Task<PoolGroup?> MonitorPoolCreationWithPollingAsync(Guid poolGroupGuid, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Starting to monitor pool creation for pool {PoolGroupGuid}", poolGroupGuid);
+            
+            int retryCount = 0;
+            const int maxRetries = 60; // Maximum number of retries
+            TimeSpan delay = TimeSpan.FromSeconds(1); // Starting delay
+            const double backoffMultiplier = 1.5; // Exponential backoff multiplier
+            const int maxDelaySeconds = 30; // Maximum delay in seconds
+            
+            // Reference to the pool group in the database
+            PoolGroup? poolGroup = await _context.PoolGroups
+                .Include(pg => pg.Drives)
+                .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
+                
+            if (poolGroup == null)
+            {
+                _logger.LogWarning("Pool group {PoolGroupGuid} not found in database for monitoring", poolGroupGuid);
+                return null;
+            }
+            
+            while (retryCount < maxRetries && !cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    _logger.LogDebug("Checking pool status for {PoolGroupGuid}, attempt {RetryCount}", poolGroupGuid, retryCount + 1);
+                    
+                    // Get the current pool status from the agent
+                    var result = await _agentClient.GetPoolDetailAsync(poolGroupGuid);
+                    
+                    if (result.Success)
+                    {
+                        // Parse the JSON response using the strongly-typed model
+                        var jsonOptions = new System.Text.Json.JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        };
+                        
+                        var poolDetail = JsonSerializer.Deserialize<PoolDetailResponse>(result.Output, jsonOptions);
+                        
+                        if (poolDetail != null)
+                        {
+                            _logger.LogInformation("Pool {PoolGroupGuid} has status: {Status}", poolGroupGuid, poolDetail.Status);
+                            
+                            // Update the database with the latest pool details
+                            poolGroup.Size = poolDetail.Size;
+                            poolGroup.Used = poolDetail.Used;
+                            poolGroup.Available = poolDetail.Available;
+                            poolGroup.UsePercent = poolDetail.UsePercent;
+                            poolGroup.PoolStatus = poolDetail.Status;
+                            
+                            // If the pool is no longer creating, update the database and return
+                            if (!string.Equals(poolDetail.Status, "creating", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Update drive statuses
+                                if (poolDetail.Drives != null && poolDetail.Drives.Any())
+                                {
+                                    foreach (var driveStatus in poolDetail.Drives)
+                                    {
+                                        var drive = poolGroup.Drives.FirstOrDefault(d => d.Serial == driveStatus.Serial);
+                                        if (drive != null)
+                                        {
+                                            drive.IsConnected = true;
+                                            drive.IsMounted = true;
+                                        }
+                                    }
+                                }
+                                
+                                // Update pool status
+                                poolGroup.PoolEnabled = string.Equals(poolDetail.Status, "active", StringComparison.OrdinalIgnoreCase);
+                                await _context.SaveChangesAsync();
+                                
+                                if (string.Equals(poolDetail.Status, "active", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _logger.LogInformation("Pool {PoolGroupGuid} creation completed successfully", poolGroupGuid);
+                                    return poolGroup;
+                                }
+                                else if (string.Equals(poolDetail.Status, "failed", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _logger.LogWarning("Pool {PoolGroupGuid} creation failed", poolGroupGuid);
+                                    return null;
+                                }
+                            }
+                            
+                            // Save the updated metrics even if we're still in "creating" state
+                            await _context.SaveChangesAsync();
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to get pool details: {Message}", result.Message);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error checking pool status for {PoolGroupGuid}", poolGroupGuid);
+                }
+                
+                // Increment retry count and delay with exponential backoff
+                retryCount++;
+                
+                // Apply exponential backoff with a maximum delay
+                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * backoffMultiplier, maxDelaySeconds));
+                
+                _logger.LogDebug("Waiting {DelaySeconds} seconds before next status check for pool {PoolGroupGuid}", 
+                    delay.TotalSeconds, poolGroupGuid);
+                
+                try
+                {
+                    await Task.Delay(delay, cancellationToken);
+                }
+                catch (TaskCanceledException)
+                {
+                    _logger.LogInformation("Pool creation monitoring was cancelled for {PoolGroupGuid}", poolGroupGuid);
+                    break;
+                }
+            }
+            
+            // If we've reached here, either the max retries were exceeded or the operation was cancelled
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning("Pool creation monitoring was cancelled for {PoolGroupGuid}", poolGroupGuid);
+            }
+            else
+            {
+                _logger.LogWarning("Maximum monitoring attempts ({MaxRetries}) reached for pool {PoolGroupGuid}", 
+                    maxRetries, poolGroupGuid);
+            }
+            
+            return null;
         }
     }
 }

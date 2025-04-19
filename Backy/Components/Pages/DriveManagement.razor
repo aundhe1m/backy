@@ -115,6 +115,24 @@
     }
 </div>
 
+<!-- Creating Pools Section -->
+<div class="drive-management-container">
+    <h2 class="section-title">Creating Pools</h2>
+    @if (CreatingPools != null && CreatingPools.Any())
+    {
+        <div class="row">
+            @foreach (var pool in CreatingPools)
+            {
+                <div class="col-md-12">
+                    <CreatingPoolCard @key="pool.PoolGroupGuid" Model="@pool" 
+                                     OnCreationComplete="@HandlePoolCreationComplete"
+                                     OnCancelCreation="@HandlePoolCreationCancel" />
+                </div>
+            }
+        </div>
+    }
+</div>
+
 <!-- 
     Modals Section: Contains modals for Creating Pools, Renaming Pools, and Displaying Process Lists
 -->
@@ -502,6 +520,11 @@
                 Serial = d.Serial
             }));
     }
+
+    /// <summary>
+    /// Gets pools that are currently being created.
+    /// </summary>
+    private IEnumerable<PoolGroup> CreatingPools => PoolGroups.Where(p => p.PoolStatus == "creating" || p.PoolStatus == "Creating");
 
     // ---------------------------
     // Lifecycle Methods
@@ -1405,5 +1428,54 @@
             }
         }
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Handles the completion of a pool creation operation.
+    /// </summary>
+    /// <param name="poolGroupGuid">The GUID of the completed pool.</param>
+    private async Task HandlePoolCreationComplete(Guid poolGroupGuid)
+    {
+        Logger.LogInformation("Pool creation completed for pool with GUID: {PoolGroupGuid}", poolGroupGuid);
+        
+        // No need to show a toast notification as the CreatingPoolCard already shows one
+        
+        // Refresh the drives and pools
+        await LoadDrives();
+        
+        // Force state update
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Handles the cancellation of a pool creation operation.
+    /// </summary>
+    /// <param name="poolGroupGuid">The GUID of the cancelled pool.</param>
+    private async Task HandlePoolCreationCancel(Guid poolGroupGuid)
+    {
+        Logger.LogInformation("Pool creation cancelled for pool with GUID: {PoolGroupGuid}", poolGroupGuid);
+        
+        // Optionally remove the pool from the database since it was cancelled
+        var poolToRemove = PoolGroups.FirstOrDefault(p => p.PoolGroupGuid == poolGroupGuid);
+        if (poolToRemove != null)
+        {
+            try
+            {
+                DbContext.PoolGroups.Remove(poolToRemove);
+                await DbContext.SaveChangesAsync();
+                ToastService.Notify(new ToastMessage(ToastType.Warning, $"Pool creation '{poolToRemove.GroupLabel}' cancelled."));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error removing cancelled pool from database");
+                ToastService.Notify(new ToastMessage(ToastType.Danger, "Failed to remove cancelled pool from database."));
+            }
+        }
+        
+        // Refresh the drives and pools
+        await LoadDrives();
+        
+        // Force state update
+        await InvokeAsync(StateHasChanged);
     }
 }

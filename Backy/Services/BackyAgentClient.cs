@@ -38,7 +38,7 @@ namespace Backy.Services
         /// Creates a new pool from the selected drives.
         /// </summary>
         /// <param name="request">The request containing pool information and drive serials.</param>
-        Task<(bool Success, string Message, List<string> Outputs)> CreatePoolAsync(CreatePoolRequest request);
+        Task<(bool Success, string Message, List<string> Outputs, Guid PoolGroupGuid)> CreatePoolAsync(CreatePoolRequest request);
         
         /// <summary>
         /// Gets detailed information about a specific pool.
@@ -95,6 +95,12 @@ namespace Backy.Services
         /// </summary>
         /// <param name="request">The request containing process IDs and the action to perform.</param>
         Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(KillProcessesRequest request);
+
+        /// <summary>
+        /// Gets the command outputs from an asynchronous pool creation operation.
+        /// </summary>
+        /// <param name="poolGroupGuid">The GUID of the pool group.</param>
+        Task<(bool Success, string Message, List<string> Outputs)> GetPoolCreationOutputsAsync(Guid poolGroupGuid);
     }
     
     /// <summary>
@@ -254,7 +260,7 @@ namespace Backy.Services
         /// <summary>
         /// Creates a new pool from the selected drives.
         /// </summary>
-        public async Task<(bool Success, string Message, List<string> Outputs)> CreatePoolAsync(CreatePoolRequest request)
+        public async Task<(bool Success, string Message, List<string> Outputs, Guid PoolGroupGuid)> CreatePoolAsync(CreatePoolRequest request)
         {
             if (request == null)
             {
@@ -263,12 +269,12 @@ namespace Backy.Services
             
             if (string.IsNullOrWhiteSpace(request.PoolLabel))
             {
-                return (false, "Pool label is required", new List<string>());
+                return (false, "Pool label is required", new List<string>(), Guid.Empty);
             }
             
             if (request.DriveSerials == null || request.DriveSerials.Count == 0)
             {
-                return (false, "At least one drive must be selected", new List<string>());
+                return (false, "At least one drive must be selected", new List<string>(), Guid.Empty);
             }
             
             try
@@ -298,25 +304,25 @@ namespace Backy.Services
                     var result = await response.Content.ReadFromJsonAsync<PoolCreationResponse>(_jsonOptions);
                     if (result == null)
                     {
-                        return (false, "Invalid response from server", new List<string>());
+                        return (false, "Invalid response from server", new List<string>(), Guid.Empty);
                     }
-                    return (result.Success, "Pool created successfully", result.CommandOutputs);
+                    return (result.Success, "Pool created successfully", result.CommandOutputs, result.PoolGroupGuid);
                 }
                 else
                 {
                     var errorResponse = await DeserializeErrorResponse(response);
-                    return (false, $"Failed to create pool: {errorResponse}", new List<string>());
+                    return (false, $"Failed to create pool: {errorResponse}", new List<string>(), Guid.Empty);
                 }
             }
             catch (HttpRequestException ex)
             {
                 _logger.LogError(ex, "Error creating pool");
-                return (false, $"Failed to create pool: {ex.Message}", new List<string>());
+                return (false, $"Failed to create pool: {ex.Message}", new List<string>(), Guid.Empty);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error creating pool");
-                return (false, $"An unexpected error occurred while creating pool: {ex.Message}", new List<string>());
+                return (false, $"An unexpected error occurred while creating pool: {ex.Message}", new List<string>(), Guid.Empty);
             }
         }
 
@@ -654,6 +660,43 @@ namespace Backy.Services
         }
 
         /// <summary>
+        /// Gets the command outputs from an asynchronous pool creation operation.
+        /// </summary>
+        public async Task<(bool Success, string Message, List<string> Outputs)> GetPoolCreationOutputsAsync(Guid poolGroupGuid)
+        {
+            try
+            {
+                // Make a GET request to the new endpoint for pool outputs
+                var response = await _httpClient.GetAsync($"/api/v1/pools/{poolGroupGuid}/output");
+                
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    return (false, "Pool creation outputs not found", new List<string>());
+                }
+                
+                response.EnsureSuccessStatusCode();
+                
+                var result = await response.Content.ReadFromJsonAsync<PoolOutputResponse>(_jsonOptions);
+                if (result == null)
+                {
+                    return (false, "Invalid response from server", new List<string>());
+                }
+                
+                return (true, "Successfully retrieved pool outputs", result.Outputs);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "Error getting pool creation outputs for GUID {PoolGroupGuid}", poolGroupGuid);
+                return (false, $"Failed to retrieve pool creation outputs: {ex.Message}", new List<string>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error getting pool creation outputs");
+                return (false, $"An unexpected error occurred while retrieving pool creation outputs: {ex.Message}", new List<string>());
+            }
+        }
+
+        /// <summary>
         /// Helper method for deserializing error responses.
         /// </summary>
         private async Task<string> DeserializeErrorResponse(HttpResponseMessage response)
@@ -844,9 +887,15 @@ namespace Backy.Services
     internal class PoolCreationResponse
     {
         public bool Success { get; set; }
-        public string? PoolId { get; set; }
-        public string? MountPath { get; set; }
+        public Guid PoolGroupGuid { get; set; }
+        public string Status { get; set; } = "creating";
         public List<string> CommandOutputs { get; set; } = new List<string>();
+    }
+    
+    internal class PoolOutputResponse
+    {
+        public bool Success { get; set; }
+        public List<string> Outputs { get; set; } = new List<string>();
     }
     
     internal class CommandResponse
