@@ -1849,7 +1849,7 @@ public class PoolService : IPoolService
         }
     }
 
-    private int GetNextAvailableMdDeviceId(string mdstatOutput)
+    private int GetNextAvailableMdDeviceId(string? mdstatOutput)
     {
         if (string.IsNullOrEmpty(mdstatOutput))
         {
@@ -1875,7 +1875,7 @@ public class PoolService : IPoolService
         
         // Find the lowest unused ID
         int nextId = 0;
-        while (usedIds.Contains(nextId)) // Fixed "contains" to "Contains" (C# is case-sensitive)
+        while (usedIds.Contains(nextId))
         {
             nextId++;
         }
@@ -2046,7 +2046,7 @@ public class PoolService : IPoolService
                 foreach (var devicePath in arrayInfo.Devices)
                 {
                     // Find the corresponding block device
-                    var device = blockDevices.FirstOrDefault(d => d.Name == devicePath);
+                    var device = blockDevices?.FirstOrDefault(d => d.Name == devicePath);
                     if (device != null && !string.IsNullOrEmpty(device.Serial))
                     {
                         result[deviceName].Add(device.Serial);

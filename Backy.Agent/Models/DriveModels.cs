@@ -208,3 +208,38 @@ public class ErrorDetail
     [JsonPropertyName("details")]
     public string? Details { get; set; }
 }
+
+// New model for pool operation status tracking
+public class PoolOperationStatus
+{
+    [JsonPropertyName("poolGroupGuid")]
+    public Guid PoolGroupGuid { get; set; }
+    
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "creating";
+    
+    [JsonPropertyName("errorMessage")]
+    public string? ErrorMessage { get; set; }
+    
+    [JsonPropertyName("commandOutputs")]
+    public List<string> CommandOutputs { get; set; } = new();
+    
+    [JsonPropertyName("mdDeviceName")]
+    public string? MdDeviceName { get; set; }
+    
+    [JsonPropertyName("mountPath")]
+    public string? MountPath { get; set; }
+    
+    [JsonPropertyName("createdAt")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    [JsonPropertyName("completedAt")]
+    public DateTime? CompletedAt { get; set; }
+}
+
+// New response model for pool command output
+public class PoolCommandOutputResponse
+{
+    [JsonPropertyName("outputs")]
+    public List<string> Outputs { get; set; } = new();
+}

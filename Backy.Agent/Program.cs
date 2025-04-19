@@ -87,6 +87,10 @@ builder.Services.AddScoped<IDriveInfoService, DriveInfoService>();
 builder.Services.AddMemoryCache(); // Add memory cache for file content caching
 builder.Services.AddSingleton<IMdStatReader, MdStatReader>();
 
+// Register pool operation services for asynchronous pool operations
+builder.Services.AddSingleton<IPoolOperationManager, PoolOperationManager>();
+builder.Services.AddHostedService<PoolOperationCleanupService>();
+
 // Register the background drive monitoring service
 builder.Services.AddSingleton<BackgroundDriveMonitoringService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundDriveMonitoringService>());

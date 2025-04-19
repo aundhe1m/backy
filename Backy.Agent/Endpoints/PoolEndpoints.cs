@@ -43,46 +43,88 @@ Each pool includes the following information:
             return operation;
         });
 
-        // POST /api/v1/pools - Create a new RAID1 pool
-        group.MapPost("/", async ([FromBody] PoolCreationRequestExtended request, IPoolService poolService) =>
+        // POST /api/v1/pools - Create a new RAID1 pool (async)
+        group.MapPost("/", async ([FromBody] PoolCreationRequestExtended request, IPoolOperationManager poolOperationManager) =>
         {
             try
             {
-                var result = await poolService.CreatePoolAsync(request);
-                if (!result.Success)
+                // Basic validation 
+                if (string.IsNullOrWhiteSpace(request.Label))
                 {
                     return Results.BadRequest(new ErrorResponse
                     {
                         Error = new ErrorDetail
                         {
                             Code = "VALIDATION_ERROR",
-                            Message = result.Message
+                            Message = "Pool label is required"
                         }
                     });
                 }
 
-                return Results.Ok(new PoolCreationResponse
+                if (request.DriveSerials == null || !request.DriveSerials.Any())
                 {
-                    Success = true,
-                    PoolGroupGuid = result.PoolGroupGuid,
-                    MountPath = result.MountPath,
-                    Status = "Active",
-                    CommandOutputs = result.Outputs
-                });
+                    return Results.BadRequest(new ErrorResponse
+                    {
+                        Error = new ErrorDetail
+                        {
+                            Code = "VALIDATION_ERROR",
+                            Message = "At least one drive is required to create a pool"
+                        }
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.MountPath))
+                {
+                    return Results.BadRequest(new ErrorResponse
+                    {
+                        Error = new ErrorDetail
+                        {
+                            Code = "VALIDATION_ERROR",
+                            Message = "Mount path is required"
+                        }
+                    });
+                }
+
+                if (!request.MountPath.StartsWith("/"))
+                {
+                    return Results.BadRequest(new ErrorResponse
+                    {
+                        Error = new ErrorDetail
+                        {
+                            Code = "VALIDATION_ERROR",
+                            Message = "Mount path must be absolute"
+                        }
+                    });
+                }
+
+                // Start asynchronous pool creation
+                var poolGroupGuid = await poolOperationManager.StartPoolCreationAsync(request);
+
+                // Return immediate response with the operation ID (poolGroupGuid)
+                return Results.Accepted(
+                    $"/api/v1/pools/{poolGroupGuid}", 
+                    new PoolCreationResponse
+                    {
+                        Success = true,
+                        PoolGroupGuid = poolGroupGuid,
+                        Status = "creating"
+                    });
             }
             catch (Exception ex)
             {
                 return Results.Problem(
                     detail: ex.Message,
-                    title: "Error creating pool",
+                    title: "Error initiating pool creation",
                     statusCode: 500);
             }
         })
         .WithName("CreatePool")
         .WithOpenApi(operation =>
         {
-            operation.Summary = "Create a new RAID1 pool";
+            operation.Summary = "Create a new RAID1 pool (asynchronously)";
             operation.Description = @"Creates a new RAID1 array using the specified drives and mounts it at the provided path.
+This is an asynchronous operation that returns immediately with a status of 'creating'.
+Use the standard pool details endpoint to check the progress and final result.
 
 Example for a single drive with poolGroupGuid:
 ```json
@@ -116,12 +158,13 @@ Notes:
 - The serial numbers must match exactly what is reported by the system
 - driveLabels is a dictionary mapping serial numbers to user-friendly labels
 - mountPath should be an absolute path where the pool will be mounted
-- poolGroupGuid is optional and helps maintain consistent pool identification across system reboots";
+- poolGroupGuid is optional and helps maintain consistent pool identification across system reboots
+- The operation will be completed asynchronously to avoid timeouts";
             return operation;
         });
 
         // GET /api/v1/pools/{poolGroupGuid} - Get pool status and details by GUID
-        group.MapGet("/{poolGroupGuid}", async (Guid poolGroupGuid, IPoolService poolService) =>
+        group.MapGet("/{poolGroupGuid}", async (Guid poolGroupGuid, IPoolService poolService, IPoolOperationManager poolOperationManager) =>
         {
             try
             {
@@ -137,20 +180,71 @@ Notes:
                     });
                 }
 
-                var result = await poolService.GetPoolDetailByGuidAsync(poolGroupGuid);
-                if (!result.Success)
+                // First check if this is a pool that's currently being created or recently completed
+                var operationStatus = await poolOperationManager.GetOperationStatusAsync(poolGroupGuid);
+                if (operationStatus != null)
+                {
+                    // Return simplified pool detail for pools being created
+                    if (operationStatus.Status == "creating")
+                    {
+                        return Results.Ok(new PoolDetailResponse
+                        {
+                            Status = "creating",
+                            MountPath = operationStatus.MountPath ?? string.Empty,
+                            Drives = new List<PoolDriveStatus>()
+                        });
+                    }
+                    else if (operationStatus.Status == "failed")
+                    {
+                        return Results.BadRequest(new ErrorResponse
+                        {
+                            Error = new ErrorDetail
+                            {
+                                Code = "CREATION_FAILED",
+                                Message = operationStatus.ErrorMessage ?? "Pool creation failed",
+                                Details = "Use the pool outputs endpoint to see detailed error information"
+                            }
+                        });
+                    }
+                    else if (operationStatus.Status == "active")
+                    {
+                        // Pool was recently created, let's check if the metadata is available yet
+                        var result = await poolService.GetPoolDetailByGuidAsync(poolGroupGuid);
+                        
+                        if (result.Success)
+                        {
+                            // Metadata is available, return the pool details
+                            return Results.Ok(result.PoolDetail);
+                        }
+                        else
+                        {
+                            // Metadata not available yet, return basic active pool information from operation status
+                            // This prevents the 404 during the small window after physical creation but before metadata is saved
+                            return Results.Ok(new PoolDetailResponse
+                            {
+                                Status = "active",
+                                MountPath = operationStatus.MountPath ?? string.Empty,
+                                Drives = new List<PoolDriveStatus>() // Empty drives list as we don't have metadata yet
+                            });
+                        }
+                    }
+                }
+
+                // If not in creation or creation has completed successfully, get the pool details
+                var detailResult = await poolService.GetPoolDetailByGuidAsync(poolGroupGuid);
+                if (!detailResult.Success)
                 {
                     return Results.NotFound(new ErrorResponse
                     {
                         Error = new ErrorDetail
                         {
                             Code = "NOT_FOUND",
-                            Message = result.Message
+                            Message = detailResult.Message
                         }
                     });
                 }
                 
-                return Results.Ok(result.PoolDetail);
+                return Results.Ok(detailResult.PoolDetail);
             }
             catch (Exception ex)
             {
@@ -167,7 +261,62 @@ Notes:
             operation.Description = @"Returns details about the pool including status, size, usage, and drive information
 using the stable poolGroupGuid identifier.
 
-This endpoint will return a 404 status code if the pool does not exist.";
+This endpoint will return a 404 status code if the pool does not exist.
+
+For pools that are currently being created, this endpoint will return a simplified response with status='creating'.
+For pools that failed creation, this endpoint will return an error response with details about the failure.";
+            return operation;
+        });
+
+        // Add new endpoint: GET /api/v1/pools/{poolGroupGuid}/outputs - Get pool creation outputs
+        group.MapGet("/{poolGroupGuid}/outputs", async (Guid poolGroupGuid, IPoolOperationManager poolOperationManager) =>
+        {
+            try
+            {
+                if (poolGroupGuid == Guid.Empty)
+                {
+                    return Results.BadRequest(new ErrorResponse
+                    {
+                        Error = new ErrorDetail
+                        {
+                            Code = "VALIDATION_ERROR",
+                            Message = "Valid Pool GUID is required"
+                        }
+                    });
+                }
+
+                var outputs = await poolOperationManager.GetOperationOutputsAsync(poolGroupGuid);
+                if (outputs == null)
+                {
+                    return Results.NotFound(new ErrorResponse
+                    {
+                        Error = new ErrorDetail
+                        {
+                            Code = "NOT_FOUND",
+                            Message = $"No operation found for pool GUID {poolGroupGuid}"
+                        }
+                    });
+                }
+
+                return Results.Ok(new PoolCommandOutputResponse
+                {
+                    Outputs = outputs
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(
+                    detail: ex.Message,
+                    title: "Error retrieving pool creation outputs",
+                    statusCode: 500);
+            }
+        })
+        .WithName("GetPoolCreationOutputs")
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Get pool creation command outputs";
+            operation.Description = @"Returns the command outputs from an asynchronous pool creation operation.
+This is useful for debugging and monitoring the progress of the operation.";
             return operation;
         });
 
