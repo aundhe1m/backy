@@ -40,16 +40,16 @@ namespace Backy.Services
     public class AgentAppDriveService : IAppDriveService
     {
         private readonly IBackyAgentClient _agentClient;
-        private readonly ApplicationDbContext _context;
+        private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
         private readonly ILogger<AgentAppDriveService> _logger;
 
         public AgentAppDriveService(
             IBackyAgentClient agentClient,
-            ApplicationDbContext context,
+            IDbContextFactory<ApplicationDbContext> contextFactory,
             ILogger<AgentAppDriveService> logger)
         {
             _agentClient = agentClient ?? throw new ArgumentNullException(nameof(agentClient));
-            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -59,7 +59,8 @@ namespace Backy.Services
         public string FetchPoolStatus(int poolGroupId)
         {
             // Find the pool group GUID based on poolGroupId
-            var poolGroup = _context.PoolGroups.FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
+            using var context = _contextFactory.CreateDbContext();
+            var poolGroup = context.PoolGroups.FirstOrDefault(pg => pg.PoolGroupId == poolGroupId);
             if (poolGroup == null)
             {
                 return "Offline";
@@ -110,7 +111,8 @@ namespace Backy.Services
         /// </summary>
         public async Task<(bool Success, string Message)> ProtectDriveAsync(string serial)
         {
-            var drive = await _context.ProtectedDrives.FirstOrDefaultAsync(d => d.Serial == serial);
+            await using var context = await _contextFactory.CreateDbContextAsync();
+            var drive = await context.ProtectedDrives.FirstOrDefaultAsync(d => d.Serial == serial);
             if (drive == null)
             {
                 // Find the drive in the active drives list
@@ -129,8 +131,8 @@ namespace Backy.Services
                     Name = activeDrive.Name,
                     Label = activeDrive.Label,
                 };
-                _context.ProtectedDrives.Add(drive);
-                await _context.SaveChangesAsync();
+                context.ProtectedDrives.Add(drive);
+                await context.SaveChangesAsync();
                 return (true, "Drive protected successfully.");
             }
             return (false, "Drive is already protected.");
@@ -141,11 +143,12 @@ namespace Backy.Services
         /// </summary>
         public async Task<(bool Success, string Message)> UnprotectDriveAsync(string serial)
         {
-            var drive = await _context.ProtectedDrives.FirstOrDefaultAsync(d => d.Serial == serial);
+            await using var context = await _contextFactory.CreateDbContextAsync();
+            var drive = await context.ProtectedDrives.FirstOrDefaultAsync(d => d.Serial == serial);
             if (drive != null)
             {
-                _context.ProtectedDrives.Remove(drive);
-                await _context.SaveChangesAsync();
+                context.ProtectedDrives.Remove(drive);
+                await context.SaveChangesAsync();
                 return (true, "Drive unprotected successfully.");
             }
             return (false, "Drive not found in protected list.");
@@ -161,8 +164,10 @@ namespace Backy.Services
                 return (false, "Pool Label and at least one drive must be selected.", new List<string>());
             }
 
+            await using var context = await _contextFactory.CreateDbContextAsync();
+            
             // Safety check to prevent operating on protected drives
-            var protectedSerials = _context.ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
+            var protectedSerials = context.ProtectedDrives.Select(pd => pd.Serial).ToHashSet();
             if (request.DriveSerials.Any(s => protectedSerials.Contains(s)))
             {
                 return (false, "One or more selected drives are protected.", new List<string>());
@@ -233,8 +238,8 @@ namespace Backy.Services
                         poolGroup.Drives.Add(poolDrive);
                     }
                     
-                    _context.PoolGroups.Add(poolGroup);
-                    await _context.SaveChangesAsync();
+                    context.PoolGroups.Add(poolGroup);
+                    await context.SaveChangesAsync();
                     
                     return (true, $"Pool '{request.PoolLabel}' creation started.", result.Outputs);
                 }
@@ -259,7 +264,8 @@ namespace Backy.Services
             if (result.Success)
             {
                 // Update the database to reflect that the pool is unmounted
-                var poolGroup = await _context.PoolGroups
+                await using var context = await _contextFactory.CreateDbContextAsync();
+                var poolGroup = await context.PoolGroups
                     .Include(pg => pg.Drives)
                     .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
                     
@@ -271,7 +277,7 @@ namespace Backy.Services
                     }
                     
                     poolGroup.PoolEnabled = false;
-                    await _context.SaveChangesAsync();
+                    await context.SaveChangesAsync();
                 }
                 
                 return (true, "Pool unmounted successfully.");
@@ -285,7 +291,8 @@ namespace Backy.Services
         /// </summary>
         public async Task<(bool Success, string Message)> RemovePoolGroupAsync(Guid poolGroupGuid)
         {
-            var poolGroup = await _context.PoolGroups
+            await using var context = await _contextFactory.CreateDbContextAsync();
+            var poolGroup = await context.PoolGroups
                 .Include(pg => pg.Drives)
                 .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
 
@@ -297,8 +304,8 @@ namespace Backy.Services
             if (!poolGroup.PoolEnabled)
             {
                 // Pool is disabled; remove directly from the database
-                _context.PoolGroups.Remove(poolGroup);
-                await _context.SaveChangesAsync();
+                context.PoolGroups.Remove(poolGroup);
+                await context.SaveChangesAsync();
                 return (true, "Pool group removed successfully.");
             }
             else
@@ -309,8 +316,8 @@ namespace Backy.Services
                 if (result.Success)
                 {
                     // Remove the PoolGroup from the database
-                    _context.PoolGroups.Remove(poolGroup);
-                    await _context.SaveChangesAsync();
+                    context.PoolGroups.Remove(poolGroup);
+                    await context.SaveChangesAsync();
                     return (true, "Pool group removed successfully.");
                 }
                 
@@ -324,7 +331,8 @@ namespace Backy.Services
         public async Task<(bool Success, string Message)> MountPoolAsync(Guid poolGroupGuid)
         {
             // Get the pool group from database to get its GUID
-            var poolGroup = await _context.PoolGroups
+            await using var context = await _contextFactory.CreateDbContextAsync();
+            var poolGroup = await context.PoolGroups
                 .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
                 
             if (poolGroup == null)
@@ -341,7 +349,8 @@ namespace Backy.Services
             if (result.Success)
             {
                 // Update the database to reflect that the pool is mounted
-                poolGroup = await _context.PoolGroups
+                await using var updateContext = await _contextFactory.CreateDbContextAsync();
+                poolGroup = await updateContext.PoolGroups
                     .Include(pg => pg.Drives)
                     .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
                     
@@ -354,7 +363,7 @@ namespace Backy.Services
                     
                     poolGroup.PoolEnabled = true;
                     poolGroup.MountPath = mountPath; // Update the mount path in the database
-                    await _context.SaveChangesAsync();
+                    await updateContext.SaveChangesAsync();
                 }
                 
                 return (true, "Pool mounted successfully.");
@@ -368,7 +377,8 @@ namespace Backy.Services
         /// </summary>
         public async Task<(bool Success, string Message)> RenamePoolGroupAsync(RenamePoolRequest request)
         {
-            var poolGroup = await _context
+            await using var context = await _contextFactory.CreateDbContextAsync();
+            var poolGroup = await context
                 .PoolGroups.Include(pg => pg.Drives)
                 .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == request.PoolGroupGuid);
 
@@ -377,7 +387,7 @@ namespace Backy.Services
                 return (false, "Pool group not found.");
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            using var transaction = await context.Database.BeginTransactionAsync();
 
             try
             {
@@ -394,7 +404,7 @@ namespace Backy.Services
                     }
                 }
 
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
                 return (true, "Pool and drive labels updated successfully.");
@@ -434,7 +444,8 @@ namespace Backy.Services
                     if (poolDetail != null)
                     {
                         // Update the database with the size information
-                        var poolGroup = await _context.PoolGroups
+                        await using var context = await _contextFactory.CreateDbContextAsync();
+                        var poolGroup = await context.PoolGroups
                             .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
                             
                         if (poolGroup != null)
@@ -446,7 +457,7 @@ namespace Backy.Services
                             poolGroup.UsePercent = poolDetail.UsePercent;
                             
                             // Save changes
-                            await _context.SaveChangesAsync();
+                            await context.SaveChangesAsync();
                             
                             _logger.LogInformation("Updated size metrics for pool {PoolGroupGuid}: Size={Size}, Used={Used}, Available={Available}, UsePercent={UsePercent}", 
                                 poolGroupGuid, poolGroup.Size, poolGroup.Used, poolGroup.Available, poolGroup.UsePercent);
@@ -474,11 +485,12 @@ namespace Backy.Services
             if (result.Success)
             {
                 // Update the drive's status in the database
-                var drive = await _context.PoolDrives.FirstOrDefaultAsync(d => d.Id == driveId);
+                await using var context = await _contextFactory.CreateDbContextAsync();
+                var drive = await context.PoolDrives.FirstOrDefaultAsync(d => d.Id == driveId);
                 if (drive != null)
                 {
                     drive.IsMounted = true;
-                    await _context.SaveChangesAsync();
+                    await context.SaveChangesAsync();
                 }
             }
             
@@ -505,10 +517,12 @@ namespace Backy.Services
             
             if (result.Success)
             {
+                await using var context = await _contextFactory.CreateDbContextAsync();
+                
                 if (request.Action.Equals("UnmountPool", StringComparison.OrdinalIgnoreCase))
                 {
                     // Update the database to reflect that the pool is unmounted
-                    var poolGroup = await _context.PoolGroups
+                    var poolGroup = await context.PoolGroups
                         .Include(pg => pg.Drives)
                         .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == request.PoolGroupGuid);
                         
@@ -520,7 +534,7 @@ namespace Backy.Services
                         }
                         
                         poolGroup.PoolEnabled = false;
-                        await _context.SaveChangesAsync();
+                        await context.SaveChangesAsync();
                     }
                     
                     return (true, "Pool unmounted successfully after killing processes.", result.Outputs);
@@ -528,13 +542,13 @@ namespace Backy.Services
                 else if (request.Action.Equals("RemovePoolGroup", StringComparison.OrdinalIgnoreCase))
                 {
                     // Remove the PoolGroup from the database
-                    var poolGroup = await _context.PoolGroups
+                    var poolGroup = await context.PoolGroups
                         .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == request.PoolGroupGuid);
                         
                     if (poolGroup != null)
                     {
-                        _context.PoolGroups.Remove(poolGroup);
-                        await _context.SaveChangesAsync();
+                        context.PoolGroups.Remove(poolGroup);
+                        await context.SaveChangesAsync();
                     }
                     
                     return (true, "Pool group removed successfully after killing processes.", result.Outputs);
@@ -555,7 +569,8 @@ namespace Backy.Services
                 var activeDrives = await _agentClient.GetDrivesAsync();
                 
                 // Get protected drives from the database
-                var protectedDrives = await _context.ProtectedDrives.ToListAsync();
+                await using var context = await _contextFactory.CreateDbContextAsync();
+                var protectedDrives = await context.ProtectedDrives.ToListAsync();
                 var protectedSerials = protectedDrives.Select(d => d.Serial).ToHashSet();
                 
                 // Mark protected drives
@@ -611,7 +626,8 @@ namespace Backy.Services
         {
             try
             {
-                var poolGroup = await _context.PoolGroups.FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
+                await using var context = await _contextFactory.CreateDbContextAsync();
+                var poolGroup = await context.PoolGroups.FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
                 if (poolGroup == null)
                 {
                     _logger.LogWarning($"Pool group with GUID {poolGroupGuid} not found.");
@@ -652,7 +668,7 @@ namespace Backy.Services
                         poolGroup.UsePercent = poolDetail.UsePercent;
                         
                         // Save changes
-                        await _context.SaveChangesAsync();
+                        await context.SaveChangesAsync();
                         
                         _logger.LogInformation("Updated size metrics for pool {PoolGroupGuid}: Size={Size}, Used={Used}, Available={Available}, UsePercent={UsePercent}", 
                             poolGroupGuid, poolGroup.Size, poolGroup.Used, poolGroup.Available, poolGroup.UsePercent);
@@ -706,7 +722,8 @@ namespace Backy.Services
             const int maxDelaySeconds = 30; // Maximum delay in seconds
             
             // Reference to the pool group in the database
-            PoolGroup? poolGroup = await _context.PoolGroups
+            await using var initialContext = await _contextFactory.CreateDbContextAsync();
+            PoolGroup? poolGroup = await initialContext.PoolGroups
                 .Include(pg => pg.Drives)
                 .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
                 
@@ -739,6 +756,20 @@ namespace Backy.Services
                         {
                             _logger.LogInformation("Pool {PoolGroupGuid} has status: {Status}", poolGroupGuid, poolDetail.Status);
                             
+                            // Create a fresh DbContext for each update to avoid tracking issues
+                            await using var updateContext = await _contextFactory.CreateDbContextAsync();
+                            
+                            // Get a fresh reference to the pool group
+                            poolGroup = await updateContext.PoolGroups
+                                .Include(pg => pg.Drives)
+                                .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
+                                
+                            if (poolGroup == null)
+                            {
+                                _logger.LogWarning("Pool group {PoolGroupGuid} not found in database during monitoring", poolGroupGuid);
+                                return null;
+                            }
+                            
                             // Update the database with the latest pool details
                             poolGroup.Size = poolDetail.Size;
                             poolGroup.Used = poolDetail.Used;
@@ -765,7 +796,7 @@ namespace Backy.Services
                                 
                                 // Update pool status
                                 poolGroup.PoolEnabled = string.Equals(poolDetail.Status, "active", StringComparison.OrdinalIgnoreCase);
-                                await _context.SaveChangesAsync();
+                                await updateContext.SaveChangesAsync();
                                 
                                 if (string.Equals(poolDetail.Status, "active", StringComparison.OrdinalIgnoreCase))
                                 {
@@ -780,7 +811,7 @@ namespace Backy.Services
                             }
                             
                             // Save the updated metrics even if we're still in "creating" state
-                            await _context.SaveChangesAsync();
+                            await updateContext.SaveChangesAsync();
                         }
                     }
                     else

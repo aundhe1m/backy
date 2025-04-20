@@ -37,6 +37,18 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddBlazorBootstrap();
 
 // Configure Entity Framework with PostgreSQL
+// Register DbContext factory for concurrent operations
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsqlOptions => npgsqlOptions
+            .EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorCodesToAdd: null)
+    ));
+
+// For backward compatibility, keep the scoped registration too
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 

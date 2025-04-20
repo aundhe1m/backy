@@ -1,5 +1,5 @@
 ﻿@page "/DriveManagement"
-@inject ApplicationDbContext DbContext
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject ILogger<DriveManagement> Logger
 @inject ILoadingService LoadingService
 @inject IAppDriveService AppDriveService
@@ -573,11 +573,12 @@
             Logger.LogInformation("Loading data from database...");
             
             // Load pool groups with their drives
-            PoolGroups = await DbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            PoolGroups = await dbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
             Logger.LogInformation($"Loaded {PoolGroups.Count} pool groups from the database.");
             
             // Load protected drives
-            ProtectedDrives = await DbContext.ProtectedDrives.ToListAsync();
+            ProtectedDrives = await dbContext.ProtectedDrives.ToListAsync();
             Logger.LogInformation($"Loaded {ProtectedDrives.Count} protected drives from the database.");
             
             // Get active drives from drive service with minimal API calls
@@ -645,6 +646,7 @@
 
     /// <summary>
     /// Loads drives and organizes them into new drives, pool groups, and protected drives.
+    /// Updates the database if any changes are detected.
     /// </summary>
     private async Task LoadDrives()
     {
@@ -668,10 +670,11 @@
         var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
         Logger.LogInformation($"Found {activeDrives.Count} active drives.");
 
-        PoolGroups = await DbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
+        await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+        PoolGroups = await dbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
         Logger.LogInformation($"Loaded {PoolGroups.Count} pool groups from the database.");
 
-        ProtectedDrives = await DbContext.ProtectedDrives.ToListAsync();
+        ProtectedDrives = await dbContext.ProtectedDrives.ToListAsync();
         Logger.LogInformation($"Loaded {ProtectedDrives.Count} protected drives from the database.");
 
         bool changesMade = false; // Flag to track if any changes are made
@@ -858,7 +861,7 @@
 
         if (changesMade)
         {
-            await DbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
             Logger.LogInformation("Changes saved to the database.");
         }
     }
@@ -1461,8 +1464,9 @@
         {
             try
             {
-                DbContext.PoolGroups.Remove(poolToRemove);
-                await DbContext.SaveChangesAsync();
+                await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+                dbContext.PoolGroups.Remove(poolToRemove);
+                await dbContext.SaveChangesAsync();
                 ToastService.Notify(new ToastMessage(ToastType.Warning, $"Pool creation '{poolToRemove.GroupLabel}' cancelled."));
             }
             catch (Exception ex)
