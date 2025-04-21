@@ -13,9 +13,9 @@
                 <div class="col d-flex align-items-center" style="padding-left: 0px;">
                     <div>
                         <button class="btn btn-link p-0 me-2 chevron-button theme-icon" @onclick="ToggleDetails" 
-                                disabled="@IsCreating">
+                                disabled="@(IsCreating || IsInCreatingState)">
                             <img src="/icons/chevron-down.svg" alt="Expand Details"
-                                class="chevron-icon @(IsPoolDriveDetailsVisible ? "rotated180" : "nonrotated") @(IsCreating ? "disabled-icon" : "")"
+                                class="chevron-icon @(IsPoolDriveDetailsVisible ? "rotated180" : "nonrotated") @((IsCreating || IsInCreatingState) ? "disabled-icon" : "")"
                                 style="height: 24px;" />
                         </button>
                         <!-- Pool Icon and Group Label -->
@@ -23,7 +23,7 @@
                             class="theme-icon" />
                         <span>@Model.GroupLabel</span>
                         
-                        @if (IsCreating)
+                        @if (IsCreating || IsInCreatingState)
                         {
                             <Spinner Type="SpinnerType.Grow" Size="SpinnerSize.Small" Color="SpinnerColor.Primary" Class="ms-2" />
                             <Badge Color="BadgeColor.Info" Class="ms-2">Creating</Badge>
@@ -37,7 +37,7 @@
                 <!-- Center Section: Size Information or Creation Progress -->
                 <div class="col">
                     <div class="text-center mx-4">
-                        @if (IsCreating)
+                        @if (IsCreating || IsInCreatingState)
                         {
                             <div>Pool creation in progress...</div>
                             <Progress Class="mb-0 mt-1" Height="5">
@@ -57,14 +57,14 @@
                 <div class="col d-inline-flex align-items-center justify-content-end" style="padding-right: 0px;">
                     <!-- Remove Pool Button with Tooltip -->
                     <Tooltip Title="Remove Pool" Color="TooltipColor.Dark" style="padding-left: 12px;">
-                        <button class="btn btn-danger" @onclick="RemovePoolGroup" disabled="@IsCreating">
+                        <button class="btn btn-danger" @onclick="RemovePoolGroup" disabled="@(IsCreating || IsInCreatingState)">
                             <img src="/icons/trash.svg" alt="Remove Pool" style="height: 24px;" class="theme-icon" />
                         </button>
                     </Tooltip>
 
                     <!-- Pool Status Button with Tooltip -->
                     <Tooltip Title="Pool Status" Color="TooltipColor.Dark" style="padding-left: 12px;">
-                        @if (IsCreating || !Model.PoolEnabled)
+                        @if (IsCreating || IsInCreatingState || !Model.PoolEnabled)
                         {
                             <button class="btn btn-info" disabled>
                                 <img src="/icons/heart-pulse.svg" alt="Pool Status" style="height: 24px;"
@@ -82,7 +82,7 @@
 
                     <!-- Mount/Unmount Pool Button with Tooltip -->
                     <Tooltip Title="Mount Pool" Color="TooltipColor.Dark" style="padding-left: 12px;">
-                        @if (IsCreating)
+                        @if (IsCreating || IsInCreatingState)
                         {
                             <button class="btn btn-primary" disabled>
                                 <img src="/icons/play.svg" alt="Creating pool..." style="height: 24px;" class="theme-icon" />
@@ -310,6 +310,11 @@
             return 0;
         }
     }
+
+    /// <summary>
+    /// Determines if the pool is currently in a creating state.
+    /// </summary>
+    private bool IsInCreatingState => !IsCreating && (Model.State == "creating" || Model.PoolStatus == "Creating");
 
     // ---------------------------
     // Lifecycle Methods

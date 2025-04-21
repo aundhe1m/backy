@@ -98,7 +98,8 @@ namespace Backy.Services
                     var existingPoolGuids = existingPools.Select(p => p.PoolGroupGuid).ToHashSet();
                     
                     // Mark pools that don't exist on the system as offline
-                    foreach (var pool in poolGroups)
+                    // Skip pools that are in "creating" state since they might not be in the agent API yet
+                    foreach (var pool in poolGroups.Where(p => p.State != "creating"))
                     {
                         if (!existingPoolGuids.Contains(pool.PoolGroupGuid))
                         {
@@ -191,6 +192,13 @@ namespace Backy.Services
 
                     // Update pool connection status
                     pool.AllDrivesConnected = allConnected;
+
+                    // Skip status update for pools in "creating" state
+                    if (pool.State == "creating")
+                    {
+                        _logger.LogDebug($"Skipping status update for pool {pool.GroupLabel} (GUID: {pool.PoolGroupGuid}) in 'creating' state");
+                        continue;
+                    }
 
                     // Update pool status
                     if (pool.PoolEnabled)

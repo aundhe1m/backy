@@ -38,7 +38,8 @@ namespace Backy.Services
         /// Creates a new pool from the selected drives.
         /// </summary>
         /// <param name="request">The request containing pool information and drive serials.</param>
-        Task<(bool Success, string Message, List<string> Outputs, Guid PoolGroupGuid)> CreatePoolAsync(CreatePoolRequest request);
+        /// <param name="poolGroupGuid">Optional GUID to use for the pool. If not provided, a new GUID will be generated.</param>
+        Task<(bool Success, string Message, List<string> Outputs, Guid PoolGroupGuid)> CreatePoolAsync(CreatePoolRequest request, Guid poolGroupGuid = default);
         
         /// <summary>
         /// Gets detailed information about a specific pool.
@@ -260,7 +261,7 @@ namespace Backy.Services
         /// <summary>
         /// Creates a new pool from the selected drives.
         /// </summary>
-        public async Task<(bool Success, string Message, List<string> Outputs, Guid PoolGroupGuid)> CreatePoolAsync(CreatePoolRequest request)
+        public async Task<(bool Success, string Message, List<string> Outputs, Guid PoolGroupGuid)> CreatePoolAsync(CreatePoolRequest request, Guid poolGroupGuid = default)
         {
             if (request == null)
             {
@@ -288,14 +289,14 @@ namespace Backy.Services
                     Label = request.PoolLabel,
                     DriveSerials = request.DriveSerials,
                     DriveLabels = request.DriveLabels ?? new Dictionary<string, string>(),
-                    PoolGroupGuid = Guid.NewGuid() // Generate a new GUID for this pool
+                    PoolGroupGuid = poolGroupGuid != Guid.Empty ? poolGroupGuid : Guid.NewGuid() // Use provided GUID or generate a new one
                 };
                 
                 // Set the mount path using the poolGroupGuid as requested
                 agentRequest.MountPath = $"/mnt/backy/{agentRequest.PoolGroupGuid}";
                 
-                _logger.LogDebug("Sending pool creation request to agent with MountPath: {MountPath}", 
-                    agentRequest.MountPath);
+                _logger.LogDebug("Sending pool creation request to agent with MountPath: {MountPath} and PoolGroupGuid: {PoolGroupGuid}", 
+                    agentRequest.MountPath, agentRequest.PoolGroupGuid);
                 
                 var response = await _httpClient.PostAsJsonAsync("/api/v1/pools", agentRequest, _jsonOptions);
                 

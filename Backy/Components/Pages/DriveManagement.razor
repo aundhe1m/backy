@@ -1128,13 +1128,13 @@
     }
 
     /// <summary>
-    /// Starts the asynchronous pool creation process by calling the API and creating an in-memory pool representation.
+    /// Starts the asynchronous pool creation process by calling the API and returning the pool group GUID.
     /// </summary>
     /// <param name="request">The create pool request.</param>
     /// <returns>A tuple with success status, message, command outputs, and the pool group GUID.</returns>
     private async Task<(bool Success, string Message, List<string> Outputs, Guid PoolGroupGuid)> StartPoolCreationAsync(CreatePoolRequest request)
     {
-        // Call the API to start pool creation
+        // Call the API to start pool creation - this will create a database entry first
         var (success, message, outputs) = await AppDriveService.CreatePoolAsync(request);
         
         if (!success)
@@ -1144,81 +1144,26 @@
         
         try
         {
-            // Get the active drives information for use in creating the in-memory pool record
-            var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
-            
             // Extract the pool GUID from the successful API response
             string guidPattern = @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
             var match = System.Text.RegularExpressions.Regex.Match(message, guidPattern);
-            Guid poolGroupGuid = match.Success ? Guid.Parse(match.Value) : Guid.NewGuid();
+            Guid poolGroupGuid = match.Success ? Guid.Parse(match.Value) : Guid.Empty;
             
-            // Create an in-memory representation of the pool that's being created
-            var creatingPool = new PoolGroup
+            if (poolGroupGuid == Guid.Empty)
             {
-                PoolGroupGuid = poolGroupGuid,
-                GroupLabel = request.PoolLabel,
-                MountPath = $"/mnt/backy/{poolGroupGuid}",
-                PoolEnabled = false,
-                PoolStatus = "creating",
-                Size = 0,
-                Used = 0,
-                Available = 0,
-                UsePercent = "0%",
-                AllDrivesConnected = true,
-                Drives = new List<PoolDrive>()
-            };
-            
-            // Add drives to the in-memory pool group
-            foreach (var serial in request.DriveSerials)
-            {
-                var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == serial);
-                if (activeDrive == null)
-                {
-                    Logger.LogWarning($"Could not find active drive with serial {serial}");
-                    continue;
-                }
-                
-                // Determine the label for this drive
-                string label;
-                if (request.DriveLabels != null && request.DriveLabels.TryGetValue(serial, out var providedLabel) && !string.IsNullOrWhiteSpace(providedLabel))
-                {
-                    label = providedLabel.Trim();
-                }
-                else
-                {
-                    // Assign a default label
-                    var driveIndex = request.DriveSerials.IndexOf(serial) + 1;
-                    label = $"{request.PoolLabel}-{driveIndex}";
-                }
-                
-                var poolDrive = new PoolDrive
-                {
-                    Serial = serial,
-                    Label = label,
-                    Vendor = activeDrive.Vendor,
-                    Model = activeDrive.Model,
-                    Size = activeDrive.Size,
-                    IsConnected = true,
-                    IsMounted = false,
-                    DevPath = activeDrive.IdLink,
-                    PoolGroupGuid = poolGroupGuid,
-                    PoolGroup = creatingPool
-                };
-                
-                creatingPool.Drives.Add(poolDrive);
+                Logger.LogError("Failed to extract pool group GUID from message: {Message}", message);
+                return (false, "Failed to extract pool group GUID from response", outputs, Guid.Empty);
             }
             
-            // Add the creating pool to our in-memory list
-            CreatingPoolsList.Add(creatingPool);
-            
-            // Force state update to show the new pool in the UI
-            await InvokeAsync(StateHasChanged);
+            // No need to create an in-memory representation anymore as we already created the database entry
+            // Just reload data to refresh the UI with the new database entries
+            await LoadDataFromDatabase();
             
             return (true, message, outputs, poolGroupGuid);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error creating in-memory pool representation");
+            Logger.LogError(ex, "Error processing pool creation response");
             return (false, $"Error setting up pool creation: {ex.Message}", outputs, Guid.Empty);
         }
     }
