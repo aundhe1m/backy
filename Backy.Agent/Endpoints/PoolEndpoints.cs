@@ -107,7 +107,7 @@ Each pool includes the following information:
                     {
                         Success = true,
                         PoolGroupGuid = poolGroupGuid,
-                        Status = "creating"
+                        State = "creating"
                     });
             }
             catch (Exception ex)
@@ -185,16 +185,16 @@ Notes:
                 if (operationStatus != null)
                 {
                     // Return simplified pool detail for pools being created
-                    if (operationStatus.Status == "creating")
+                    if (operationStatus.State == "creating")
                     {
                         return Results.Ok(new PoolDetailResponse
                         {
-                            Status = "creating",
+                            State = "creating",
                             MountPath = operationStatus.MountPath ?? string.Empty,
                             Drives = new List<PoolDriveStatus>()
                         });
                     }
-                    else if (operationStatus.Status == "failed")
+                    else if (operationStatus.State == "failed")
                     {
                         return Results.BadRequest(new ErrorResponse
                         {
@@ -206,7 +206,7 @@ Notes:
                             }
                         });
                     }
-                    else if (operationStatus.Status == "active")
+                    else if (operationStatus.State == "ready")
                     {
                         // Pool was recently created, let's check if the metadata is available yet
                         var result = await poolService.GetPoolDetailByGuidAsync(poolGroupGuid);
@@ -218,11 +218,11 @@ Notes:
                         }
                         else
                         {
-                            // Metadata not available yet, return basic active pool information from operation status
+                            // Metadata not available yet, return basic ready pool information from operation status
                             // This prevents the 404 during the small window after physical creation but before metadata is saved
                             return Results.Ok(new PoolDetailResponse
                             {
-                                Status = "active",
+                                State = "ready",
                                 MountPath = operationStatus.MountPath ?? string.Empty,
                                 Drives = new List<PoolDriveStatus>() // Empty drives list as we don't have metadata yet
                             });

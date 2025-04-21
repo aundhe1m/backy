@@ -112,8 +112,8 @@ public class PoolCreationResponse
     [JsonPropertyName("mountPath")]
     public string? MountPath { get; set; }
     
-    [JsonPropertyName("status")]
-    public string? Status { get; set; }
+    [JsonPropertyName("state")]
+    public string? State { get; set; }
     
     [JsonPropertyName("commandOutputs")]
     public List<string> CommandOutputs { get; set; } = new();
@@ -121,8 +121,11 @@ public class PoolCreationResponse
 
 public class PoolDetailResponse
 {
-    [JsonPropertyName("status")]
-    public string Status { get; set; } = string.Empty;
+    [JsonPropertyName("state")]
+    public string State { get; set; } = string.Empty;
+    
+    [JsonPropertyName("poolStatus")]
+    public string? PoolStatus { get; set; }
     
     [JsonPropertyName("size")]
     public long Size { get; set; }
@@ -147,6 +150,9 @@ public class PoolDetailResponse
     
     [JsonPropertyName("drives")]
     public List<PoolDriveStatus> Drives { get; set; } = new();
+    
+    [JsonPropertyName("errorMessage")]
+    public string? ErrorMessage { get; set; }
 }
 
 public class PoolDriveStatus
@@ -215,8 +221,8 @@ public class PoolOperationStatus
     [JsonPropertyName("poolGroupGuid")]
     public Guid PoolGroupGuid { get; set; }
     
-    [JsonPropertyName("status")]
-    public string Status { get; set; } = "creating";
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "creating";
     
     [JsonPropertyName("errorMessage")]
     public string? ErrorMessage { get; set; }

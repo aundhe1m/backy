@@ -644,8 +644,8 @@ public class PoolService : IPoolService
             if (arrayInfo == null)
             {
                 // If MdStatReader doesn't find the array, fall back to mdadm command
-                var mdadmDetail = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDeviceName}");
-                if (!mdadmDetail.Success)
+                var mdadmDetailCheck = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDeviceName}");
+                if (!mdadmDetailCheck.Success)
                 {
                     return (false, $"Pool '{mdDeviceName}' not found", new PoolDetailResponse());
                 }
@@ -653,28 +653,23 @@ public class PoolService : IPoolService
             
             var response = new PoolDetailResponse();
             
-            // Get pool status from array info or fall back to DriveService
-            if (arrayInfo != null)
+            // Set initial state based on basic availability
+            response.State = "ready";
+            
+            // Get the detailed mdadm information to extract the exact state
+            var mdadmDetail = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDeviceName}");
+            if (mdadmDetail.Success)
             {
-                response.Status = arrayInfo.IsActive ? "active" : "inactive";
+                var output = CleanCommandOutput(mdadmDetail.Output ?? string.Empty);
                 
-                // Add resync information if available
-                if (arrayInfo.ResyncInProgress)
-                {
-                    response.ResyncPercentage = arrayInfo.ResyncPercentage;
-                    response.ResyncTimeEstimate = arrayInfo.ResyncTimeEstimate;
+                // Extract the State line directly from mdadm output
+                var stateMatch = System.Text.RegularExpressions.Regex.Match(output, @"State\s*:\s*(.+)$", 
+                    System.Text.RegularExpressions.RegexOptions.Multiline);
                     
-                    // Update status to indicate resync
-                    if (response.Status == "active")
-                    {
-                        response.Status = "resync";
-                    }
+                if (stateMatch.Success)
+                {
+                    response.PoolStatus = stateMatch.Groups[1].Value.Trim();
                 }
-            }
-            else
-            {
-                // Fall back to using DriveService
-                response.Status = await _driveService.GetPoolStatusAsync(mdDeviceName);
             }
             
             // Find mount point for pool
@@ -695,6 +690,11 @@ public class PoolService : IPoolService
                     response.Available = sizeInfo.Available;
                     response.UsePercent = sizeInfo.UsePercent;
                 }
+            }
+            else
+            {
+                // Not mounted, update state
+                response.State = "unmounted";
             }
             
             // Get component drive information
@@ -740,8 +740,8 @@ public class PoolService : IPoolService
             else
             {
                 // Fall back to parsing mdadm output
-                var mdadmDetail = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDeviceName}");
-                var lines = CleanCommandOutput(mdadmDetail.Output ?? string.Empty).Split('\n');
+                var mdadmDriveInfo = await _commandService.ExecuteCommandAsync($"mdadm --detail /dev/{mdDeviceName}");
+                var lines = CleanCommandOutput(mdadmDriveInfo.Output ?? string.Empty).Split('\n');
                 
                 foreach (var line in lines)
                 {
@@ -784,7 +784,7 @@ public class PoolService : IPoolService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting pool details for {MdDeviceName}", mdDeviceName);
-            return (false, $"Error retrieving pool details: {ex.Message}", new PoolDetailResponse { Status = "Error" });
+            return (false, $"Error retrieving pool details: {ex.Message}", new PoolDetailResponse { State = "error", ErrorMessage = ex.Message });
         }
     }
 
@@ -805,10 +805,19 @@ public class PoolService : IPoolService
             // Get metadata for this pool
             var metadata = await GetPoolMetadataByGuidAsync(poolGroupGuid);
             
-            var response = new PoolDetailResponse
+            var response = new PoolDetailResponse();
+            
+            // Set state and poolStatus based on array info
+            if (arrayInfo.IsActive)
             {
-                Status = arrayInfo.IsActive ? "active" : "inactive"
-            };
+                response.State = "ready";
+                response.PoolStatus = "active";
+            }
+            else
+            {
+                response.State = "unmounted";
+                response.PoolStatus = "inactive";
+            }
             
             // Add resync information if available
             if (arrayInfo.ResyncInProgress)
@@ -816,10 +825,10 @@ public class PoolService : IPoolService
                 response.ResyncPercentage = arrayInfo.ResyncPercentage;
                 response.ResyncTimeEstimate = arrayInfo.ResyncTimeEstimate;
                 
-                // Update status to indicate resync
-                if (response.Status == "active")
+                // Update poolStatus to indicate resync, but keep state as "ready"
+                if (response.PoolStatus == "active")
                 {
-                    response.Status = "resync";
+                    response.PoolStatus = "resync";
                 }
             }
 
@@ -837,6 +846,11 @@ public class PoolService : IPoolService
                 response.Used = sizeInfo.Used;
                 response.Available = sizeInfo.Available;
                 response.UsePercent = sizeInfo.UsePercent;
+            }
+            else
+            {
+                // Not mounted, make sure state reflects this
+                response.State = "unmounted";
             }
             
             // Get all drives in the system for looking up by name and by serial
@@ -980,7 +994,7 @@ public class PoolService : IPoolService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting pool details by GUID {PoolGroupGuid}", poolGroupGuid);
-            return (false, $"Error retrieving pool details: {ex.Message}", new PoolDetailResponse { Status = "Error" });
+            return (false, $"Error retrieving pool details: {ex.Message}", new PoolDetailResponse { State = "error", ErrorMessage = ex.Message });
         }
     }
 

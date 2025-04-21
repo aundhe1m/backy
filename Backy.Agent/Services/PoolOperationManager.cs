@@ -36,6 +36,11 @@ public interface IPoolOperationManager
     /// Clean up old operation statuses
     /// </summary>
     Task CleanupOldOperationsAsync(TimeSpan olderThan);
+    
+    /// <summary>
+    /// Clean up failed operations to avoid persisting error states
+    /// </summary>
+    Task CleanupFailedOperationsAsync();
 }
 
 public class PoolOperationManager : IPoolOperationManager
@@ -90,7 +95,7 @@ public class PoolOperationManager : IPoolOperationManager
         var status = new PoolOperationStatus
         {
             PoolGroupGuid = poolGroupGuid,
-            Status = "creating",
+            State = "creating",
             MountPath = request.MountPath
         };
         
@@ -145,8 +150,8 @@ public class PoolOperationManager : IPoolOperationManager
                             // Wait for metadata to be available
                             await EnsureMetadataIsAccessibleAsync(poolService, poolGroupGuid);
                             
-                            // Now that we've confirmed metadata is accessible, mark as active
-                            currentStatus.Status = "active";
+                            // Now that we've confirmed metadata is accessible, mark as ready
+                            currentStatus.State = "ready";
                             currentStatus.CompletedAt = DateTime.UtcNow;
                         }
                         
@@ -156,7 +161,7 @@ public class PoolOperationManager : IPoolOperationManager
                     {
                         if (_operationStatus.TryGetValue(poolGroupGuid, out var currentStatus))
                         {
-                            currentStatus.Status = "failed";
+                            currentStatus.State = "failed";
                             currentStatus.ErrorMessage = result.Message;
                             currentStatus.CommandOutputs = result.Outputs;
                             currentStatus.CompletedAt = DateTime.UtcNow;
@@ -164,6 +169,16 @@ public class PoolOperationManager : IPoolOperationManager
                         
                         _logger.LogError("Failed to create pool {PoolGroupGuid}: {ErrorMessage}", 
                             poolGroupGuid, result.Message);
+                            
+                        // Immediately schedule cleanup of this failed operation
+                        _ = Task.Run(async () => 
+                        {
+                            // Allow some time for client to retrieve error details
+                            await Task.Delay(TimeSpan.FromMinutes(5));
+                            
+                            // Clean up the failed operation
+                            await CleanupFailedOperationsAsync();
+                        });
                     }
                 }
                 catch (Exception ex)
@@ -171,12 +186,22 @@ public class PoolOperationManager : IPoolOperationManager
                     // Handle any exceptions during pool creation
                     if (_operationStatus.TryGetValue(poolGroupGuid, out var currentStatus))
                     {
-                        currentStatus.Status = "failed";
+                        currentStatus.State = "failed";
                         currentStatus.ErrorMessage = $"Error creating pool: {ex.Message}";
                         currentStatus.CompletedAt = DateTime.UtcNow;
                     }
                     
                     _logger.LogError(ex, "Error creating pool {PoolGroupGuid}", poolGroupGuid);
+                    
+                    // Immediately schedule cleanup of this failed operation
+                    _ = Task.Run(async () => 
+                    {
+                        // Allow some time for client to retrieve error details
+                        await Task.Delay(TimeSpan.FromMinutes(5));
+                        
+                        // Clean up the failed operation
+                        await CleanupFailedOperationsAsync();
+                    });
                 }
             }
         });
@@ -245,5 +270,30 @@ public class PoolOperationManager : IPoolOperationManager
         }
         
         return Task.CompletedTask;
+    }
+
+    public async Task CleanupFailedOperationsAsync()
+    {
+        try
+        {
+            // Find all failed operations
+            var keysToRemove = _operationStatus
+                .Where(kv => kv.Value.State == "failed")
+                .Select(kv => kv.Key)
+                .ToList();
+            
+            // Remove them from the dictionary
+            foreach (var key in keysToRemove)
+            {
+                _operationStatus.TryRemove(key, out _);
+                _logger.LogInformation("Cleaned up failed operation status for pool {PoolGroupGuid}", key);
+            }
+            
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cleaning up failed pool operations");
+        }
     }
 }

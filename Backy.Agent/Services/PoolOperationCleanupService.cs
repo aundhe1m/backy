@@ -39,6 +39,11 @@ public class PoolOperationCleanupService : BackgroundService
                 using (var scope = _serviceProvider.CreateScope())
                 {
                     var poolOperationManager = scope.ServiceProvider.GetRequiredService<IPoolOperationManager>();
+                    
+                    // Clean up failed operations immediately
+                    await poolOperationManager.CleanupFailedOperationsAsync();
+                    
+                    // Clean up old operations based on retention period
                     await poolOperationManager.CleanupOldOperationsAsync(_operationRetentionPeriod);
                 }
             }
