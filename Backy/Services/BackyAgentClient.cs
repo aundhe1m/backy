@@ -667,7 +667,7 @@ namespace Backy.Services
             try
             {
                 // Make a GET request to the new endpoint for pool outputs
-                var response = await _httpClient.GetAsync($"/api/v1/pools/{poolGroupGuid}/output");
+                var response = await _httpClient.GetAsync($"/api/v1/pools/{poolGroupGuid}/outputs");
                 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {

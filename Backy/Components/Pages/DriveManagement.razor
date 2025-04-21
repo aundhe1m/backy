@@ -84,18 +84,36 @@
 <div class="drive-management-container">
     <h2 class="section-title">Pool Groups</h2>
 
-    @if (FilteredPoolGroups != null && FilteredPoolGroups.Any())
+    @if ((FilteredPoolGroups != null && FilteredPoolGroups.Any()) || CreatingPoolsList.Any())
     {
         <div class="row">
+            @foreach (var creatingPool in CreatingPoolsList)
+            {
+                <div class="col-md-12">
+                    <PoolGroupDriveCard @key="creatingPool.PoolGroupGuid" 
+                                       Model="@creatingPool" 
+                                       IsCreating="true"
+                                       OnCreationComplete="@HandlePoolCreationComplete" />
+                </div>
+            }
+            
             @foreach (var pool in FilteredPoolGroups)
             {
                 <div class="col-md-12">
-                    <PoolGroupDriveCard @key="pool.PoolGroupId" Model="@pool" OnUnmountPool="@UnmountPool"
-                        OnRemovePoolGroup="@RemovePoolGroup" OnMountPool="@MountPool" OnRenamePoolGroup="@RenamePoolGroup"
-                        OnForceAddDrive="@ForceAddDrive" />
+                    <PoolGroupDriveCard @key="pool.PoolGroupId" Model="@pool" 
+                                      OnUnmountPool="@UnmountPool"
+                                      OnRemovePoolGroup="@RemovePoolGroup" 
+                                      OnMountPool="@MountPool" 
+                                      OnRenamePoolGroup="@RenamePoolGroup"
+                                      OnForceAddDrive="@ForceAddDrive"
+                                      IsNew="@NewlyCreatedPoolGuids.Contains(pool.PoolGroupGuid)" />
                 </div>
             }
         </div>
+    }
+    else
+    {
+        <p>No pool groups found.</p>
     }
 </div>
 
@@ -113,23 +131,9 @@
             }
         </div>
     }
-</div>
-
-<!-- Creating Pools Section -->
-<div class="drive-management-container">
-    <h2 class="section-title">Creating Pools</h2>
-    @if (CreatingPools != null && CreatingPools.Any())
+    else
     {
-        <div class="row">
-            @foreach (var pool in CreatingPools)
-            {
-                <div class="col-md-12">
-                    <CreatingPoolCard @key="pool.PoolGroupGuid" Model="@pool" 
-                                     OnCreationComplete="@HandlePoolCreationComplete"
-                                     OnCancelCreation="@HandlePoolCreationCancel" />
-                </div>
-            }
-        </div>
+        <p>No protected drives found.</p>
     }
 </div>
 
@@ -383,6 +387,42 @@
     </FooterTemplate>
 </Modal>
 
+<!-- Pool Creation Logs Modal -->
+<Modal @ref="poolLogsModal" Title="Pool Creation Logs" Size="ModalSize.Large">
+    <BodyTemplate>
+        @if (IsLoadingPoolLogs)
+        {
+            <div class="text-center my-3">
+                <Spinner Type="SpinnerType.Grow" Color="SpinnerColor.Primary" />
+                <p class="mt-2">Loading pool creation logs...</p>
+            </div>
+        }
+        else if (PoolLogOutputs.Any())
+        {
+            <div class="console-output" style="max-height: 500px; overflow-y: auto;">
+                <pre>@string.Join("\n", PoolLogOutputs)</pre>
+            </div>
+        }
+        else
+        {
+            <Alert Color="AlertColor.Warning">
+                <span style="display: flex;">
+                    <img src="/icons/exclamation-triangle-fill-yellow.svg" alt="Warning Icon"
+                        style="height: 24px; margin-right: 8px;" />
+                    <h5 style="margin: 0;">No Logs Available</h5>
+                </span>
+                <hr style="border: 1px solid gray; margin-top: 8px; margin-bottom: 8px;" />
+                <div>
+                    No creation logs available for this pool.
+                </div>
+            </Alert>
+        }
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="ClosePoolLogsModal">Close</Button>
+    </FooterTemplate>
+</Modal>
+
 @code {
     // ---------------------------
     // Properties
@@ -420,6 +460,7 @@
     private Modal createPoolModal = default!;
     private Modal renamePoolModal = default!;
     private Modal processListModal = default!;
+    private Modal poolLogsModal = default!;
     private List<ProcessInfo>? ProcessList { get; set; } = null;
     private Guid? currentPoolGroupGuidForUnmount = null;
 
@@ -434,6 +475,14 @@
 
     // Search Query
     private string searchQuery = string.Empty;
+
+    // Pool Logs State
+    private bool IsLoadingPoolLogs { get; set; } = false;
+    private List<string> PoolLogOutputs { get; set; } = new List<string>();
+
+    // Creating pool in-memory states
+    private List<PoolGroup> CreatingPoolsList { get; set; } = new List<PoolGroup>();
+    private HashSet<Guid> NewlyCreatedPoolGuids { get; set; } = new HashSet<Guid>();
 
     // ---------------------------
     // Helper Methods
@@ -883,19 +932,19 @@
             if (result.Success)
             {
                 Logger.LogInformation($"Drive {serial} protected successfully.");
-                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
+                ToastService.Notify(new ToastMessage(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
             else
             {
                 Logger.LogWarning($"Failed to protect drive {serial}: {result.Message}");
-                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
+                ToastService.Notify(new ToastMessage(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error protecting drive.");
-            ToastService.Notify(new(ToastType.Warning, $"Error: {ex.Message}"));
+            ToastService.Notify(new ToastMessage(ToastType.Warning, $"Error: {ex.Message}"));
         }
     }
 
@@ -912,19 +961,19 @@
             if (result.Success)
             {
                 Logger.LogInformation($"Drive {serial} unprotected successfully.");
-                ToastService.Notify(new(ToastType.Success, $"{result.Message}"));
+                ToastService.Notify(new ToastMessage(ToastType.Success, $"{result.Message}"));
                 await LoadDrives();
             }
             else
             {
                 Logger.LogWarning($"Failed to unprotect drive {serial}: {result.Message}");
-                ToastService.Notify(new(ToastType.Warning, $"{result.Message}"));
+                ToastService.Notify(new ToastMessage(ToastType.Warning, $"{result.Message}"));
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error unprotecting drive.");
-            ToastService.Notify(new(ToastType.Warning, $"Error: {ex.Message}"));
+            ToastService.Notify(new ToastMessage(ToastType.Warning, $"Error: {ex.Message}"));
         }
     }
 
@@ -955,7 +1004,7 @@
         else
         {
             Logger.LogWarning($"Drive {serial} not found.");
-            ToastService.Notify(new(ToastType.Danger, $"Drive {serial} not found."));
+            ToastService.Notify(new ToastMessage(ToastType.Danger, $"Drive {serial} not found."));
         }
     }
 
@@ -1040,22 +1089,32 @@
         try
         {
             IsPoolCreationInProgress = true;
-            CommandOutputs.Clear();
-            CreatePoolResultMessage = null;
-            CreatePoolResultSuccess = null;
-
-            var (success, message, outputs) = await AppDriveService.CreatePoolAsync(CreatePoolRequest);
-            CommandOutputs.AddRange(outputs);
-            CreatePoolResultMessage = $"{message}";
+            
+            // Call the API to start pool creation asynchronously
+            var (success, message, outputs, poolGroupGuid) = await StartPoolCreationAsync(CreatePoolRequest);
+            
             if (success)
             {
-                Logger.LogInformation($"Pool created successfully: {message}");
-                CreatePoolResultSuccess = true;
+                Logger.LogInformation($"Pool creation started: {message}, GUID: {poolGroupGuid}");
+                
+                // Close the modal immediately to improve user experience
+                await CloseCreatePoolModal();
+                
+                // Show a notification that the pool creation has started
+                ToastService.Notify(new ToastMessage(
+                    ToastType.Info, 
+                    $"Pool '{CreatePoolRequest.PoolLabel}' creation started. You can continue working while the pool is being created."
+                ));
             }
             else
             {
-                Logger.LogWarning($"Pool creation failed: {message}");
+                // Display error when pool creation fails to start
+                Logger.LogWarning($"Pool creation failed to start: {message}");
+                CommandOutputs.AddRange(outputs);
+                CreatePoolResultMessage = $"{message}";
                 CreatePoolResultSuccess = false;
+                IsPoolCreationInProgress = false;
+                StateHasChanged();
             }
         }
         catch (Exception ex)
@@ -1063,11 +1122,104 @@
             Logger.LogError(ex, "Error creating pool.");
             CreatePoolResultSuccess = false;
             CreatePoolResultMessage = $"{ex.Message}";
-        }
-        finally
-        {
             IsPoolCreationInProgress = false;
             StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Starts the asynchronous pool creation process by calling the API and creating an in-memory pool representation.
+    /// </summary>
+    /// <param name="request">The create pool request.</param>
+    /// <returns>A tuple with success status, message, command outputs, and the pool group GUID.</returns>
+    private async Task<(bool Success, string Message, List<string> Outputs, Guid PoolGroupGuid)> StartPoolCreationAsync(CreatePoolRequest request)
+    {
+        // Call the API to start pool creation
+        var (success, message, outputs) = await AppDriveService.CreatePoolAsync(request);
+        
+        if (!success)
+        {
+            return (false, message, outputs, Guid.Empty);
+        }
+        
+        try
+        {
+            // Get the active drives information for use in creating the in-memory pool record
+            var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
+            
+            // Extract the pool GUID from the successful API response
+            string guidPattern = @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+            var match = System.Text.RegularExpressions.Regex.Match(message, guidPattern);
+            Guid poolGroupGuid = match.Success ? Guid.Parse(match.Value) : Guid.NewGuid();
+            
+            // Create an in-memory representation of the pool that's being created
+            var creatingPool = new PoolGroup
+            {
+                PoolGroupGuid = poolGroupGuid,
+                GroupLabel = request.PoolLabel,
+                MountPath = $"/mnt/backy/{poolGroupGuid}",
+                PoolEnabled = false,
+                PoolStatus = "creating",
+                Size = 0,
+                Used = 0,
+                Available = 0,
+                UsePercent = "0%",
+                AllDrivesConnected = true,
+                Drives = new List<PoolDrive>()
+            };
+            
+            // Add drives to the in-memory pool group
+            foreach (var serial in request.DriveSerials)
+            {
+                var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == serial);
+                if (activeDrive == null)
+                {
+                    Logger.LogWarning($"Could not find active drive with serial {serial}");
+                    continue;
+                }
+                
+                // Determine the label for this drive
+                string label;
+                if (request.DriveLabels != null && request.DriveLabels.TryGetValue(serial, out var providedLabel) && !string.IsNullOrWhiteSpace(providedLabel))
+                {
+                    label = providedLabel.Trim();
+                }
+                else
+                {
+                    // Assign a default label
+                    var driveIndex = request.DriveSerials.IndexOf(serial) + 1;
+                    label = $"{request.PoolLabel}-{driveIndex}";
+                }
+                
+                var poolDrive = new PoolDrive
+                {
+                    Serial = serial,
+                    Label = label,
+                    Vendor = activeDrive.Vendor,
+                    Model = activeDrive.Model,
+                    Size = activeDrive.Size,
+                    IsConnected = true,
+                    IsMounted = false,
+                    DevPath = activeDrive.IdLink,
+                    PoolGroupGuid = poolGroupGuid,
+                    PoolGroup = creatingPool
+                };
+                
+                creatingPool.Drives.Add(poolDrive);
+            }
+            
+            // Add the creating pool to our in-memory list
+            CreatingPoolsList.Add(creatingPool);
+            
+            // Force state update to show the new pool in the UI
+            await InvokeAsync(StateHasChanged);
+            
+            return (true, message, outputs, poolGroupGuid);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating in-memory pool representation");
+            return (false, $"Error setting up pool creation: {ex.Message}", outputs, Guid.Empty);
         }
     }
 
@@ -1440,46 +1592,109 @@
     private async Task HandlePoolCreationComplete(Guid poolGroupGuid)
     {
         Logger.LogInformation("Pool creation completed for pool with GUID: {PoolGroupGuid}", poolGroupGuid);
-        
-        // No need to show a toast notification as the CreatingPoolCard already shows one
-        
-        // Refresh the drives and pools
-        await LoadDrives();
+
+        try
+        {
+            // Find the pool in our in-memory list
+            var creatingPool = CreatingPoolsList.FirstOrDefault(p => p.PoolGroupGuid == poolGroupGuid);
+            if (creatingPool != null)
+            {
+                // Remove it from the creating pools list
+                CreatingPoolsList.Remove(creatingPool);
+            }
+            
+            // Refresh the drives to load the newly created pool from the database
+            await LoadDrives();
+            
+            // Mark this pool as newly created to show the "New!" badge
+            NewlyCreatedPoolGuids.Add(poolGroupGuid);
+            
+            // Find the pool in the database
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            var pool = await dbContext.PoolGroups
+                .FirstOrDefaultAsync(p => p.PoolGroupGuid == poolGroupGuid);
+                
+            if (pool != null)
+            {
+                var toastType = pool.PoolStatus == "active" ? ToastType.Success : ToastType.Danger;
+                var title = pool.PoolStatus == "active" ? "Pool Created Successfully" : "Pool Creation Failed";
+                var message = $"Pool '{pool.GroupLabel}' {(pool.PoolStatus == "active" ? "has been created." : "creation failed.")}";
+                
+                // Show a toast notification for logs viewing
+                ToastService.Notify(new ToastMessage(
+                    ToastType.Info, 
+                    $"Click here to view creation logs for '{pool.GroupLabel}'")); 
+                
+                // Show the success/failure toast
+                ToastService.Notify(new ToastMessage(toastType, message, title));
+                
+                // Automatically open logs modal
+                await ViewPoolLogs(poolGroupGuid);
+            }
+            else
+            {
+                Logger.LogWarning("Pool creation completed but pool not found in database: {PoolGroupGuid}", poolGroupGuid);
+                ToastService.Notify(new ToastMessage(ToastType.Warning, "Pool creation completed but pool not found in database."));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling pool creation completion for {PoolGroupGuid}", poolGroupGuid);
+            ToastService.Notify(new ToastMessage(ToastType.Danger, $"Error: {ex.Message}"));
+        }
         
         // Force state update
         await InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
-    /// Handles the cancellation of a pool creation operation.
+    /// Loads and displays the creation logs for a specific pool.
     /// </summary>
-    /// <param name="poolGroupGuid">The GUID of the cancelled pool.</param>
-    private async Task HandlePoolCreationCancel(Guid poolGroupGuid)
+    /// <param name="poolGroupGuid">The GUID of the pool group.</param>
+    private async Task ViewPoolLogs(Guid poolGroupGuid)
     {
-        Logger.LogInformation("Pool creation cancelled for pool with GUID: {PoolGroupGuid}", poolGroupGuid);
+        Logger.LogInformation("Viewing logs for pool with GUID: {PoolGroupGuid}", poolGroupGuid);
         
-        // Optionally remove the pool from the database since it was cancelled
-        var poolToRemove = PoolGroups.FirstOrDefault(p => p.PoolGroupGuid == poolGroupGuid);
-        if (poolToRemove != null)
+        // Clear previous logs and show loading state
+        PoolLogOutputs.Clear();
+        IsLoadingPoolLogs = true;
+        await poolLogsModal.ShowAsync();
+        
+        try
         {
-            try
+            // Fetch the pool creation outputs from the service
+            var result = await AppDriveService.GetPoolOutputsAsync(poolGroupGuid);
+            
+            if (result.Success && result.Outputs.Any())
             {
-                await using var dbContext = await DbContextFactory.CreateDbContextAsync();
-                dbContext.PoolGroups.Remove(poolToRemove);
-                await dbContext.SaveChangesAsync();
-                ToastService.Notify(new ToastMessage(ToastType.Warning, $"Pool creation '{poolToRemove.GroupLabel}' cancelled."));
+                PoolLogOutputs = result.Outputs;
+                Logger.LogInformation("Successfully loaded {Count} log entries for pool {PoolGroupGuid}", 
+                    PoolLogOutputs.Count, poolGroupGuid);
             }
-            catch (Exception ex)
+            else
             {
-                Logger.LogError(ex, "Error removing cancelled pool from database");
-                ToastService.Notify(new ToastMessage(ToastType.Danger, "Failed to remove cancelled pool from database."));
+                Logger.LogWarning("No logs available for pool {PoolGroupGuid}: {Message}", 
+                    poolGroupGuid, result.Message);
+                // Even though we don't have logs, keep the modal open to show the "No logs available" message
             }
         }
-        
-        // Refresh the drives and pools
-        await LoadDrives();
-        
-        // Force state update
-        await InvokeAsync(StateHasChanged);
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading pool creation logs for {PoolGroupGuid}", poolGroupGuid);
+            ToastService.Notify(new ToastMessage(ToastType.Danger, $"Error loading pool logs: {ex.Message}"));
+        }
+        finally
+        {
+            IsLoadingPoolLogs = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Closes the Pool Creation Logs modal.
+    /// </summary>
+    private async Task ClosePoolLogsModal()
+    {
+        await poolLogsModal.HideAsync();
     }
 }

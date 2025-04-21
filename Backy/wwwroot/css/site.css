@@ -344,3 +344,32 @@ h6 {
   background-color: #007bff !important;
   color: white !important;
 }
+
+/* ====== Creating Pool State ====== */
+
+.disabled-icon {
+  opacity: 0.5;
+  filter: grayscale(100%);
+}
+
+/* Style for cards in creating state */
+.drive-card.creating {
+  border-color: #0d6efd;
+  box-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
+}
+
+/* Pulse animation for creating badge */
+@keyframes badge-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.badge-creating {
+  animation: badge-pulse 2s infinite;
+}
+
+/* Progress bar animation */
+.progress-bar.progress-bar-animated.progress-bar-striped {
+  animation-duration: 1.5s;
+}
