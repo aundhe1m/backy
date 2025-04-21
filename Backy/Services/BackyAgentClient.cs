@@ -108,7 +108,7 @@ namespace Backy.Services
     /// </summary>
     public class DriveStatus
     {
-        public string Status { get; set; } = "unknown";
+        public string State { get; set; } = "unknown";
         public bool InPool { get; set; } = false;
         public string? PoolId { get; set; } = null;
         public string? MountPoint { get; set; } = null;
@@ -238,12 +238,12 @@ namespace Backy.Services
                 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    return new DriveStatus { Status = "not_found" };
+                    return new DriveStatus { State = "not_found" };
                 }
                 
                 response.EnsureSuccessStatusCode();
                 var result = await response.Content.ReadFromJsonAsync<DriveStatus>(_jsonOptions);
-                return result ?? new DriveStatus { Status = "error" }; // Return a default object if null
+                return result ?? new DriveStatus { State = "error" }; // Return a default object if null
             }
             catch (HttpRequestException ex)
             {
@@ -294,7 +294,7 @@ namespace Backy.Services
                 // Set the mount path using the poolGroupGuid as requested
                 agentRequest.MountPath = $"/mnt/backy/{agentRequest.PoolGroupGuid}";
                 
-                _logger.LogInformation("Sending pool creation request to agent with MountPath: {MountPath}", 
+                _logger.LogDebug("Sending pool creation request to agent with MountPath: {MountPath}", 
                     agentRequest.MountPath);
                 
                 var response = await _httpClient.PostAsJsonAsync("/api/v1/pools", agentRequest, _jsonOptions);
@@ -809,7 +809,8 @@ namespace Backy.Services
                     PoolId = item.PoolId,
                     PoolGroupGuid = item.PoolGroupGuid,
                     Label = item.Label,
-                    Status = item.Status,
+                    State = item.State,
+                    PoolStatus = item.PoolStatus,
                     MountPath = item.MountPath ?? string.Empty,
                     IsMounted = item.IsMounted,
                     DriveCount = item.DriveCount,
@@ -888,7 +889,7 @@ namespace Backy.Services
     {
         public bool Success { get; set; }
         public Guid PoolGroupGuid { get; set; }
-        public string Status { get; set; } = "creating";
+        public string State { get; set; } = "creating";
         public List<string> CommandOutputs { get; set; } = new List<string>();
     }
     
@@ -919,7 +920,15 @@ namespace Backy.Services
     
     internal class PoolDetailResponse
     {
-        public string Status { get; set; } = "unknown";
+        [JsonPropertyName("state")]
+        public string State { get; set; } = "unknown";
+        
+        [JsonPropertyName("poolStatus")]
+        public string? PoolStatus { get; set; }
+        
+        [JsonPropertyName("errorMessage")]
+        public string? ErrorMessage { get; set; }
+        
         public long Size { get; set; }
         public long Used { get; set; }
         public long Available { get; set; }
@@ -932,7 +941,7 @@ namespace Backy.Services
     {
         public string Serial { get; set; } = string.Empty;
         public string Label { get; set; } = string.Empty;
-        public string Status { get; set; } = "unknown";
+        public string State { get; set; } = "unknown";
     }
     
     internal class PoolListItem
@@ -940,7 +949,8 @@ namespace Backy.Services
         public string PoolId { get; set; } = string.Empty;
         public Guid PoolGroupGuid { get; set; }
         public string Label { get; set; } = string.Empty;
-        public string Status { get; set; } = "unknown";
+        public string State { get; set; } = "unknown";
+        public string? PoolStatus { get; set; }
         public string? MountPath { get; set; }
         public bool IsMounted { get; set; }
         public int DriveCount { get; set; }

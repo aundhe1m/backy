@@ -212,8 +212,8 @@ public class PoolOperationManager : IPoolOperationManager
     // Helper method to ensure metadata is accessible before marking the pool as active
     private async Task EnsureMetadataIsAccessibleAsync(IPoolService poolService, Guid poolGroupGuid)
     {
-        const int maxRetries = 10;
-        const int delayMs = 200;
+        const int maxRetries = 50;
+        const int delayMs = 500;
         
         for (int attempt = 0; attempt < maxRetries; attempt++)
         {

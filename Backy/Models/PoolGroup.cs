@@ -31,8 +31,16 @@ namespace Backy.Models
         public long Available { get; set; } = 0;
 
         public string UsePercent { get; set; } = "0%";
+        
+        /// <summary>
+        /// The operational state of the pool (creating, ready, failed, error, unmounted, deleted)
+        /// </summary>
+        public string State { get; set; } = "ready";
 
-        public string PoolStatus { get; set; } = "Unknown";
+        /// <summary>
+        /// The MDADM-specific health status of the pool (active, resync, etc.)
+        /// </summary>
+        public string? PoolStatus { get; set; }
 
         public List<PoolDrive> Drives { get; set; } = new List<PoolDrive>();
     }

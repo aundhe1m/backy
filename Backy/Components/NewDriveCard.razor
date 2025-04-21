@@ -165,7 +165,7 @@
     /// </summary>
     private void ToggleDetails()
     {
-        Logger.LogInformation($"Toggle button clicked for drive: {Model.Serial}");
+        Logger.LogDebug($"Toggle button clicked for drive: {Model.Serial}");
         IsNewDriveDetailsVisible = !IsNewDriveDetailsVisible;
     }
 
@@ -208,7 +208,7 @@
     /// <param name="serial">The serial number of the drive.</param>
     private async Task ProtectDrive(string serial)
     {
-        Logger.LogInformation($"Protect button clicked for drive: {serial}");
+        Logger.LogDebug($"Protect button clicked for drive: {serial}");
         await OnProtect.InvokeAsync(serial);
     }
 
@@ -229,7 +229,7 @@
     /// <param name="serial">The serial number of the drive.</param>
     private async Task SelectDrive(string serial)
     {
-        Logger.LogInformation($"Select button clicked for drive: {serial}");
+        Logger.LogDebug($"Select button clicked for drive: {serial}");
         await OnSelect.InvokeAsync(serial);
     }
 

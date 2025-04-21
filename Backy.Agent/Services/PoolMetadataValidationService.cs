@@ -25,7 +25,7 @@ public class PoolMetadataValidationService : BackgroundService
             // Allow a small delay for services to initialize fully
             await Task.Delay(2000, stoppingToken);
             
-            _logger.LogInformation("Starting pool metadata validation...");
+            _logger.LogDebug("Starting pool metadata validation...");
             
             // Create a scope to resolve scoped services
             using var scope = _serviceProvider.CreateScope();
@@ -37,11 +37,11 @@ public class PoolMetadataValidationService : BackgroundService
             {
                 if (result.FixedEntries > 0)
                 {
-                    _logger.LogInformation("Pool metadata validation complete. Fixed {FixedEntries} entries.", result.FixedEntries);
+                    _logger.LogDebug("Pool metadata validation complete. Fixed {FixedEntries} entries.", result.FixedEntries);
                 }
                 else
                 {
-                    _logger.LogInformation("Pool metadata validation complete. No issues found.");
+                    _logger.LogDebug("Pool metadata validation complete. No issues found.");
                 }
             }
             else

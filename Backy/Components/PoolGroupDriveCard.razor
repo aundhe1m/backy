@@ -145,7 +145,7 @@
                         </tr>
                         <tr>
                             <th>State</th>
-                            <td>@(IsCreating ? "Creating" : (Model.PoolEnabled ? "Enabled" : "Disabled"))</td>
+                            <td>@(IsCreating ? "Creating" : Model.State)</td>
                         </tr>
                         <tr>
                             <th>All Drives Connected</th>
@@ -153,7 +153,7 @@
                         </tr>
                         <tr>
                             <th>Pool Status</th>
-                            <td>@Model.PoolStatus</td>
+                            <td>@(Model.PoolStatus ?? "Unknown")</td>
                         </tr>
                         <tr>
                             <th>Size</th>
@@ -444,7 +444,7 @@
             if (result.Success && result.Outputs.Any())
             {
                 CreationLogs = result.Outputs;
-                Logger.LogInformation("Successfully loaded {Count} log entries for pool {PoolGroupGuid}", 
+                Logger.LogDebug("Successfully loaded {Count} log entries for pool {PoolGroupGuid}", 
                     CreationLogs.Count, Model.PoolGroupGuid);
             }
             else

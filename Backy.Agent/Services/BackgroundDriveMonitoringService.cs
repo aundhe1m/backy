@@ -144,7 +144,7 @@ namespace Backy.Agent.Services
                         
                         _cachedDrives = lsblkOutput;
                         _lastRefreshTime = DateTime.UtcNow;
-                        _logger.LogInformation("Drive information cache refreshed successfully with {Count} devices", 
+                        _logger.LogDebug("Drive information cache refreshed successfully with {Count} devices", 
                             _cachedDrives.Blockdevices?.Count ?? 0);
                         return true;
                     }

@@ -141,8 +141,11 @@ namespace Backy.Models
         [JsonPropertyName("label")]
         public string Label { get; set; } = string.Empty;
         
-        [JsonPropertyName("status")]
-        public string Status { get; set; } = string.Empty;
+        [JsonPropertyName("state")]
+        public string State { get; set; } = string.Empty;
+        
+        [JsonPropertyName("poolStatus")]
+        public string? PoolStatus { get; set; }
         
         [JsonPropertyName("mountPath")]
         public string MountPath { get; set; } = string.Empty;

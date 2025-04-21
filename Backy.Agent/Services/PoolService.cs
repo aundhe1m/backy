@@ -96,7 +96,7 @@ public class PoolService : IPoolService
                 .Select(m => System.IO.Path.GetFileName(m.Device))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             
-            _logger.LogInformation("Found {Count} mounted MD devices: {Devices}", 
+            _logger.LogDebug("Found {Count} mounted MD devices: {Devices}", 
                 mountedMdDevices.Count, string.Join(", ", mountedMdDevices));
 
             // Create a mapping of drive serials to their corresponding block devices
@@ -149,7 +149,7 @@ public class PoolService : IPoolService
                 try
                 {
                     int driveCount = poolMetadata.DriveSerials?.Count ?? 0;
-                    _logger.LogInformation("Processing pool {PoolGuid} ({MdDeviceName}) with {DriveCount} drives",
+                    _logger.LogDebug("Processing pool {PoolGuid} ({MdDeviceName}) with {DriveCount} drives",
                         poolMetadata.PoolGroupGuid, poolMetadata.MdDeviceName, driveCount);
                     
                     // Skip if no drive serials in metadata
@@ -179,7 +179,7 @@ public class PoolService : IPoolService
                         {
                             // If all drives belong to the same MD device, use that
                             currentMdDevice = mdDevices[0];
-                            _logger.LogInformation("Pool {PoolGuid} is currently using MD device {CurrentMdDevice}",
+                            _logger.LogDebug("Pool {PoolGuid} is currently using MD device {CurrentMdDevice}",
                                 poolMetadata.PoolGroupGuid, currentMdDevice);
                         }
                         else if (mdDevices.Count > 1)
@@ -205,7 +205,7 @@ public class PoolService : IPoolService
                             if (mdCounts.Any())
                             {
                                 currentMdDevice = mdCounts.OrderByDescending(kv => kv.Value).First().Key;
-                                _logger.LogInformation("Selected MD device {CurrentMdDevice} with most matching drives",
+                                _logger.LogDebug("Selected MD device {CurrentMdDevice} with most matching drives",
                                     currentMdDevice);
                             }
                         }
@@ -217,7 +217,7 @@ public class PoolService : IPoolService
                         // Check if we've already processed this MD device
                         if (processedMds.Contains(currentMdDevice))
                         {
-                            _logger.LogInformation("MD device {CurrentMdDevice} already processed, skipping",
+                            _logger.LogDebug("MD device {CurrentMdDevice} already processed, skipping",
                                 currentMdDevice);
                             continue;
                         }
@@ -490,7 +490,7 @@ public class PoolService : IPoolService
             var mdStatInfo = await _mdStatReader.GetMdStatInfoAsync();
             if (mdStatInfo.Arrays.Count == 0)
             {
-                _logger.LogInformation("No MD arrays found on the system");
+                _logger.LogDebug("No MD arrays found on the system");
                 return result;
             }
             
@@ -1935,7 +1935,7 @@ public class PoolService : IPoolService
             // If this is a new empty file, just return success
             if (allMetadata.Pools.Count == 0)
             {
-                _logger.LogInformation("No pools found in metadata to validate");
+                _logger.LogDebug("No pools found in metadata to validate");
                 return (true, "No pools found in metadata to validate", 0);
             }
             

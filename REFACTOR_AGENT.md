@@ -145,6 +145,7 @@ Given that the frontend already has good support for asynchronous pool creation,
 - `/home/aundhe1m/backy/Backy/Components/Pages/DriveManagement.razor` - Page containing pool creation flow
 - `/home/aundhe1m/backy/Backy/Services/BackyAgentClient.cs` - Client for communicating with Backy Agent
 - `/home/aundhe1m/backy/Backy/Services/AgentDriveService.cs` - Service that handles pool operations
+- `/home/aundhe1m/backy/Backy/Services/DriveRefreshService.cs` - Service that periodically refreshes drive information
 
 ## Instructions for AI Implementation
 

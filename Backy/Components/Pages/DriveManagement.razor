@@ -535,7 +535,7 @@
     {
         if (string.IsNullOrWhiteSpace(searchQuery))
         {
-            Logger.LogInformation($"IsDriveMatch: searchQuery is empty. Drive {drive.Serial} matches.");
+            Logger.LogDebug($"IsDriveMatch: searchQuery is empty. Drive {drive.Serial} matches.");
             return true;
         }
 
@@ -546,7 +546,7 @@
         || (drive.Model?.ToLowerInvariant().Contains(query) ?? false)
         || (drive.Serial?.ToLowerInvariant().Contains(query) ?? false);
 
-        Logger.LogInformation($"IsDriveMatch: Drive {drive.Serial} match status: {match}");
+        Logger.LogDebug($"IsDriveMatch: Drive {drive.Serial} match status: {match}");
         return match;
     }
 
@@ -583,7 +583,7 @@
     {
         createPoolEditContext = new EditContext(CreatePoolRequest);
         renamePoolEditContext = new EditContext(RenamePoolRequest);
-        Logger.LogInformation("Drive Management page initialized.");
+        Logger.LogDebug("Drive Management page initialized.");
         
         // Load initial data from the database
         await LoadDataFromDatabase();
@@ -619,20 +619,20 @@
     {
         try
         {
-            Logger.LogInformation("Loading data from database...");
+            Logger.LogDebug("Loading data from database...");
             
             // Load pool groups with their drives
             await using var dbContext = await DbContextFactory.CreateDbContextAsync();
             PoolGroups = await dbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
-            Logger.LogInformation($"Loaded {PoolGroups.Count} pool groups from the database.");
+            Logger.LogDebug($"Loaded {PoolGroups.Count} pool groups from the database.");
             
             // Load protected drives
             ProtectedDrives = await dbContext.ProtectedDrives.ToListAsync();
-            Logger.LogInformation($"Loaded {ProtectedDrives.Count} protected drives from the database.");
+            Logger.LogDebug($"Loaded {ProtectedDrives.Count} protected drives from the database.");
             
             // Get active drives from drive service with minimal API calls
             var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
-            Logger.LogInformation($"Retrieved {activeDrives.Count} active drives.");
+            Logger.LogDebug($"Retrieved {activeDrives.Count} active drives.");
             
             // Filter out drives that are already in pools or protected
             var pooledDriveSerials = PoolGroups.SelectMany(pg => pg.Drives).Select(d => d.Serial).ToHashSet();
@@ -644,7 +644,7 @@
                 .Select(g => g.First())
                 .ToList();
             
-            Logger.LogInformation($"Found {NewDrives.Count} new drives after filtering.");
+            Logger.LogDebug($"Found {NewDrives.Count} new drives after filtering.");
         }
         catch (Exception ex)
         {
@@ -717,14 +717,14 @@
     private async Task OrganizeDrives()
     {
         var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
-        Logger.LogInformation($"Found {activeDrives.Count} active drives.");
+        Logger.LogDebug($"Found {activeDrives.Count} active drives.");
 
         await using var dbContext = await DbContextFactory.CreateDbContextAsync();
         PoolGroups = await dbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync();
-        Logger.LogInformation($"Loaded {PoolGroups.Count} pool groups from the database.");
+        Logger.LogDebug($"Loaded {PoolGroups.Count} pool groups from the database.");
 
         ProtectedDrives = await dbContext.ProtectedDrives.ToListAsync();
-        Logger.LogInformation($"Loaded {ProtectedDrives.Count} protected drives from the database.");
+        Logger.LogDebug($"Loaded {ProtectedDrives.Count} protected drives from the database.");
 
         bool changesMade = false; // Flag to track if any changes are made
 
@@ -906,12 +906,12 @@
         .Select(g => g.First())
         .ToList();
 
-        Logger.LogInformation($"NewDrives Count after filtering: {NewDrives.Count}");
+        Logger.LogDebug($"NewDrives Count after filtering: {NewDrives.Count}");
 
         if (changesMade)
         {
             await dbContext.SaveChangesAsync();
-            Logger.LogInformation("Changes saved to the database.");
+            Logger.LogDebug("Changes saved to the database.");
         }
     }
 
@@ -927,7 +927,7 @@
     {
         try
         {
-            Logger.LogInformation($"Attempting to protect drive with serial: {serial}");
+            Logger.LogDebug($"Attempting to protect drive with serial: {serial}");
             var result = await AppDriveService.ProtectDriveAsync(serial);
             if (result.Success)
             {
@@ -956,7 +956,7 @@
     {
         try
         {
-            Logger.LogInformation($"Attempting to unprotect drive with serial: {serial}");
+            Logger.LogDebug($"Attempting to unprotect drive with serial: {serial}");
             var result = await AppDriveService.UnprotectDriveAsync(serial);
             if (result.Success)
             {
@@ -983,7 +983,7 @@
     /// <param name="serial">The serial number of the drive to select or deselect.</param>
     private void SelectDrive(string serial)
     {
-        Logger.LogInformation($"Selecting drive with serial: {serial}");
+        Logger.LogDebug($"Selecting drive with serial: {serial}");
         var drive = NewDrives.FirstOrDefault(d => d.Serial == serial);
         if (drive != null)
         {
@@ -991,13 +991,13 @@
             {
                 // Deselect the drive
                 SelectedDrives.RemoveAll(d => d.Serial == serial);
-                Logger.LogInformation($"Drive {serial} deselected.");
+                Logger.LogDebug($"Drive {serial} deselected.");
             }
             else
             {
                 // Select the drive
                 SelectedDrives.Add(drive);
-                Logger.LogInformation($"Drive {serial} selected.");
+                Logger.LogDebug($"Drive {serial} selected.");
             }
             StateHasChanged(); // Update the UI
         }
@@ -1025,7 +1025,7 @@
     /// </summary>
     private async Task OpenCreatePoolModal()
     {
-        Logger.LogInformation("Opening Create Pool modal.");
+        Logger.LogDebug("Opening Create Pool modal.");
 
         // Initialize CreatePoolRequest with selected drives
         CreatePoolRequest = new CreatePoolRequest
@@ -1668,7 +1668,7 @@
             if (result.Success && result.Outputs.Any())
             {
                 PoolLogOutputs = result.Outputs;
-                Logger.LogInformation("Successfully loaded {Count} log entries for pool {PoolGroupGuid}", 
+                Logger.LogDebug("Successfully loaded {Count} log entries for pool {PoolGroupGuid}", 
                     PoolLogOutputs.Count, poolGroupGuid);
             }
             else

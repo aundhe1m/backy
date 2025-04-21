@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
 using Backy.Data;
@@ -42,6 +44,7 @@ namespace Backy.Services
         private readonly IBackyAgentClient _agentClient;
         private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
         private readonly ILogger<AgentAppDriveService> _logger;
+        private readonly ConcurrentDictionary<Guid, (Task MonitoringTask, CancellationTokenSource CancellationTokenSource)> _poolCreationMonitoring;
 
         public AgentAppDriveService(
             IBackyAgentClient agentClient,
@@ -51,6 +54,7 @@ namespace Backy.Services
             _agentClient = agentClient ?? throw new ArgumentNullException(nameof(agentClient));
             _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _poolCreationMonitoring = new ConcurrentDictionary<Guid, (Task, CancellationTokenSource)>();
         }
 
         /// <summary>
@@ -79,7 +83,7 @@ namespace Backy.Services
                     result.Output,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     
-                return poolDetail?.Status ?? "Unknown";
+                return poolDetail?.State ?? "Unknown";
             }
             catch (Exception ex)
             {
@@ -183,28 +187,92 @@ namespace Backy.Services
                 
                 if (result.Success)
                 {
-                    // Create a placeholder PoolGroup record in the database
-                    var poolGroup = new PoolGroup
+                    // Check if this pool is already being monitored to avoid duplicate monitoring tasks
+                    if (_poolCreationMonitoring.TryGetValue(result.PoolGroupGuid, out var existingTask))
                     {
-                        PoolGroupGuid = result.PoolGroupGuid, // Use the GUID from the async response
+                        _logger.LogInformation("Pool {PoolGroupGuid} is already being monitored for creation", result.PoolGroupGuid);
+                        
+                        // Return success but don't start a new monitoring task
+                        return (true, $"Pool '{request.PoolLabel}' creation already in progress. GUID: {result.PoolGroupGuid}", result.Outputs);
+                    }
+                    
+                    _logger.LogInformation("Pool creation initiated for '{PoolLabel}' with GUID {PoolGroupGuid}. Monitoring has started.",
+                        request.PoolLabel, result.PoolGroupGuid);
+                    
+                    // Create a cancellation token source for this pool monitoring task
+                    var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30)); // 30 minute timeout
+                    
+                    // Create and store the task
+                    var monitoringTask = Task.Run(async () => 
+                    {
+                        try 
+                        {
+                            // The MonitorPoolCreationWithPollingAsync method will check the creation status
+                            // and create the database entry only if creation succeeds
+                            var completedPool = await MonitorPoolCreationWithPollingAsync(result.PoolGroupGuid, cts.Token);
+                            
+                            if (completedPool != null)
+                            {
+                                _logger.LogInformation("Pool creation completed successfully for GUID {PoolGroupGuid}", result.PoolGroupGuid);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Pool creation failed or was cancelled for GUID {PoolGroupGuid}", result.PoolGroupGuid);
+                                
+                                // Try to get detailed error information
+                                try
+                                {
+                                    var outputs = await _agentClient.GetPoolCreationOutputsAsync(result.PoolGroupGuid);
+                                    if (outputs.Success && outputs.Outputs.Any())
+                                    {
+                                        string errorDetails = string.Join("\n", outputs.Outputs);
+                                        _logger.LogWarning("Pool creation failed with details: {ErrorDetails}", errorDetails);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Error getting failure details for pool {PoolGroupGuid}", result.PoolGroupGuid);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error monitoring pool creation for GUID {PoolGroupGuid}", result.PoolGroupGuid);
+                        }
+                        finally
+                        {
+                            // Clean up resources and remove this pool from the monitoring dictionary
+                            cts.Dispose();
+                            _poolCreationMonitoring.TryRemove(result.PoolGroupGuid, out _);
+                        }
+                    });
+                    
+                    // Store the task in the dictionary to prevent duplicate monitoring
+                    _poolCreationMonitoring[result.PoolGroupGuid] = (monitoringTask, cts);
+                    
+                    // Create a temporary in-memory PoolGroup that can be used by the frontend to display
+                    // the creating pool, but won't be saved to the database yet
+                    var tempPoolGroup = new PoolGroup
+                    {
+                        PoolGroupGuid = result.PoolGroupGuid,
                         GroupLabel = request.PoolLabel,
                         MountPath = $"/mnt/backy/{result.PoolGroupGuid}",
-                        PoolEnabled = false, // Will be enabled when creation completes
-                        PoolStatus = "creating", // Status indicating the pool is being created
+                        PoolEnabled = false,
+                        State = "creating",
+                        PoolStatus = null,
                         Size = 0,
                         Used = 0,
-                        Available = 0, 
+                        Available = 0,
                         UsePercent = "0%",
                         Drives = new List<PoolDrive>()
                     };
                     
-                    // Add drives to the pool group
                     foreach (var serial in request.DriveSerials)
                     {
                         var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == serial);
                         if (activeDrive == null)
                         {
-                            _logger.LogWarning($"Could not find active drive with serial {serial}");
+                            _logger.LogWarning("Could not find active drive with serial {Serial}", serial);
                             continue;
                         }
                         
@@ -229,19 +297,16 @@ namespace Backy.Services
                             Model = activeDrive.Model,
                             Size = activeDrive.Size,
                             IsConnected = true,
-                            IsMounted = false, // Not yet mounted
+                            IsMounted = false,
                             DevPath = activeDrive.IdLink,
                             PoolGroupGuid = result.PoolGroupGuid,
-                            PoolGroup = poolGroup
+                            PoolGroup = tempPoolGroup
                         };
                         
-                        poolGroup.Drives.Add(poolDrive);
+                        tempPoolGroup.Drives.Add(poolDrive);
                     }
                     
-                    context.PoolGroups.Add(poolGroup);
-                    await context.SaveChangesAsync();
-                    
-                    return (true, $"Pool '{request.PoolLabel}' creation started.", result.Outputs);
+                    return (true, $"Pool '{request.PoolLabel}' creation started. GUID: {result.PoolGroupGuid}", result.Outputs);
                 }
                 
                 return (false, result.Message, result.Outputs);
@@ -459,7 +524,7 @@ namespace Backy.Services
                             // Save changes
                             await context.SaveChangesAsync();
                             
-                            _logger.LogInformation("Updated size metrics for pool {PoolGroupGuid}: Size={Size}, Used={Used}, Available={Available}, UsePercent={UsePercent}", 
+                            _logger.LogDebug("Updated size metrics for pool {PoolGroupGuid}: Size={Size}, Used={Used}, Available={Available}, UsePercent={UsePercent}", 
                                 poolGroupGuid, poolGroup.Size, poolGroup.Used, poolGroup.Available, poolGroup.UsePercent);
                         }
                     }
@@ -656,9 +721,9 @@ namespace Backy.Services
                     {
                         PropertyNameCaseInsensitive = true
                     };
-                    
+
                     var poolDetail = JsonSerializer.Deserialize<PoolDetailResponse>(result.Output, jsonOptions);
-                    
+
                     if (poolDetail != null)
                     {
                         // Update the pool group with the pool details
@@ -666,11 +731,13 @@ namespace Backy.Services
                         poolGroup.Used = poolDetail.Used;
                         poolGroup.Available = poolDetail.Available;
                         poolGroup.UsePercent = poolDetail.UsePercent;
-                        
+                        poolGroup.State = poolDetail.State;
+                        poolGroup.PoolStatus = poolDetail.PoolStatus;
+
                         // Save changes
                         await context.SaveChangesAsync();
-                        
-                        _logger.LogInformation("Updated size metrics for pool {PoolGroupGuid}: Size={Size}, Used={Used}, Available={Available}, UsePercent={UsePercent}", 
+
+                        _logger.LogInformation("Updated size metrics for pool {PoolGroupGuid}: Size={Size}, Used={Used}, Available={Available}, UsePercent={UsePercent}",
                             poolGroupGuid, poolGroup.Size, poolGroup.Used, poolGroup.Available, poolGroup.UsePercent);
                     }
                 }
@@ -721,16 +788,20 @@ namespace Backy.Services
             const double backoffMultiplier = 1.5; // Exponential backoff multiplier
             const int maxDelaySeconds = 30; // Maximum delay in seconds
             
-            // Reference to the pool group in the database
+            // Check if this pool already exists in the database
             await using var initialContext = await _contextFactory.CreateDbContextAsync();
-            PoolGroup? poolGroup = await initialContext.PoolGroups
+            var existingPool = await initialContext.PoolGroups
                 .Include(pg => pg.Drives)
-                .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
+                .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid, cancellationToken);
                 
-            if (poolGroup == null)
+            PoolGroup? poolGroup = existingPool;
+            bool isNewPool = existingPool == null;
+            
+            // If the pool is not yet in the database, we'll get details from the agent API
+            // to create it when the status shows it's ready
+            if (isNewPool)
             {
-                _logger.LogWarning("Pool group {PoolGroupGuid} not found in database for monitoring", poolGroupGuid);
-                return null;
+                _logger.LogInformation("Pool {PoolGroupGuid} is not yet in database, will be created when ready", poolGroupGuid);
             }
             
             while (retryCount < maxRetries && !cancellationToken.IsCancellationRequested)
@@ -754,64 +825,259 @@ namespace Backy.Services
                         
                         if (poolDetail != null)
                         {
-                            _logger.LogInformation("Pool {PoolGroupGuid} has status: {Status}", poolGroupGuid, poolDetail.Status);
+                            _logger.LogInformation("Pool {PoolGroupGuid} has state: {State}, poolStatus: {PoolStatus}", 
+                                poolGroupGuid, poolDetail.State, poolDetail.PoolStatus);
                             
-                            // Create a fresh DbContext for each update to avoid tracking issues
-                            await using var updateContext = await _contextFactory.CreateDbContextAsync();
-                            
-                            // Get a fresh reference to the pool group
-                            poolGroup = await updateContext.PoolGroups
-                                .Include(pg => pg.Drives)
-                                .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid);
-                                
-                            if (poolGroup == null)
+                            // If this is a new pool that's not in the database yet, we need to create it
+                            // when the status indicates it's completed successfully
+                            if (isNewPool)
                             {
-                                _logger.LogWarning("Pool group {PoolGroupGuid} not found in database during monitoring", poolGroupGuid);
-                                return null;
-                            }
-                            
-                            // Update the database with the latest pool details
-                            poolGroup.Size = poolDetail.Size;
-                            poolGroup.Used = poolDetail.Used;
-                            poolGroup.Available = poolDetail.Available;
-                            poolGroup.UsePercent = poolDetail.UsePercent;
-                            poolGroup.PoolStatus = poolDetail.Status;
-                            
-                            // If the pool is no longer creating, update the database and return
-                            if (!string.Equals(poolDetail.Status, "creating", StringComparison.OrdinalIgnoreCase))
-                            {
-                                // Update drive statuses
-                                if (poolDetail.Drives != null && poolDetail.Drives.Any())
+                                if (string.Equals(poolDetail.State, "ready", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    foreach (var driveStatus in poolDetail.Drives)
+                                    _logger.LogInformation("Creating new pool record in database for completed pool {PoolGroupGuid}", poolGroupGuid);
+                                    
+                                    // Get pools info to get additional data like drive serials and labels
+                                    var pools = await _agentClient.GetPoolsAsync();
+                                    var poolInfo = pools.FirstOrDefault(p => p.PoolGroupGuid == poolGroupGuid);
+                                    
+                                    if (poolInfo == null)
                                     {
-                                        var drive = poolGroup.Drives.FirstOrDefault(d => d.Serial == driveStatus.Serial);
-                                        if (drive != null)
-                                        {
-                                            drive.IsConnected = true;
-                                            drive.IsMounted = true;
-                                        }
+                                        _logger.LogWarning("Pool {PoolGroupGuid} not found in agent pools list, cannot create database record", poolGroupGuid);
+                                        return null;
                                     }
+                                    
+                                    // Create a new pool group record now that the pool is ready
+                                    await using var createContext = await _contextFactory.CreateDbContextAsync();
+                                    PoolGroup? finalPoolGroup = null;
+                                    
+                                    // Get the execution strategy from the context
+                                    var strategy = createContext.Database.CreateExecutionStrategy();
+                                    
+                                    // Use the execution strategy to execute the transaction
+                                    await strategy.ExecuteAsync(async () =>
+                                    {
+                                        // Check within the execution strategy if the pool already exists
+                                        var existingPoolCheck = await createContext.PoolGroups
+                                            .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid, cancellationToken);
+                                            
+                                        if (existingPoolCheck != null)
+                                        {
+                                            _logger.LogWarning("Pool {PoolGroupGuid} already exists in database, skipping creation", poolGroupGuid);
+                                            finalPoolGroup = existingPoolCheck;
+                                            return;
+                                        }
+                                        
+                                        // Begin a transaction
+                                        using var transaction = await createContext.Database.BeginTransactionAsync(cancellationToken);
+                                        try
+                                        {
+                                            poolGroup = new PoolGroup
+                                            {
+                                                PoolGroupGuid = poolGroupGuid,
+                                                GroupLabel = poolInfo.Label,
+                                                MountPath = poolInfo.MountPath,
+                                                PoolEnabled = true,
+                                                State = poolDetail.State,
+                                                PoolStatus = poolDetail.PoolStatus,
+                                                Size = poolDetail.Size,
+                                                Used = poolDetail.Used,
+                                                Available = poolDetail.Available,
+                                                UsePercent = poolDetail.UsePercent,
+                                                AllDrivesConnected = true,
+                                                Drives = new List<PoolDrive>()
+                                            };
+                                            
+                                            // Get active drives to get detailed drive information
+                                            var activeDrives = await UpdateActiveDrivesAsync();
+                                            
+                                            // Add drives to the pool group
+                                            foreach (var poolDriveInfo in poolInfo.Drives)
+                                            {
+                                                var activeDrive = activeDrives.FirstOrDefault(d => d.Serial == poolDriveInfo.Serial);
+                                                if (activeDrive == null)
+                                                {
+                                                    _logger.LogWarning("Drive {Serial} not found in active drives, using minimal info", poolDriveInfo.Serial);
+                                                }
+                                                
+                                                var poolDrive = new PoolDrive
+                                                {
+                                                    Serial = poolDriveInfo.Serial,
+                                                    Label = poolDriveInfo.Label,
+                                                    Vendor = activeDrive?.Vendor ?? "Unknown",
+                                                    Model = activeDrive?.Model ?? "Unknown",
+                                                    Size = activeDrive?.Size ?? 0,
+                                                    IsConnected = true,
+                                                    IsMounted = true,
+                                                    DevPath = activeDrive?.IdLink ?? string.Empty,
+                                                    PoolGroupGuid = poolGroupGuid,
+                                                    PoolGroup = poolGroup
+                                                };
+                                                
+                                                poolGroup.Drives.Add(poolDrive);
+                                            }
+                                            
+                                            // Add the pool to the database
+                                            createContext.PoolGroups.Add(poolGroup);
+                                            
+                                            // Instead of directly saving, try to detect and handle concurrency conflicts first
+                                            try
+                                            {
+                                                await createContext.SaveChangesAsync(cancellationToken);
+                                            }
+                                            catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException pgEx && 
+                                                                                pgEx.SqlState == "23505" && // Unique violation
+                                                                                pgEx.ConstraintName == "AK_PoolGroups_PoolGroupGuid")
+                                            {
+                                                _logger.LogWarning("Pool {PoolGroupGuid} was created by another process while attempting to save, rolling back this transaction", poolGroupGuid);
+                                                
+                                                // Instead of saving, retrieve the existing pool that was created by the other process
+                                                var existingPool = await createContext.PoolGroups
+                                                    .AsNoTracking() // Use AsNoTracking to avoid conflicts with tracked entities
+                                                    .Include(pg => pg.Drives)
+                                                    .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid, cancellationToken);
+                                                    
+                                                finalPoolGroup = existingPool;
+                                                
+                                                // Make the task complete without an error, as this is a "race won by someone else" scenario
+                                                // Skip commit - we'll rollback in the outer catch
+                                                return;
+                                            }
+                                            
+                                            // Commit the transaction
+                                            await transaction.CommitAsync(cancellationToken);
+                                            
+                                            finalPoolGroup = poolGroup;
+                                            _logger.LogInformation("Pool {PoolGroupGuid} creation completed and database record created successfully", poolGroupGuid);
+                                        }
+                                        catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException pgEx && 
+                                                                            pgEx.SqlState == "23505" && // Unique violation
+                                                                            pgEx.ConstraintName == "AK_PoolGroups_PoolGroupGuid")
+                                        {
+                                            // This is the specific case of a duplicate key violation on PoolGroupGuid
+                                            _logger.LogWarning("Pool {PoolGroupGuid} was created by another process, retrieving existing record", poolGroupGuid);
+                                            
+                                            // Rollback the failed transaction 
+                                            await transaction.RollbackAsync(cancellationToken);
+                                            
+                                            // Get the pool that was created by the other process
+                                            var existingPool = await createContext.PoolGroups
+                                                .AsNoTracking() // Use AsNoTracking to avoid Entity tracking conflicts
+                                                .Include(pg => pg.Drives)
+                                                .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid, cancellationToken);
+                                                
+                                            if (existingPool == null)
+                                            {
+                                                _logger.LogError("Failed to find existing pool {PoolGroupGuid} after duplicate key exception", poolGroupGuid);
+                                                throw new InvalidOperationException($"Unable to find pool with GUID {poolGroupGuid} after detecting it exists");
+                                            }
+                                                
+                                            _logger.LogInformation("Successfully retrieved existing pool {PoolGroupGuid} with label {Label}", 
+                                                poolGroupGuid, existingPool.GroupLabel);
+                                                
+                                            finalPoolGroup = existingPool;
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            // Handle other exceptions
+                                            _logger.LogError(ex, "Error creating pool record for {PoolGroupGuid}", poolGroupGuid);
+                                            await transaction.RollbackAsync(cancellationToken);
+                                            
+                                            // Let the exception propagate
+                                            throw;
+                                        }
+                                    });
+                                    
+                                    return finalPoolGroup;
                                 }
-                                
-                                // Update pool status
-                                poolGroup.PoolEnabled = string.Equals(poolDetail.Status, "active", StringComparison.OrdinalIgnoreCase);
-                                await updateContext.SaveChangesAsync();
-                                
-                                if (string.Equals(poolDetail.Status, "active", StringComparison.OrdinalIgnoreCase))
+                                else if (string.Equals(poolDetail.State, "failed", StringComparison.OrdinalIgnoreCase) || 
+                                        string.Equals(poolDetail.State, "error", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    _logger.LogInformation("Pool {PoolGroupGuid} creation completed successfully", poolGroupGuid);
-                                    return poolGroup;
-                                }
-                                else if (string.Equals(poolDetail.Status, "failed", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    _logger.LogWarning("Pool {PoolGroupGuid} creation failed", poolGroupGuid);
+                                    // For failed pools, we should not create a database record
+                                    // Get the error details to log them
+                                    var outputs = await _agentClient.GetPoolCreationOutputsAsync(poolGroupGuid);
+                                    if (outputs.Success && outputs.Outputs.Any())
+                                    {
+                                        string errorDetails = string.Join("\n", outputs.Outputs);
+                                        _logger.LogWarning("Pool {PoolGroupGuid} creation failed with details: {ErrorDetails}", poolGroupGuid, errorDetails);
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning("Pool {PoolGroupGuid} creation failed but no detailed outputs available", poolGroupGuid);
+                                    }
+                                    
                                     return null;
                                 }
                             }
-                            
-                            // Save the updated metrics even if we're still in "creating" state
-                            await updateContext.SaveChangesAsync();
+                            else
+                            {
+                                // Create a fresh DbContext for each update to avoid tracking issues
+                                await using var updateContext = await _contextFactory.CreateDbContextAsync();
+                                
+                                // Get a fresh reference to the pool group
+                                poolGroup = await updateContext.PoolGroups
+                                    .Include(pg => pg.Drives)
+                                    .FirstOrDefaultAsync(pg => pg.PoolGroupGuid == poolGroupGuid, cancellationToken);
+                                    
+                                if (poolGroup == null)
+                                {
+                                    _logger.LogWarning("Pool group {PoolGroupGuid} disappeared from database during monitoring", poolGroupGuid);
+                                    return null;
+                                }
+                                
+                                // Update the database with the latest pool details
+                                poolGroup.Size = poolDetail.Size;
+                                poolGroup.Used = poolDetail.Used;
+                                poolGroup.Available = poolDetail.Available;
+                                poolGroup.UsePercent = poolDetail.UsePercent;
+                                poolGroup.State = poolDetail.State;
+                                poolGroup.PoolStatus = poolDetail.PoolStatus;
+                                
+                                // If the pool is no longer creating, update the database and return
+                                if (!string.Equals(poolDetail.State, "creating", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    // Update drive statuses
+                                    if (poolDetail.Drives != null && poolDetail.Drives.Any())
+                                    {
+                                        foreach (var driveStatus in poolDetail.Drives)
+                                        {
+                                            var drive = poolGroup.Drives.FirstOrDefault(d => d.Serial == driveStatus.Serial);
+                                            if (drive != null)
+                                            {
+                                                drive.IsConnected = true;
+                                                drive.IsMounted = true;
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Update pool status based on state
+                                    poolGroup.PoolEnabled = string.Equals(poolDetail.State, "ready", StringComparison.OrdinalIgnoreCase);
+                                    await updateContext.SaveChangesAsync(cancellationToken);
+                                    
+                                    if (string.Equals(poolDetail.State, "ready", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        _logger.LogInformation("Pool {PoolGroupGuid} creation completed successfully", poolGroupGuid);
+                                        return poolGroup;
+                                    }
+                                    else if (string.Equals(poolDetail.State, "failed", StringComparison.OrdinalIgnoreCase) || 
+                                            string.Equals(poolDetail.State, "error", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        _logger.LogWarning("Pool {PoolGroupGuid} creation failed", poolGroupGuid);
+                                        
+                                        // Try to get detailed error information
+                                        var outputs = await _agentClient.GetPoolCreationOutputsAsync(poolGroupGuid);
+                                        if (outputs.Success && outputs.Outputs.Any())
+                                        {
+                                            string errorDetails = string.Join("\n", outputs.Outputs);
+                                            _logger.LogWarning("Pool {PoolGroupGuid} creation failed with details: {ErrorDetails}", poolGroupGuid, errorDetails);
+                                        }
+                                        
+                                        return null;
+                                    }
+                                }
+                                
+                                // Save the updated metrics even if we're still in "creating" state
+                                await updateContext.SaveChangesAsync(cancellationToken);
+                            }
                         }
                     }
                     else

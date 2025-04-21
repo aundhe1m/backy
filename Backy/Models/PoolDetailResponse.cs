@@ -7,8 +7,14 @@ namespace Backy.Models
     /// </summary>
     public class PoolDetailResponse
     {
-        [JsonPropertyName("status")]
-        public string Status { get; set; } = "Unknown";
+        [JsonPropertyName("state")]
+        public string State { get; set; } = "Unknown";
+        
+        [JsonPropertyName("poolStatus")]
+        public string? PoolStatus { get; set; }
+
+        [JsonPropertyName("errorMessage")]
+        public string? ErrorMessage { get; set; }
 
         [JsonPropertyName("size")]
         public long Size { get; set; } = 0;

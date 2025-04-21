@@ -1,6 +1,7 @@
 using Backy.Data;
 using Backy.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ namespace Backy.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Drive Refresh Service is starting.");
+            _logger.LogDebug("Drive Refresh Service is starting.");
 
             // Initial refresh on startup
             await RefreshDriveDataAsync(stoppingToken);
@@ -67,7 +68,7 @@ namespace Backy.Services
         {
             try
             {
-                _logger.LogInformation("Refreshing drive data...");
+                _logger.LogDebug("Refreshing drive data...");
                 
                 // Create a new scope for dependency injection
                 using var scope = _scopeFactory.CreateScope();
@@ -78,15 +79,15 @@ namespace Backy.Services
                 
                 // Get the active drives from the Backy Agent
                 var activeDrives = await AppDriveService.UpdateActiveDrivesAsync();
-                _logger.LogInformation($"Retrieved {activeDrives.Count} active drives from the agent.");
+                _logger.LogDebug($"Retrieved {activeDrives.Count} active drives from the agent.");
                 
                 // Get existing pool groups from the database
                 var poolGroups = await dbContext.PoolGroups.Include(pg => pg.Drives).ToListAsync(stoppingToken);
-                _logger.LogInformation($"Found {poolGroups.Count} pool groups in the database.");
+                _logger.LogDebug($"Found {poolGroups.Count} pool groups in the database.");
                 
                 // Get protected drives from the database
                 var protectedDrives = await dbContext.ProtectedDrives.ToListAsync(stoppingToken);
-                _logger.LogInformation($"Found {protectedDrives.Count} protected drives in the database.");
+                _logger.LogDebug($"Found {protectedDrives.Count} protected drives in the database.");
                 
                 // Track if any changes were made that need to be saved
                 bool changesMade = false;
@@ -252,11 +253,11 @@ namespace Backy.Services
                 if (changesMade)
                 {
                     await dbContext.SaveChangesAsync(stoppingToken);
-                    _logger.LogInformation("Drive data refresh completed with updates. Changes saved to the database.");
+                    _logger.LogDebug("Drive data refresh completed with updates. Changes saved to the database.");
                 }
                 else
                 {
-                    _logger.LogInformation("Drive data refresh completed. No changes detected.");
+                    _logger.LogDebug("Drive data refresh completed. No changes detected.");
                 }
             }
             catch (Exception ex)

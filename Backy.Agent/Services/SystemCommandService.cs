@@ -20,7 +20,7 @@ public class SystemCommandService : ISystemCommandService
     public async Task<CommandResult> ExecuteCommandAsync(string command, bool sudo = false)
     {
         var actualCommand = sudo ? $"sudo {command}" : command;
-        _logger.LogInformation("Executing command: {Command}", actualCommand);
+        _logger.LogDebug("Executing command: {Command}", actualCommand);
 
         try
         {
