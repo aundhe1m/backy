@@ -534,7 +534,7 @@ Now all requests made through the Swagger UI will include your API key.
 The Backy Agent uses a background service to efficiently maintain drive information:
 
 1. **Drive Information Caching**
-   - The `BackgroundDriveMonitoringService` runs as a hosted service that maintains a cache of drive information
+   - The `DriveMonitoringService` runs as a hosted service that maintains a cache of drive information
    - It executes the `lsblk` command periodically and stores the results in memory
    - The service automatically refreshes drive information under these conditions:
      - Every 1 minute

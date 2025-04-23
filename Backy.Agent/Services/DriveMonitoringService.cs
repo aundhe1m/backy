@@ -13,9 +13,9 @@ namespace Backy.Agent.Services
     /// <summary>
     /// Background service that periodically refreshes and caches drive information
     /// </summary>
-    public class BackgroundDriveMonitoringService : BackgroundService
+    public class DriveMonitoringService : BackgroundService
     {
-        private readonly ILogger<BackgroundDriveMonitoringService> _logger;
+        private readonly ILogger<DriveMonitoringService> _logger;
         private readonly ISystemCommandService _commandService;
         private readonly IServiceProvider _serviceProvider;
         private readonly AgentSettings _settings;
@@ -34,8 +34,8 @@ namespace Backy.Agent.Services
         /// </summary>
         public bool IsRefreshing => _isRefreshing;
 
-        public BackgroundDriveMonitoringService(
-            ILogger<BackgroundDriveMonitoringService> logger,
+        public DriveMonitoringService(
+            ILogger<DriveMonitoringService> logger,
             ISystemCommandService commandService,
             IServiceProvider serviceProvider,
             IOptions<AgentSettings> options)
@@ -51,7 +51,7 @@ namespace Backy.Agent.Services
         /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Background drive monitoring service started");
+            _logger.LogInformation("Drive monitoring service started");
 
             try
             {

@@ -92,10 +92,10 @@ builder.Services.AddSingleton<IPoolOperationManager, PoolOperationManager>();
 builder.Services.AddHostedService<PoolOperationCleanupService>();
 
 // Register the background drive monitoring service
-builder.Services.AddSingleton<BackgroundDriveMonitoringService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<BackgroundDriveMonitoringService>());
+builder.Services.AddSingleton<DriveMonitoringService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DriveMonitoringService>());
 
-// Register DriveService after BackgroundDriveMonitoringService to ensure proper dependency resolution
+// Register DriveService after DriveMonitoringService to ensure proper dependency resolution
 builder.Services.AddScoped<IDriveService, DriveService>();
 builder.Services.AddScoped<IPoolService, PoolService>();
 

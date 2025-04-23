@@ -28,7 +28,7 @@ public class DriveService : IDriveService
     private readonly IFileSystemInfoService _fileSystemInfoService;
     private readonly IDriveInfoService _driveInfoService;
     private readonly IMdStatReader _mdStatReader;
-    private readonly BackgroundDriveMonitoringService _driveMonitoringService;
+    private readonly DriveMonitoringService _driveMonitoringService;
 
     public DriveService(
         ISystemCommandService commandService,
@@ -37,7 +37,7 @@ public class DriveService : IDriveService
         IFileSystemInfoService fileSystemInfoService,
         IDriveInfoService driveInfoService,
         IMdStatReader mdStatReader,
-        BackgroundDriveMonitoringService driveMonitoringService)
+        DriveMonitoringService driveMonitoringService)
     {
         _commandService = commandService;
         _logger = logger;
