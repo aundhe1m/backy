@@ -20,6 +20,38 @@ namespace Backy.Agent.Services.Storage.Drives
     /// </remarks>
     public interface IDriveMonitoringService
     {
-        // Drive monitoring methods will be defined here
+        /// <summary>
+        /// Event triggered when drives change (added, removed, or modified)
+        /// </summary>
+        event EventHandler<DriveChangeEventArgs>? DriveChanged;
+        
+        /// <summary>
+        /// Initializes the drive mapping by scanning all drives
+        /// </summary>
+        /// <returns>True if initialization was successful</returns>
+        Task<bool> InitializeDriveMapAsync();
+        
+        /// <summary>
+        /// Refreshes the drive mapping by rescanning all drives
+        /// </summary>
+        /// <param name="force">Whether to force a refresh even if one is already in progress</param>
+        /// <returns>True if refresh was successful or already in progress</returns>
+        Task<bool> RefreshDrivesAsync(bool force = false);
+        
+        /// <summary>
+        /// Gets the current drive mapping
+        /// </summary>
+        /// <returns>The current drive mapping</returns>
+        DriveMapping GetDriveMapping();
+        
+        /// <summary>
+        /// The time when drives were last refreshed
+        /// </summary>
+        DateTime LastRefreshTime { get; }
+        
+        /// <summary>
+        /// Whether a refresh operation is currently in progress
+        /// </summary>
+        bool IsRefreshing { get; }
     }
 }

@@ -2,6 +2,10 @@ using Backy.Agent.Endpoints;
 using Backy.Agent.Middleware;
 using Backy.Agent.Models;
 using Backy.Agent.Services;
+using Backy.Agent.Services.Core;
+using Backy.Agent.Services.Storage.Drives;
+using Backy.Agent.Services.Storage.Metadata;
+using Backy.Agent.Services.Storage.Pools;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -87,9 +91,14 @@ builder.Services.AddScoped<IDriveInfoService, DriveInfoService>();
 builder.Services.AddMemoryCache(); // Add memory cache for file content caching
 builder.Services.AddSingleton<IMdStatReader, MdStatReader>();
 
-// Register pool operation services for asynchronous pool operations
-builder.Services.AddSingleton<IPoolOperationManager, PoolOperationManager>();
-builder.Services.AddHostedService<PoolOperationCleanupService>();
+// Register pool services
+builder.Services.AddSingleton<IPoolMetadataService, PoolMetadataService>();
+builder.Services.AddSingleton<IPoolInfoService, PoolInfoService>();
+
+// Register pool service options
+builder.Services.Configure<PoolServiceOptions>(options => {
+    builder.Configuration.GetSection("PoolServiceOptions").Bind(options);
+});
 
 // Register the background drive monitoring service
 builder.Services.AddSingleton<DriveMonitoringService>();
@@ -98,9 +107,6 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<DriveMonitoringSer
 // Register DriveService after DriveMonitoringService to ensure proper dependency resolution
 builder.Services.AddScoped<IDriveService, DriveService>();
 builder.Services.AddScoped<IPoolService, PoolService>();
-
-// Register hosted service for pool metadata validation at startup
-builder.Services.AddHostedService<PoolMetadataValidationService>();
 
 // Configure CORS if needed
 builder.Services.AddCors(options =>

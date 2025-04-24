@@ -20,6 +20,29 @@ namespace Backy.Agent.Services.Storage.Pools
     /// </remarks>
     public interface IPoolService : IPoolInfoService
     {
-        // Pool operation methods will be defined here
+        /// <summary>
+        /// Gets all pools in the system.
+        /// </summary>
+        Task<Result<IEnumerable<PoolInfo>>> GetPoolsAsync();
+        
+        /// <summary>
+        /// Creates a new RAID pool with the specified drives.
+        /// </summary>
+        Task<Result<PoolCreationResponse>> CreatePoolAsync(PoolCreationRequest request);
+        
+        /// <summary>
+        /// Mounts an existing pool at the specified path.
+        /// </summary>
+        Task<Result<CommandResponse>> MountPoolAsync(Guid poolGroupGuid, string? mountPath = null);
+        
+        /// <summary>
+        /// Unmounts a pool.
+        /// </summary>
+        Task<Result<CommandResponse>> UnmountPoolAsync(Guid poolGroupGuid);
+        
+        /// <summary>
+        /// Removes a pool from the system.
+        /// </summary>
+        Task<Result<CommandResponse>> RemovePoolAsync(Guid poolGroupGuid);
     }
 }
