@@ -26,6 +26,7 @@ namespace Backy.Services
         Task<(bool Success, string Message)> MountPoolAsync(Guid poolGroupGuid);
         Task<(bool Success, string Message)> RenamePoolGroupAsync(RenamePoolRequest request);
         Task<(bool Success, string Message, string Output)> GetPoolDetailAsync(Guid poolGroupGuid);
+        Task<(bool Success, string Message)> ForceAddDriveAsync(int driveId, Guid poolGroupGuid, string devPath);
         Task<(bool Success, string Message, List<string> Outputs)> KillProcessesAsync(KillProcessesRequest request);
         Task<List<Drive>> UpdateActiveDrivesAsync();
         Task<List<ProcessInfo>> GetProcessesUsingMountPointAsync(string mountPoint);
@@ -553,6 +554,29 @@ namespace Backy.Services
                 {
                     _logger.LogError(ex, "Error updating pool size information in database for pool {PoolGroupGuid}", poolGroupGuid);
                     // Don't return an error, as the API call was successful
+                }
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Forcefully adds a drive to a pool.
+        /// </summary>
+        public async Task<(bool Success, string Message)> ForceAddDriveAsync(int driveId, Guid poolGroupGuid, string devPath)
+        {
+            // Delegate to the agent client
+            var result = await _agentClient.ForceAddDriveAsync(driveId, poolGroupGuid, devPath);
+            
+            if (result.Success)
+            {
+                // Update the drive's status in the database
+                await using var context = await _contextFactory.CreateDbContextAsync();
+                var drive = await context.PoolDrives.FirstOrDefaultAsync(d => d.Id == driveId);
+                if (drive != null)
+                {
+                    drive.IsMounted = true;
+                    await context.SaveChangesAsync();
                 }
             }
             
